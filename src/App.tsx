@@ -856,47 +856,30 @@ export default function App() {
     { id: 'settings', icon: Settings2, label: '设置', color: MACARON_COLORS.themes.settings },
   ];
 
-  // 手机模拟器容器
-  const PhoneContainer = ({ children }: { children: React.ReactNode }) => (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center p-4">
-      <div className="relative">
-        {/* 手机外壳 - 9:16 比例 */}
-        <div className="w-[360px] h-[640px] bg-black rounded-[50px] p-2 shadow-2xl">
-          {/* 手机屏幕 */}
-          <div className="w-full h-full bg-white rounded-[40px] overflow-hidden relative">
-            {children}
-          </div>
-        </div>
-        {/* 手机底部指示器 */}
-        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-28 h-1 bg-gray-600 rounded-full"></div>
-      </div>
-    </div>
-  );
-
   if (appState === 'login') {
     return (
-      <PhoneContainer>
+      <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
         <StatusBar />
         <div className="flex-1 h-[calc(100%-47px)]">
           <LoginView onLogin={handleLogin} />
         </div>
-      </PhoneContainer>
+      </div>
     );
   }
 
   if (appState === 'onboarding') {
     return (
-      <PhoneContainer>
+      <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
         <StatusBar />
         <div className="flex-1 h-[calc(100%-47px)]">
           <OnboardingView onComplete={handleOnboardingComplete} />
         </div>
-      </PhoneContainer>
+      </div>
     );
   }
 
   return (
-    <PhoneContainer>
+    <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
       <StatusBar />
       <div className="flex-1 h-[calc(100%-47px)] relative">
         <div className="h-[calc(100%-80px)]">
@@ -924,6 +907,6 @@ export default function App() {
           </div>
         </div>
       </div>
-    </PhoneContainer>
+    </div>
   );
 }
