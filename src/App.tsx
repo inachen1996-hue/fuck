@@ -12,6 +12,7 @@ import {
 // 类型定义
 type CategoryId = 'work' | 'study' | 'rest' | 'life';
 type TabId = 'timer' | 'journal' | 'review' | 'plan' | 'settings';
+type TimerStatus = 'idle' | 'running' | 'paused' | 'completed';
 
 interface CategoryTheme {
   primary: string;
@@ -31,6 +32,23 @@ interface CurrentJournal {
   content: string;
   mood: string | null;
   images: string[];
+}
+
+interface Timer {
+  id: string;
+  name: string;
+  categoryId: CategoryId;
+  duration: number; // 分钟
+  remainingTime: number; // 秒
+  status: TimerStatus;
+  createdAt: number;
+}
+
+interface Category {
+  id: CategoryId | string;
+  label: string;
+  icon: string;
+  isCustom?: boolean;
 }
 
 // 配置常量
@@ -285,7 +303,7 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                   placeholder="请输入手机号"
-                  className="w-full h-14 pl-24 pr-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-pink-300 outline-none text-gray-800 font-bold transition-all"
+                  className="w-full h-14 pl-24 pr-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-pink-300 outline-none text-gray-800 font-bold transition-all text-base"
                 />
               </div>
 
@@ -390,36 +408,169 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 // 计时器视图
 const TimerView = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work');
-  const categories: { id: CategoryId; label: string; icon: string }[] = [
+  const [categories, setCategories] = useState<Category[]>([
     { id: 'work', label: '工作', icon: '💼' },
     { id: 'study', label: '学习', icon: '📚' },
     { id: 'rest', label: '休息', icon: '☕' },
     { id: 'life', label: '生活', icon: '🌞' },
-  ];
+  ]);
+  const [timers, setTimers] = useState<Timer[]>([]);
+  const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
+  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
+  const [showNewTimerModal, setShowNewTimerModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryIcon, setNewCategoryIcon] = useState('⭐');
+  const [newTimerName, setNewTimerName] = useState('');
+  const [newTimerDuration, setNewTimerDuration] = useState(25);
 
-  const theme = MACARON_COLORS.categories[selectedCategory];
+  // 计时器逻辑
+  useEffect(() => {
+    let interval: number;
+    
+    if (activeTimer && activeTimer.status === 'running') {
+      interval = window.setInterval(() => {
+        setActiveTimer(prev => {
+          if (!prev || prev.remainingTime <= 0) {
+            // 计时器完成
+            setTimers(timers => timers.map(t => 
+              t.id === prev?.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+            ));
+            return prev ? { ...prev, status: 'completed', remainingTime: 0 } : null;
+          }
+          
+          const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
+          // 同步更新timers数组
+          setTimers(timers => timers.map(t => 
+            t.id === prev.id ? updated : t
+          ));
+          return updated;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeTimer?.status]);
+
+  const theme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
+    primary: '#FF8CA1',
+    light: '#FFF0F3', 
+    text: '#D9455F'
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const addCategory = () => {
+    if (newCategoryName.trim()) {
+      const newCategory: Category = {
+        id: `custom_${Date.now()}`,
+        label: newCategoryName.trim(),
+        icon: newCategoryIcon,
+        isCustom: true
+      };
+      setCategories([...categories, newCategory]);
+      setNewCategoryName('');
+      setNewCategoryIcon('⭐');
+      setShowNewCategoryModal(false);
+    }
+  };
+
+  const addTimer = () => {
+    if (newTimerName.trim()) {
+      const timer: Timer = {
+        id: Date.now().toString(),
+        name: newTimerName.trim(),
+        categoryId: selectedCategory,
+        duration: newTimerDuration,
+        remainingTime: newTimerDuration * 60,
+        status: 'idle',
+        createdAt: Date.now()
+      };
+      setTimers([...timers, timer]);
+      setNewTimerName('');
+      setNewTimerDuration(25);
+      setShowNewTimerModal(false);
+    }
+  };
+
+  const startTimer = (timer: Timer) => {
+    // 暂停其他正在运行的计时器
+    setTimers(prev => prev.map(t => 
+      t.status === 'running' ? { ...t, status: 'paused' } : t
+    ));
+    
+    const updatedTimer = { ...timer, status: 'running' as TimerStatus };
+    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    setActiveTimer(updatedTimer);
+  };
+
+  const pauseTimer = (timer: Timer) => {
+    const updatedTimer = { ...timer, status: 'paused' as TimerStatus };
+    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    setActiveTimer(updatedTimer);
+  };
+
+  const resetTimer = (timer: Timer) => {
+    const updatedTimer = { 
+      ...timer, 
+      status: 'idle' as TimerStatus, 
+      remainingTime: timer.duration * 60 
+    };
+    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    if (activeTimer?.id === timer.id) {
+      setActiveTimer(updatedTimer);
+    }
+  };
+
+  const deleteTimer = (timerId: string) => {
+    setTimers(prev => prev.filter(t => t.id !== timerId));
+    if (activeTimer?.id === timerId) {
+      setActiveTimer(null);
+    }
+  };
+
+  const categoryTimers = timers.filter(t => t.categoryId === selectedCategory);
 
   return (
     <div className="flex h-full" style={{ backgroundColor: MACARON_COLORS.bg }}>
       {/* 侧边栏 */}
       <div className="w-[70px] h-full flex flex-col items-center py-6 border-r border-[#F0F0F0] bg-white/50 backdrop-blur-sm">
-        <div className="space-y-2 w-full flex flex-col items-center px-1">
+        <div className="space-y-2 w-full flex flex-col items-center px-1 flex-1">
           {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
-            const catTheme = MACARON_COLORS.categories[cat.id];
+            const catTheme = MACARON_COLORS.categories[cat.id as CategoryId] || {
+              primary: '#FF8CA1',
+              light: '#FFF0F3',
+              text: '#D9455F'
+            };
             return (
               <button 
                 key={cat.id} 
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`relative w-full py-3 rounded-xl flex items-center justify-center transition-all duration-300 ${isSelected ? 'shadow-md scale-105' : 'hover:bg-white/80 hover:scale-105'}`}
+                onClick={() => setSelectedCategory(cat.id as CategoryId)}
+                className={`relative w-full py-3 rounded-xl flex flex-col items-center justify-center transition-all duration-300 ${isSelected ? 'shadow-md scale-105' : 'hover:bg-white/80 hover:scale-105'}`}
                 style={{ backgroundColor: isSelected ? catTheme.primary : 'transparent' }}
               >
-                <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                <span className="text-lg mb-1">{cat.icon}</span>
+                <span className={`text-[8px] font-black ${isSelected ? 'text-white' : 'text-gray-400'}`}>
                   {cat.label}
                 </span>
               </button>
             );
           })}
+          
+          {/* 添加分类按钮 */}
+          <button 
+            onClick={() => setShowNewCategoryModal(true)}
+            className="w-full py-3 rounded-xl flex flex-col items-center justify-center transition-all hover:bg-white/80 hover:scale-105 border-2 border-dashed border-gray-300"
+          >
+            <Plus size={16} className="text-gray-400 mb-1" />
+            <span className="text-[8px] font-black text-gray-400">添加</span>
+          </button>
         </div>
       </div>
 
@@ -435,6 +586,7 @@ const TimerView = () => {
             </p>
           </div>
           <button 
+            onClick={() => setShowNewTimerModal(true)}
             className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all"
             style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66` }}
           >
@@ -442,46 +594,250 @@ const TimerView = () => {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center items-center px-6">
-          <div className="w-full max-w-sm">
-            <div 
-              className="relative w-full h-[350px] rounded-[32px] p-6 shadow-2xl bg-white border-3"
-              style={{ borderColor: theme.primary }}
-            >
-              <div className="flex flex-col h-full justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm"
-                    style={{ backgroundColor: theme.primary }}
-                  >
-                    <Clock size={24} strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <h4 className="text-xl font-black text-[#2D2D2D]">专注时间</h4>
-                    <p className="text-xs text-gray-400">准备开始专注</p>
-                  </div>
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {categoryTimers.length === 0 ? (
+            // 空状态
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center opacity-60">
+                <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center" style={{ backgroundColor: theme.light }}>
+                  <Timer size={40} style={{ color: theme.primary }} />
                 </div>
-
-                <div className="text-center">
-                  <div className="text-5xl font-semibold font-mono text-[#2D2D2D] mb-3">
-                    25:00
-                  </div>
-                  <p className="text-[#2D2D2D] opacity-60 font-medium text-sm px-4">
-                    全神贯注，此刻即是永恒。
-                  </p>
-                </div>
-
-                <button 
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-all hover:brightness-110"
-                  style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66` }}
-                >
-                  <Play fill="white" size={28} className="ml-1" />
-                </button>
+                <p className="text-[#2D2D2D] font-bold text-lg">创建专注计时器</p>
+                <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角 + 号开始创建你的第一个计时器</p>
               </div>
+            </div>
+          ) : (
+            // 计时器列表
+            <div className="space-y-4">
+              {categoryTimers.map(timer => (
+                <div 
+                  key={timer.id}
+                  className={`relative w-full rounded-[32px] p-6 shadow-lg bg-white border-2 transition-all ${
+                    activeTimer?.id === timer.id ? 'scale-105' : ''
+                  }`}
+                  style={{ 
+                    borderColor: timer.status === 'running' ? theme.primary : 
+                                timer.status === 'completed' ? '#42D4A4' : '#F0F0F0'
+                  }}
+                >
+                  <div className="flex flex-col h-full justify-between items-center">
+                    <div className="flex items-center gap-3 w-full">
+                      <div 
+                        className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm"
+                        style={{ backgroundColor: theme.primary }}
+                      >
+                        <Clock size={24} strokeWidth={2.5} />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-xl font-black text-[#2D2D2D]">{timer.name}</h4>
+                        <p className="text-xs text-gray-400">
+                          {timer.status === 'idle' && '准备开始专注'}
+                          {timer.status === 'running' && '专注进行中...'}
+                          {timer.status === 'paused' && '已暂停'}
+                          {timer.status === 'completed' && '专注完成！'}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => deleteTimer(timer.id)}
+                        className="text-gray-300 hover:text-red-400 p-2"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="text-center my-6">
+                      <div className="text-5xl font-semibold font-mono text-[#2D2D2D] mb-3">
+                        {formatTime(timer.remainingTime)}
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
+                        <div 
+                          className="h-2 rounded-full transition-all duration-1000"
+                          style={{ 
+                            backgroundColor: timer.status === 'completed' ? '#42D4A4' : theme.primary,
+                            width: `${((timer.duration * 60 - timer.remainingTime) / (timer.duration * 60)) * 100}%`
+                          }}
+                        />
+                      </div>
+                      <p className="text-[#2D2D2D] opacity-60 font-medium text-sm px-4">
+                        {timer.status === 'completed' ? '恭喜完成专注时间！' : '全神贯注，此刻即是永恒。'}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      {timer.status === 'idle' || timer.status === 'paused' ? (
+                        <button 
+                          onClick={() => startTimer(timer)}
+                          className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-all hover:brightness-110"
+                          style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66` }}
+                        >
+                          <Play fill="white" size={28} className="ml-1" />
+                        </button>
+                      ) : timer.status === 'running' ? (
+                        <button 
+                          onClick={() => pauseTimer(timer)}
+                          className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-all hover:brightness-110"
+                          style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66` }}
+                        >
+                          <div className="flex gap-1">
+                            <div className="w-2 h-6 bg-white rounded-sm"></div>
+                            <div className="w-2 h-6 bg-white rounded-sm"></div>
+                          </div>
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => resetTimer(timer)}
+                          className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-all hover:brightness-110"
+                          style={{ backgroundColor: '#42D4A4', boxShadow: '0 10px 20px -5px #42D4A466' }}
+                        >
+                          <RefreshCw size={24} />
+                        </button>
+                      )}
+                      
+                      {(timer.status === 'running' || timer.status === 'paused') && (
+                        <button 
+                          onClick={() => resetTimer(timer)}
+                          className="w-12 h-12 rounded-full flex items-center justify-center text-gray-400 bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all"
+                        >
+                          <RefreshCw size={20} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 新增分类弹窗 */}
+      {showNewCategoryModal && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[85%] rounded-3xl p-6 shadow-2xl animate-scale-in">
+            <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">新增分类</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">分类名称</label>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="输入分类名称..."
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-pink-200"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">选择图标</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {['⭐', '🎯', '💡', '🚀', '🎨', '🏃', '📖', '🎵', '🍎', '🌟', '💪', '🔥'].map(icon => (
+                    <button
+                      key={icon}
+                      onClick={() => setNewCategoryIcon(icon)}
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all ${
+                        newCategoryIcon === icon ? 'bg-pink-100 border-2 border-pink-400' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowNewCategoryModal(false);
+                  setNewCategoryName('');
+                  setNewCategoryIcon('⭐');
+                }}
+                className="flex-1"
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={addCategory}
+                disabled={!newCategoryName.trim()}
+                className="flex-1"
+                style={{ backgroundColor: '#FF8CA1' }}
+              >
+                创建分类
+              </Button>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* 新增计时器弹窗 */}
+      {showNewTimerModal && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[85%] rounded-3xl p-6 shadow-2xl animate-scale-in">
+            <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">新增计时器</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">计时器名称</label>
+                <input
+                  type="text"
+                  value={newTimerName}
+                  onChange={(e) => setNewTimerName(e.target.value)}
+                  placeholder="输入计时器名称..."
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-pink-200"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">专注时长（分钟）</label>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setNewTimerDuration(Math.max(5, newTimerDuration - 5))}
+                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                  >
+                    -
+                  </button>
+                  <span className="text-2xl font-black text-[#2D2D2D] w-16 text-center">
+                    {newTimerDuration}
+                  </span>
+                  <button 
+                    onClick={() => setNewTimerDuration(Math.min(120, newTimerDuration + 5))}
+                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                  >
+                    +
+                  </button>
+                  <span className="text-sm text-gray-500">分钟</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowNewTimerModal(false);
+                  setNewTimerName('');
+                  setNewTimerDuration(25);
+                }}
+                className="flex-1"
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={addTimer}
+                disabled={!newTimerName.trim()}
+                className="flex-1"
+                style={{ backgroundColor: theme.primary }}
+              >
+                创建计时器
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1251,7 +1607,7 @@ const PlanView = () => {
             <input
               type="text"
               placeholder="添加新任务..."
-              className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-green-200"
+              className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-green-200"
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   addTask((e.target as HTMLInputElement).value);
