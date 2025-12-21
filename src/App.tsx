@@ -1727,7 +1727,7 @@ export default function App() {
 
   if (appState === 'login') {
     return (
-      <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
+      <div className="iphone-container bg-white overflow-hidden mx-auto">
         <div className="flex-1 h-full">
           <LoginView onLogin={handleLogin} />
         </div>
@@ -1737,7 +1737,7 @@ export default function App() {
 
   if (appState === 'onboarding') {
     return (
-      <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
+      <div className="iphone-container bg-white overflow-hidden mx-auto">
         <div className="flex-1 h-full">
           <OnboardingView onComplete={handleOnboardingComplete} />
         </div>
@@ -1746,7 +1746,7 @@ export default function App() {
   }
 
   return (
-    <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
+    <div className="iphone-container bg-white overflow-hidden mx-auto">
       <div className="flex-1 h-full relative">
         <div className="h-[calc(100%-80px)]">
           {renderView()}

@@ -16,6 +16,31 @@ code {
     monospace;
 }
 
+/* iPhone Pro Max 适配 */
+.iphone-container {
+  width: 100%;
+  height: 100vh;
+  max-width: 430px; /* iPhone 15/16 Pro Max 宽度 */
+  aspect-ratio: 430/932; /* iPhone 15/16 Pro Max 比例 */
+}
+
+/* 针对更大屏幕的适配 */
+@media (min-width: 440px) {
+  .iphone-container {
+    max-width: 440px; /* iPhone 16 Pro Max 宽度 */
+    aspect-ratio: 440/956; /* iPhone 16 Pro Max 比例 */
+  }
+}
+
+/* 针对较小屏幕的适配 */
+@media (max-width: 429px) {
+  .iphone-container {
+    max-width: 100%;
+    aspect-ratio: unset;
+    height: 100vh;
+  }
+}
+
 /* 隐藏滚动条 */
 .scrollbar-hide {
   -ms-overflow-style: none;
