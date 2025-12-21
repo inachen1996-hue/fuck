@@ -51,6 +51,14 @@ interface Category {
   isCustom?: boolean;
 }
 
+// 番茄钟设置接口
+interface PomodoroSettings {
+  workDuration: number;      // 工作时长（分钟）
+  breakDuration: number;     // 休息时长（分钟）
+  rounds: number;            // 几轮后长休息
+  longBreakDuration: number; // 长休息时长（分钟）
+}
+
 // 配置常量
 const MACARON_COLORS = {
   bg: '#FFFDF7',
@@ -406,8 +414,29 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 };
 
 // 计时器视图
-const TimerView = () => {
-  const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work');
+const TimerView = ({ 
+  selectedCategory: propSelectedCategory, 
+  setSelectedCategory: propSetSelectedCategory 
+}: {
+  selectedCategory?: CategoryId;
+  setSelectedCategory?: (category: CategoryId) => void;
+}) => {
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>(propSelectedCategory || 'work');
+  // 同步外部传入的selectedCategory
+  useEffect(() => {
+    if (propSelectedCategory) {
+      setSelectedCategory(propSelectedCategory);
+    }
+  }, [propSelectedCategory]);
+
+  // 处理分类切换，同时通知父组件
+  const handleCategoryChange = (categoryId: CategoryId) => {
+    setSelectedCategory(categoryId);
+    if (propSetSelectedCategory) {
+      propSetSelectedCategory(categoryId);
+    }
+  };
+
   const [categories, setCategories] = useState<Category[]>([
     { id: 'work', label: '工作', icon: '💼' },
     { id: 'study', label: '学习', icon: '📚' },
@@ -551,7 +580,7 @@ const TimerView = () => {
             return (
               <button 
                 key={cat.id} 
-                onClick={() => setSelectedCategory(cat.id as CategoryId)}
+                onClick={() => handleCategoryChange(cat.id as CategoryId)}
                 className={`relative w-full py-3 rounded-xl flex flex-col items-center justify-center transition-all duration-300 ${isSelected ? 'shadow-md scale-105' : 'hover:bg-white/80 hover:scale-105'}`}
                 style={{ backgroundColor: isSelected ? catTheme.primary : 'transparent' }}
               >
@@ -1355,7 +1384,7 @@ const ReviewView = () => {
 };
 
 // 计划视图
-const PlanView = () => {
+const PlanView = ({ pomodoroSettings }: { pomodoroSettings: PomodoroSettings }) => {
   const [step, setStep] = useState<'setup' | 'generating' | 'schedule'>('setup');
   const [tasks, setTasks] = useState<Array<{id: string, name: string, duration: number}>>([]);
   const [bedtime, setBedtime] = useState('22:00');
@@ -1369,6 +1398,7 @@ const PlanView = () => {
   const [mentalStatus, setMentalStatus] = useState<'energetic' | 'normal' | 'tired'>('normal');
   const [scheduleData, setScheduleData] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingStatus, setGeneratingStatus] = useState<string>('');
 
   const addTask = (name: string, duration: number = 25) => {
     if (name.trim()) {
@@ -1384,60 +1414,187 @@ const PlanView = () => {
     setTasks(tasks.filter(t => t.id !== id));
   };
 
+  const callDeepSeekAPI = async (prompt: string) => {
+    try {
+      const response = await fetch('/api/deepseek/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的时间管理助手，擅长根据用户的任务、生活状态和精神状态制定合理的时间安排。请以JSON格式返回时间安排，包含每个时间段的开始时间、结束时间、任务名称、类型和图标。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } catch (error) {
+      console.error('DeepSeek API调用失败:', error);
+      throw error;
+    }
+  };
+
   const generateSchedule = async () => {
     setIsGenerating(true);
     setStep('generating');
+    setGeneratingStatus('准备发送请求...');
     
-    // 模拟AI生成过程
-    setTimeout(() => {
-      const now = new Date();
-      const mockSchedule = {
-        bedtimeMs: new Date().setHours(22, 0, 0, 0),
-        schedule: tasks.map((task, index) => {
-          const startTime = new Date(now.getTime() + index * 45 * 60000); // 45分钟间隔
-          const endTime = new Date(startTime.getTime() + task.duration * 60000);
-          return {
-            ...task,
-            start: startTime.getTime(),
-            end: endTime.getTime(),
-            type: 'pomodoro',
-            icon: '🎯'
+    try {
+      // 构建提示词
+      const currentTime = new Date();
+      const currentHour = currentTime.getHours();
+      const currentMinute = currentTime.getMinutes();
+      
+      const tasksText = tasks.map(task => `${task.name}(${task.duration}分钟)`).join('、');
+      const lifestyleText = Object.entries(lifestyle)
+        .filter(([_, value]) => !value)
+        .map(([key, _]) => {
+          const labels: Record<string, string> = {
+            breakfast: '早餐',
+            lunch: '午餐', 
+            dinner: '晚餐',
+            morningWash: '晨洗',
+            nightWash: '晚洗'
           };
+          return labels[key];
         })
+        .join('、');
+      
+      const mentalStatusText = {
+        energetic: '精力充沛',
+        normal: '状态正常',
+        tired: '感到疲惫'
+      }[mentalStatus];
+
+      // 番茄钟设置说明
+      const pomodoroInfo = `番茄钟设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟`;
+
+      const prompt = `请为我制定今日时间安排：
+
+当前时间：${currentHour}:${currentMinute.toString().padStart(2, '0')}
+睡觉时间：${bedtime}
+
+今日任务：${tasksText || '无特定任务'}
+需要安排的生活事项：${lifestyleText || '无'}
+当前精神状态：${mentalStatusText}
+${pomodoroInfo}
+
+请根据以上信息，制定一个合理的时间安排。要求：
+1. 考虑当前时间，从现在开始安排
+2. 根据精神状态调整任务难度和休息时间
+3. 合理安排生活事项（用餐、洗漱等）
+4. 确保在睡觉时间前完成所有安排
+5. 任务之间留出适当的休息时间
+6. 每个任务都要给出一条简短的执行建议（advice字段）
+7. 对于需要久坐（持续时间超过40分钟）的任务，需要按照番茄钟设置拆分成多个番茄钟时间段（pomodoroSlots字段），每个时间段包含工作开始时间、工作结束时间、休息结束时间
+
+请以JSON格式返回，格式如下：
+{
+  "schedule": [
+    {
+      "id": "task1",
+      "name": "任务名称",
+      "start": "HH:MM",
+      "end": "HH:MM", 
+      "duration": 30,
+      "type": "pomodoro|life|rest",
+      "icon": "🎯",
+      "advice": "执行该任务的简短建议",
+      "pomodoroSlots": [
+        {
+          "workStart": "HH:MM",
+          "workEnd": "HH:MM",
+          "breakEnd": "HH:MM",
+          "isLongBreak": false
+        }
+      ]
+    }
+  ]
+}
+
+注意：
+- advice字段必须为每个任务提供
+- pomodoroSlots字段只有当任务duration超过40分钟时才需要提供
+- 番茄钟时间段要严格按照设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟`;
+
+      setGeneratingStatus('正在调用DeepSeek API...');
+      const aiResponse = await callDeepSeekAPI(prompt);
+      
+      setGeneratingStatus('正在解析AI响应...');
+      // 解析AI返回的JSON
+      let parsedSchedule;
+      try {
+        // 尝试提取JSON部分
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsedSchedule = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('无法从AI响应中提取JSON');
+        }
+      } catch (parseError) {
+        console.error('解析AI响应失败:', parseError);
+        console.log('AI原始响应:', aiResponse);
+        // 如果解析失败，使用备用方案
+        throw new Error('AI响应格式错误，请重试');
+      }
+
+      setGeneratingStatus('正在生成时间安排...');
+      // 转换时间格式并添加时间戳
+      const today = new Date();
+      const scheduleWithTimestamps = parsedSchedule.schedule.map((item: any) => {
+        const [startHour, startMinute] = item.start.split(':').map(Number);
+        const [endHour, endMinute] = item.end.split(':').map(Number);
+        
+        const startTime = new Date(today);
+        startTime.setHours(startHour, startMinute, 0, 0);
+        
+        const endTime = new Date(today);
+        endTime.setHours(endHour, endMinute, 0, 0);
+        
+        return {
+          ...item,
+          start: startTime.getTime(),
+          end: endTime.getTime()
+        };
+      });
+
+      const finalSchedule = {
+        bedtimeMs: new Date().setHours(parseInt(bedtime.split(':')[0]), parseInt(bedtime.split(':')[1]), 0, 0),
+        schedule: scheduleWithTimestamps
       };
       
-      // 添加生活任务
-      if (!lifestyle.lunch) {
-        mockSchedule.schedule.push({
-          id: 'lunch',
-          name: '午餐时间',
-          start: new Date().setHours(12, 0, 0, 0),
-          end: new Date().setHours(12, 30, 0, 0),
-          type: 'life',
-          icon: '🍽️',
-          duration: 30
-        });
-      }
-      
-      if (!lifestyle.dinner) {
-        mockSchedule.schedule.push({
-          id: 'dinner',
-          name: '晚餐时间',
-          start: new Date().setHours(18, 0, 0, 0),
-          end: new Date().setHours(18, 45, 0, 0),
-          type: 'life',
-          icon: '🍽️',
-          duration: 45
-        });
-      }
-      
-      // 按时间排序
-      mockSchedule.schedule.sort((a, b) => a.start - b.start);
-      
-      setScheduleData(mockSchedule);
+      setScheduleData(finalSchedule);
       setIsGenerating(false);
+      setGeneratingStatus('');
       setStep('schedule');
-    }, 3000);
+      
+    } catch (error) {
+      console.error('生成规划失败:', error);
+      setIsGenerating(false);
+      setGeneratingStatus('');
+      
+      // 显示错误信息并回退到设置页面
+      const errorMessage = error instanceof Error ? error.message : 'AI规划生成失败，请检查网络连接后重试';
+      alert(errorMessage);
+      setStep('setup');
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -1455,7 +1612,7 @@ const PlanView = () => {
             <Brain size={40} className="text-white" />
           </div>
           <h3 className="text-xl font-black text-[#2D2D2D] mb-2">AI 正在规划中...</h3>
-          <p className="text-gray-500 text-sm mb-8">正在为你制定最佳时间安排</p>
+          <p className="text-gray-500 text-sm mb-8">DeepSeek正在为你制定最佳时间安排</p>
           
           {/* 加载动画 */}
           <div className="flex justify-center gap-1 mb-6">
@@ -1468,8 +1625,16 @@ const PlanView = () => {
             ))}
           </div>
           
-          <div className="text-xs text-gray-400">
-            分析你的任务、生活习惯和精神状态...
+          <div className="text-xs text-gray-400 space-y-1">
+            <div>📋 分析你的{tasks.length}个任务</div>
+            <div>🍽️ 考虑生活习惯安排</div>
+            <div>⚡ 根据{mentalStatus === 'energetic' ? '充沛' : mentalStatus === 'normal' ? '正常' : '疲惫'}状态调整</div>
+            <div>🌙 确保{bedtime}前完成所有安排</div>
+            {generatingStatus && (
+              <div className="mt-4 text-green-500 font-bold">
+                {generatingStatus}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1536,6 +1701,12 @@ const PlanView = () => {
                         <span>•</span>
                         <span>{item.duration}分钟</span>
                       </div>
+                      {/* AI建议 */}
+                      {item.advice && (
+                        <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                          💡 {item.advice}
+                        </p>
+                      )}
                     </div>
                     
                     <button 
@@ -1545,6 +1716,38 @@ const PlanView = () => {
                       <Play size={14} fill="white" />
                     </button>
                   </div>
+                  
+                  {/* 番茄钟时间段 */}
+                  {item.pomodoroSlots && item.pomodoroSlots.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Timer size={14} className="text-red-400" />
+                        <span className="text-xs font-bold text-gray-500">番茄钟时间段</span>
+                      </div>
+                      <div className="space-y-2">
+                        {item.pomodoroSlots.map((slot: any, slotIndex: number) => (
+                          <div 
+                            key={slotIndex} 
+                            className={`flex items-center gap-2 text-xs p-2 rounded-xl ${
+                              slot.isLongBreak ? 'bg-purple-50' : 'bg-red-50'
+                            }`}
+                          >
+                            <span className="font-bold text-gray-600">第{slotIndex + 1}轮</span>
+                            <span className="text-gray-500">
+                              🎯 {slot.workStart}-{slot.workEnd}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className={slot.isLongBreak ? 'text-purple-500' : 'text-green-500'}>
+                              {slot.isLongBreak ? '🌴' : '☕'} 休息至 {slot.breakEnd}
+                            </span>
+                            {slot.isLongBreak && (
+                              <span className="text-purple-400 text-[10px]">(长休息)</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1741,7 +1944,13 @@ const PlanView = () => {
 };
 
 // 设置视图
-const SettingsView = () => {
+const SettingsView = ({ 
+  pomodoroSettings, 
+  setPomodoroSettings 
+}: { 
+  pomodoroSettings: PomodoroSettings;
+  setPomodoroSettings: (settings: PomodoroSettings) => void;
+}) => {
   const [user] = useState({
     name: '治愈体验官',
     avatar: '🐱',
@@ -1753,8 +1962,6 @@ const SettingsView = () => {
     soundEnabled: true,
     darkMode: false,
     autoSync: true,
-    pomodoroWork: 25,
-    pomodoroBreak: 5,
     language: 'zh-CN'
   });
 
@@ -1837,16 +2044,16 @@ const SettingsView = () => {
               <span className="text-sm font-bold text-gray-600">工作时长</span>
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => setSettings({...settings, pomodoroWork: Math.max(5, settings.pomodoroWork - 5)})}
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, workDuration: Math.max(5, pomodoroSettings.workDuration - 5)})}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
                 >
                   -
                 </button>
                 <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
-                  {settings.pomodoroWork}
+                  {pomodoroSettings.workDuration}
                 </span>
                 <button 
-                  onClick={() => setSettings({...settings, pomodoroWork: Math.min(60, settings.pomodoroWork + 5)})}
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, workDuration: Math.min(60, pomodoroSettings.workDuration + 5)})}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
                 >
                   +
@@ -1859,22 +2066,73 @@ const SettingsView = () => {
               <span className="text-sm font-bold text-gray-600">休息时长</span>
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => setSettings({...settings, pomodoroBreak: Math.max(1, settings.pomodoroBreak - 1)})}
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, breakDuration: Math.max(1, pomodoroSettings.breakDuration - 1)})}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
                 >
                   -
                 </button>
                 <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
-                  {settings.pomodoroBreak}
+                  {pomodoroSettings.breakDuration}
                 </span>
                 <button 
-                  onClick={() => setSettings({...settings, pomodoroBreak: Math.min(30, settings.pomodoroBreak + 1)})}
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, breakDuration: Math.min(30, pomodoroSettings.breakDuration + 1)})}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
                 >
                   +
                 </button>
                 <span className="text-sm text-gray-500">分钟</span>
               </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-gray-600">长休息间隔</span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, rounds: Math.max(2, pomodoroSettings.rounds - 1)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  -
+                </button>
+                <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
+                  {pomodoroSettings.rounds}
+                </span>
+                <button 
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, rounds: Math.min(8, pomodoroSettings.rounds + 1)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  +
+                </button>
+                <span className="text-sm text-gray-500">轮</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-gray-600">长休息时长</span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, longBreakDuration: Math.max(5, pomodoroSettings.longBreakDuration - 5)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  -
+                </button>
+                <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
+                  {pomodoroSettings.longBreakDuration}
+                </span>
+                <button 
+                  onClick={() => setPomodoroSettings({...pomodoroSettings, longBreakDuration: Math.min(60, pomodoroSettings.longBreakDuration + 5)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  +
+                </button>
+                <span className="text-sm text-gray-500">分钟</span>
+              </div>
+            </div>
+
+            {/* 番茄钟说明 */}
+            <div className="bg-red-50 rounded-xl p-3 mt-2">
+              <p className="text-xs text-red-400">
+                每完成 {pomodoroSettings.rounds} 轮（{pomodoroSettings.workDuration}分钟工作 + {pomodoroSettings.breakDuration}分钟休息）后，进入 {pomodoroSettings.longBreakDuration} 分钟长休息
+              </p>
             </div>
           </div>
         </div>
@@ -2048,6 +2306,15 @@ export default function App() {
   const [appState, setAppState] = useState<'login' | 'onboarding' | 'main'>('login');
   const [activeTab, setActiveTab] = useState<TabId>('timer');
   const [isFirstTime, setIsFirstTime] = useState(true); // 模拟首次使用
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work'); // 添加全局分类状态
+  
+  // 全局番茄钟设置
+  const [pomodoroSettings, setPomodoroSettings] = useState<PomodoroSettings>({
+    workDuration: 25,
+    breakDuration: 5,
+    rounds: 4,
+    longBreakDuration: 15
+  });
 
   const handleLogin = () => {
     if (isFirstTime) {
@@ -2064,17 +2331,17 @@ export default function App() {
 
   const renderView = () => {
     switch (activeTab) {
-      case 'timer': return <TimerView />;
+      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />;
       case 'journal': return <JournalView />;
       case 'review': return <ReviewView />;
-      case 'plan': return <PlanView />;
-      case 'settings': return <SettingsView />;
-      default: return <TimerView />;
+      case 'plan': return <PlanView pomodoroSettings={pomodoroSettings} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} />;
+      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />;
     }
   };
 
   const tabs: { id: TabId; icon: typeof Timer; label: string; color: string }[] = [
-    { id: 'timer', icon: Timer, label: '专注', color: MACARON_COLORS.themes.timer },
+    { id: 'timer', icon: Timer, label: '专注', color: MACARON_COLORS.categories[selectedCategory]?.primary || MACARON_COLORS.themes.timer },
     { id: 'journal', icon: BookHeart, label: '日记', color: MACARON_COLORS.themes.journal },
     { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
     { id: 'plan', icon: Calendar, label: '规划', color: MACARON_COLORS.themes.plan },
