@@ -5,7 +5,8 @@ import {
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
   Edit3, Save, X, Camera, ChevronLeft,
-  TrendingUp, Award, CheckCircle, RefreshCw, Brain, Lightbulb
+  TrendingUp, Award, CheckCircle, RefreshCw, Brain, Lightbulb,
+  ListTodo, Moon, Utensils
 } from 'lucide-react';
 
 // 类型定义
@@ -1010,24 +1011,390 @@ const ReviewView = () => {
 };
 
 // 计划视图
-const PlanView = () => (
-  <div className="flex flex-col h-full bg-[#FFFDF7] p-6">
-    <div className="text-center mb-6">
-      <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">智能规划</h2>
-      <p className="text-[10px] font-bold text-[#42D4A4] uppercase tracking-wider">AI PLANNING</p>
-    </div>
+const PlanView = () => {
+  const [step, setStep] = useState<'setup' | 'generating' | 'schedule'>('setup');
+  const [tasks, setTasks] = useState<Array<{id: string, name: string, duration: number}>>([]);
+  const [bedtime, setBedtime] = useState('22:00');
+  const [lifestyle, setLifestyle] = useState({
+    breakfast: true,
+    lunch: false,
+    dinner: false,
+    morningWash: true,
+    nightWash: false
+  });
+  const [mentalStatus, setMentalStatus] = useState<'energetic' | 'normal' | 'tired'>('normal');
+  const [scheduleData, setScheduleData] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const addTask = (name: string, duration: number = 25) => {
+    if (name.trim()) {
+      setTasks([...tasks, {
+        id: Date.now().toString(),
+        name: name.trim(),
+        duration
+      }]);
+    }
+  };
+
+  const removeTask = (id: string) => {
+    setTasks(tasks.filter(t => t.id !== id));
+  };
+
+  const generateSchedule = async () => {
+    setIsGenerating(true);
+    setStep('generating');
     
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center opacity-60">
-        <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center bg-green-100">
-          <Calendar size={40} className="text-green-400" />
+    // 模拟AI生成过程
+    setTimeout(() => {
+      const now = new Date();
+      const mockSchedule = {
+        bedtimeMs: new Date().setHours(22, 0, 0, 0),
+        schedule: tasks.map((task, index) => {
+          const startTime = new Date(now.getTime() + index * 45 * 60000); // 45分钟间隔
+          const endTime = new Date(startTime.getTime() + task.duration * 60000);
+          return {
+            ...task,
+            start: startTime.getTime(),
+            end: endTime.getTime(),
+            type: 'pomodoro',
+            icon: '🎯'
+          };
+        })
+      };
+      
+      // 添加生活任务
+      if (!lifestyle.lunch) {
+        mockSchedule.schedule.push({
+          id: 'lunch',
+          name: '午餐时间',
+          start: new Date().setHours(12, 0, 0, 0),
+          end: new Date().setHours(12, 30, 0, 0),
+          type: 'life',
+          icon: '🍽️',
+          duration: 30
+        });
+      }
+      
+      if (!lifestyle.dinner) {
+        mockSchedule.schedule.push({
+          id: 'dinner',
+          name: '晚餐时间',
+          start: new Date().setHours(18, 0, 0, 0),
+          end: new Date().setHours(18, 45, 0, 0),
+          type: 'life',
+          icon: '🍽️',
+          duration: 45
+        });
+      }
+      
+      // 按时间排序
+      mockSchedule.schedule.sort((a, b) => a.start - b.start);
+      
+      setScheduleData(mockSchedule);
+      setIsGenerating(false);
+      setStep('schedule');
+    }, 3000);
+  };
+
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (step === 'generating') {
+    return (
+      <div className="flex flex-col h-full bg-[#FFFDF7] items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-blue-400 rounded-3xl mx-auto mb-6 flex items-center justify-center animate-pulse">
+            <Brain size={40} className="text-white" />
+          </div>
+          <h3 className="text-xl font-black text-[#2D2D2D] mb-2">AI 正在规划中...</h3>
+          <p className="text-gray-500 text-sm mb-8">正在为你制定最佳时间安排</p>
+          
+          {/* 加载动画 */}
+          <div className="flex justify-center gap-1 mb-6">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              />
+            ))}
+          </div>
+          
+          <div className="text-xs text-gray-400">
+            分析你的任务、生活习惯和精神状态...
+          </div>
         </div>
-        <p className="text-[#2D2D2D] font-bold text-lg">制定完美计划</p>
-        <p className="text-[#8A8A8A] text-sm mt-2 px-4">AI 助手为你安排最佳时间</p>
+      </div>
+    );
+  }
+
+  if (step === 'schedule' && scheduleData) {
+    return (
+      <div className="flex flex-col h-full bg-[#FFFDF7]">
+        {/* 头部 */}
+        <div className="px-6 pt-8 pb-4 flex justify-between items-center">
+          <button 
+            onClick={() => setStep('setup')}
+            className="text-gray-400 hover:text-gray-600 p-2 -ml-2"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <span className="font-bold text-[#2D2D2D]">今日规划</span>
+          <button 
+            onClick={generateSchedule}
+            className="text-[#42D4A4] font-bold p-2 -mr-2"
+          >
+            <RefreshCw size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {/* 睡觉时间提醒 */}
+          <div className="bg-gradient-to-r from-purple-500 to-blue-500 rounded-3xl p-5 text-white mb-6 relative overflow-hidden">
+            <div className="absolute top-4 right-4 opacity-20">
+              <Moon size={40} />
+            </div>
+            <div className="relative z-10">
+              <h3 className="text-lg font-black mb-1">建议睡觉时间</h3>
+              <p className="text-2xl font-black">{bedtime}</p>
+              <p className="text-sm opacity-90 mt-1">保证充足睡眠，明天更有活力</p>
+            </div>
+          </div>
+
+          {/* 时间安排列表 */}
+          <div className="space-y-3">
+            {scheduleData.schedule.map((item: any, index: number) => {
+              const typeColors = {
+                pomodoro: { bg: '#42D4A4', light: '#E0F9F1' },
+                life: { bg: '#FF9F1C', light: '#FFF2DB' },
+                rest: { bg: '#6CB6FF', light: '#EAF4FF' }
+              };
+              const colors = typeColors[item.type as keyof typeof typeColors] || typeColors.pomodoro;
+              
+              return (
+                <div key={item.id || index} className="bg-white rounded-3xl p-4 shadow-sm border border-gray-50">
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: colors.light }}
+                    >
+                      <span className="text-xl">{item.icon}</span>
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-[#2D2D2D] text-sm mb-1">{item.name}</h4>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span>{formatTime(item.start)} - {formatTime(item.end)}</span>
+                        <span>•</span>
+                        <span>{item.duration}分钟</span>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+                      style={{ backgroundColor: colors.bg }}
+                    >
+                      <Play size={14} fill="white" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 重新规划按钮 */}
+          <div className="mt-8">
+            <Button 
+              onClick={() => setStep('setup')}
+              variant="outline"
+              style={{ borderColor: '#42D4A4', color: '#42D4A4' }}
+            >
+              <Edit3 size={20} />
+              重新规划
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#FFFDF7]">
+      {/* 头部 */}
+      <div className="px-6 pt-8 pb-4 flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">智能规划</h2>
+          <p className="text-[10px] font-bold text-[#42D4A4] uppercase tracking-wider">
+            AI PLANNING
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* 添加任务 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <ListTodo size={20} className="text-green-500" />
+            今日任务
+          </h3>
+          
+          <div className="space-y-3 mb-4">
+            {tasks.map(task => (
+              <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
+                <div className="flex-1">
+                  <span className="font-bold text-sm text-[#2D2D2D]">{task.name}</span>
+                  <span className="text-xs text-gray-500 ml-2">{task.duration}分钟</span>
+                </div>
+                <button 
+                  onClick={() => removeTask(task.id)}
+                  className="text-gray-400 hover:text-red-400 p-1"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="添加新任务..."
+              className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-green-200"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  addTask((e.target as HTMLInputElement).value);
+                  (e.target as HTMLInputElement).value = '';
+                }
+              }}
+            />
+            <button 
+              onClick={() => {
+                const input = document.querySelector('input[placeholder="添加新任务..."]') as HTMLInputElement;
+                if (input?.value) {
+                  addTask(input.value);
+                  input.value = '';
+                }
+              }}
+              className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center text-white hover:bg-green-600 transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* 生活状态 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Utensils size={20} className="text-orange-500" />
+            生活状态
+          </h3>
+          
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { key: 'breakfast', label: '早餐', icon: '🍳' },
+              { key: 'lunch', label: '午餐', icon: '🍽️' },
+              { key: 'dinner', label: '晚餐', icon: '🍜' },
+              { key: 'morningWash', label: '晨洗', icon: '🚿' }
+            ].map(item => (
+              <button
+                key={item.key}
+                onClick={() => setLifestyle({
+                  ...lifestyle,
+                  [item.key]: !lifestyle[item.key as keyof typeof lifestyle]
+                })}
+                className={`p-3 rounded-2xl border-2 transition-all ${
+                  lifestyle[item.key as keyof typeof lifestyle]
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-500'
+                }`}
+              >
+                <div className="text-lg mb-1">{item.icon}</div>
+                <div className="text-xs font-bold">{item.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 精神状态 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Zap size={20} className="text-yellow-500" />
+            精神状态
+          </h3>
+          
+          <div className="flex gap-3">
+            {[
+              { id: 'energetic', label: '充沛', emoji: '⚡', color: '#FFD23F' },
+              { id: 'normal', label: '正常', emoji: '😊', color: '#42D4A4' },
+              { id: 'tired', label: '疲惫', emoji: '😴', color: '#6CB6FF' }
+            ].map(status => (
+              <button
+                key={status.id}
+                onClick={() => setMentalStatus(status.id as any)}
+                className={`flex-1 p-3 rounded-2xl border-2 transition-all ${
+                  mentalStatus === status.id
+                    ? 'border-2 shadow-md'
+                    : 'border-gray-200 opacity-60'
+                }`}
+                style={{
+                  borderColor: mentalStatus === status.id ? status.color : undefined,
+                  backgroundColor: mentalStatus === status.id ? status.color + '20' : '#F9FAFB'
+                }}
+              >
+                <div className="text-2xl mb-1">{status.emoji}</div>
+                <div className="text-xs font-bold text-gray-700">{status.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 睡觉时间 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Moon size={20} className="text-purple-500" />
+            睡觉时间
+          </h3>
+          
+          <input
+            type="time"
+            value={bedtime}
+            onChange={(e) => setBedtime(e.target.value)}
+            className="w-full bg-gray-50 rounded-xl px-4 py-3 text-lg font-bold text-center outline-none focus:bg-white focus:ring-2 focus:ring-purple-200"
+          />
+        </div>
+
+        {/* 生成规划按钮 */}
+        <Button 
+          onClick={generateSchedule}
+          disabled={tasks.length === 0 || isGenerating}
+          style={{ backgroundColor: '#42D4A4' }}
+        >
+          {isGenerating ? (
+            <>
+              <RefreshCw size={20} className="animate-spin" />
+              生成中...
+            </>
+          ) : (
+            <>
+              <Brain size={20} />
+              生成 AI 规划
+            </>
+          )}
+        </Button>
+        
+        {tasks.length === 0 && (
+          <p className="text-xs text-gray-400 mt-3 text-center px-4">
+            请先添加至少一个任务
+          </p>
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // 设置视图
 const SettingsView = () => (
