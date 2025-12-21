@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { 
-  Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
@@ -54,18 +53,6 @@ const MACARON_COLORS = {
     settings: '#FFD23F',
   },
 };
-
-// 状态栏组件
-const StatusBar = ({ mode = 'dark' }: { mode?: 'dark' | 'light' }) => (
-  <div className={`w-full h-[47px] px-7 flex justify-between items-end pb-2 z-50 select-none ${mode === 'light' ? 'text-white' : 'text-[#2D2D2D]'}`}>
-    <div className="text-[15px] font-semibold tracking-wide pl-2">9:41</div>
-    <div className="flex items-center gap-1.5 pr-1">
-      <Signal size={16} strokeWidth={2.5} />
-      <Wifi size={16} strokeWidth={2.5} />
-      <Battery size={22} strokeWidth={2.5} />
-    </div>
-  </div>
-);
 
 // 按钮组件
 const Button = ({ 
@@ -1741,8 +1728,7 @@ export default function App() {
   if (appState === 'login') {
     return (
       <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
-        <StatusBar />
-        <div className="flex-1 h-[calc(100%-47px)]">
+        <div className="flex-1 h-full">
           <LoginView onLogin={handleLogin} />
         </div>
       </div>
@@ -1752,8 +1738,7 @@ export default function App() {
   if (appState === 'onboarding') {
     return (
       <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
-        <StatusBar />
-        <div className="flex-1 h-[calc(100%-47px)]">
+        <div className="flex-1 h-full">
           <OnboardingView onComplete={handleOnboardingComplete} />
         </div>
       </div>
@@ -1762,8 +1747,7 @@ export default function App() {
 
   return (
     <div className="w-full h-screen bg-white overflow-hidden max-w-[360px] mx-auto" style={{ aspectRatio: '9/16' }}>
-      <StatusBar />
-      <div className="flex-1 h-[calc(100%-47px)] relative">
+      <div className="flex-1 h-full relative">
         <div className="h-[calc(100%-80px)]">
           {renderView()}
         </div>
