@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { 
   Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
-  Plus, Heart, Play, Clock, BarChart3, Smartphone, ChevronRight
+  Plus, Heart, Play, Clock, BarChart3, Smartphone, ChevronRight,
+  ArrowRight, Sparkles, Target, Coffee, Zap
 } from 'lucide-react';
 
 // 类型定义
@@ -82,6 +83,137 @@ const Button = ({
     >
       {children}
     </button>
+  );
+};
+
+// 新手引导组件
+const OnboardingView = ({ 
+  onComplete 
+}: { 
+  onComplete: () => void 
+}) => {
+  const [currentStep, setCurrentStep] = useState(1);
+  const totalSteps = 4;
+
+  const steps = [
+    {
+      id: 1,
+      title: "欢迎来到治愈时光",
+      subtitle: "开启你的专注之旅",
+      icon: <Sparkles size={48} className="text-pink-400" />,
+      description: "这里是一个温柔的时间管理空间，帮助你找到内心的平静与专注。",
+      bgColor: "from-pink-100 to-purple-100"
+    },
+    {
+      id: 2,
+      title: "专注计时器",
+      subtitle: "番茄工作法的治愈版本",
+      icon: <Target size={48} className="text-blue-400" />,
+      description: "25分钟专注，5分钟休息。让时间变得有节奏，让工作变得有温度。",
+      bgColor: "from-blue-100 to-cyan-100"
+    },
+    {
+      id: 3,
+      title: "心情日记",
+      subtitle: "记录每一个美好瞬间",
+      icon: <Heart size={48} className="text-red-400" />,
+      description: "写下今天的感受，记录生活的点点滴滴，让回忆变得更加珍贵。",
+      bgColor: "from-red-100 to-pink-100"
+    },
+    {
+      id: 4,
+      title: "准备好了吗？",
+      subtitle: "开始你的治愈之旅",
+      icon: <Coffee size={48} className="text-amber-400" />,
+      description: "一切准备就绪，让我们一起创造属于你的专注时光吧！",
+      bgColor: "from-amber-100 to-orange-100"
+    }
+  ];
+
+  const currentStepData = steps[currentStep - 1];
+
+  const nextStep = () => {
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      onComplete();
+    }
+  };
+
+  const skipOnboarding = () => {
+    onComplete();
+  };
+
+  return (
+    <div className={`flex flex-col h-full bg-gradient-to-br ${currentStepData.bgColor} relative overflow-hidden`}>
+      {/* 跳过按钮 */}
+      <div className="absolute top-4 right-4 z-10">
+        <button 
+          onClick={skipOnboarding}
+          className="text-gray-400 hover:text-gray-600 text-sm font-bold px-3 py-1 rounded-full hover:bg-white/50 transition-all"
+        >
+          跳过
+        </button>
+      </div>
+
+      {/* 装饰性背景元素 */}
+      <div className="absolute top-10 left-10 w-20 h-20 bg-white/20 rounded-full blur-xl"></div>
+      <div className="absolute bottom-20 right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+
+      {/* 主要内容 */}
+      <div className="flex-1 flex flex-col justify-center items-center px-8 text-center">
+        {/* 图标 */}
+        <div className="mb-8 animate-bounce-small">
+          <div className="w-24 h-24 bg-white/80 backdrop-blur-sm rounded-3xl flex items-center justify-center shadow-xl">
+            {currentStepData.icon}
+          </div>
+        </div>
+
+        {/* 标题 */}
+        <h1 className="text-3xl font-black text-gray-800 mb-2">
+          {currentStepData.title}
+        </h1>
+        <p className="text-lg text-gray-600 mb-6 font-medium">
+          {currentStepData.subtitle}
+        </p>
+
+        {/* 描述 */}
+        <p className="text-gray-500 text-sm leading-relaxed max-w-xs mb-8">
+          {currentStepData.description}
+        </p>
+
+        {/* 进度指示器 */}
+        <div className="flex gap-2 mb-8">
+          {steps.map((_, index) => (
+            <div
+              key={index}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                index + 1 === currentStep 
+                  ? 'bg-gray-600 w-6' 
+                  : index + 1 < currentStep 
+                    ? 'bg-gray-400' 
+                    : 'bg-gray-200'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* 底部按钮 */}
+      <div className="p-6">
+        <Button onClick={nextStep}>
+          {currentStep === totalSteps ? (
+            <>
+              开始使用 <Zap size={20} />
+            </>
+          ) : (
+            <>
+              继续 <ArrowRight size={20} />
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   );
 };
 
@@ -431,10 +563,20 @@ const SettingsView = () => (
 
 // 主应用组件
 export default function App() {
-  const [appState, setAppState] = useState<'login' | 'main'>('login');
+  const [appState, setAppState] = useState<'login' | 'onboarding' | 'main'>('login');
   const [activeTab, setActiveTab] = useState<TabId>('timer');
+  const [isFirstTime, setIsFirstTime] = useState(true); // 模拟首次使用
 
   const handleLogin = () => {
+    if (isFirstTime) {
+      setAppState('onboarding');
+    } else {
+      setAppState('main');
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    setIsFirstTime(false);
     setAppState('main');
   };
 
@@ -480,6 +622,17 @@ export default function App() {
         <StatusBar />
         <div className="flex-1 h-[calc(100%-47px)]">
           <LoginView onLogin={handleLogin} />
+        </div>
+      </PhoneContainer>
+    );
+  }
+
+  if (appState === 'onboarding') {
+    return (
+      <PhoneContainer>
+        <StatusBar />
+        <div className="flex-1 h-[calc(100%-47px)]">
+          <OnboardingView onComplete={handleOnboardingComplete} />
         </div>
       </PhoneContainer>
     );
