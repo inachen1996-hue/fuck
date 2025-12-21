@@ -3,7 +3,8 @@ import {
   Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
   Plus, Heart, Play, Clock, BarChart3, Smartphone, ChevronRight,
-  ArrowRight, Sparkles, Target, Coffee, Zap
+  ArrowRight, Sparkles, Target, Coffee, Zap,
+  Edit3, Save, X, Camera, ChevronLeft
 } from 'lucide-react';
 
 // 类型定义
@@ -14,6 +15,20 @@ interface CategoryTheme {
   primary: string;
   light: string;
   text: string;
+}
+
+interface Journal {
+  id: string;
+  date: number;
+  mood: string | null;
+  content: string;
+  images: string[];
+}
+
+interface CurrentJournal {
+  content: string;
+  mood: string | null;
+  images: string[];
 }
 
 // 配置常量
@@ -482,24 +497,266 @@ const TimerView = () => {
 };
 
 // 日记视图
-const JournalView = () => (
-  <div className="flex flex-col h-full bg-[#FFFDF7] p-6">
-    <div className="text-center mb-6">
-      <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">心情日记</h2>
-      <p className="text-[10px] font-bold text-[#FF85A1] uppercase tracking-wider">MOMENTS & THOUGHTS</p>
-    </div>
+const JournalView = () => {
+  const [view, setView] = useState<'list' | 'editor'>('list');
+  const [journals, setJournals] = useState<Journal[]>([
+    {
+      id: '1',
+      date: Date.now() - 86400000, // 昨天
+      mood: 'happy',
+      content: '今天完成了一个重要的项目，感觉很有成就感！虽然过程中遇到了一些困难，但最终都克服了。',
+      images: []
+    }
+  ]);
+  const [currentJournal, setCurrentJournal] = useState<CurrentJournal>({
+    content: '',
+    mood: null,
+    images: []
+  });
+
+  const moods = [
+    { id: 'happy', emoji: '😊', label: '开心', color: '#FFD23F' },
+    { id: 'calm', emoji: '😌', label: '平静', color: '#42D4A4' },
+    { id: 'sad', emoji: '😔', label: '难过', color: '#6CB6FF' },
+    { id: 'excited', emoji: '🤩', label: '兴奋', color: '#FF9F1C' },
+    { id: 'tired', emoji: '😴', label: '疲惫', color: '#E5E5E5' }
+  ];
+
+  const openEditor = (journal: Journal | null = null) => {
+    if (journal) {
+      setCurrentJournal({
+        content: journal.content,
+        mood: journal.mood,
+        images: journal.images
+      });
+    } else {
+      setCurrentJournal({
+        content: '',
+        mood: null,
+        images: []
+      });
+    }
+    setView('editor');
+  };
+
+  const saveJournal = () => {
+    if (!currentJournal.content.trim()) return;
     
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center opacity-60">
-        <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center bg-pink-100">
-          <BookHeart size={40} className="text-pink-400" />
+    const newJournal = {
+      id: Date.now().toString(),
+      date: Date.now(),
+      mood: currentJournal.mood,
+      content: currentJournal.content,
+      images: currentJournal.images
+    };
+    
+    setJournals([newJournal, ...journals]);
+    setView('list');
+  };
+
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 86400000);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return '今天';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return '昨天';
+    } else {
+      return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+    }
+  };
+
+  if (view === 'editor') {
+    return (
+      <div className="flex flex-col h-full bg-[#FFFDF7] relative">
+        {/* 编辑器头部 */}
+        <div className="px-6 pt-8 pb-4 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+          <button 
+            onClick={() => setView('list')}
+            className="text-gray-400 hover:text-gray-600 p-2 -ml-2"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <span className="font-bold text-[#2D2D2D]">写日记</span>
+          <button 
+            onClick={saveJournal}
+            className="text-[#FF85A1] font-bold p-2 -mr-2"
+            disabled={!currentJournal.content.trim()}
+          >
+            <Save size={24} />
+          </button>
         </div>
-        <p className="text-[#2D2D2D] font-bold text-lg">记录美好时光</p>
-        <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击开始写下今天的心情</p>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {/* 心情选择 */}
+          <div className="mb-6">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">
+              当下心情
+            </span>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {moods.map(mood => (
+                <button
+                  key={mood.id}
+                  onClick={() => setCurrentJournal({...currentJournal, mood: mood.id})}
+                  className={`flex-shrink-0 w-16 h-16 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${
+                    currentJournal.mood === mood.id 
+                      ? 'scale-110 shadow-lg' 
+                      : 'opacity-60 hover:opacity-100'
+                  }`}
+                  style={{ 
+                    backgroundColor: currentJournal.mood === mood.id ? mood.color + '20' : '#F9FAFB',
+                    borderColor: currentJournal.mood === mood.id ? mood.color : 'transparent',
+                    borderWidth: '2px'
+                  }}
+                >
+                  <span className="text-2xl mb-1">{mood.emoji}</span>
+                  <span className="text-[8px] font-bold text-gray-600">{mood.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 文本编辑区 */}
+          <div className="mb-4">
+            <textarea
+              value={currentJournal.content}
+              onChange={(e) => setCurrentJournal({...currentJournal, content: e.target.value})}
+              placeholder="记录此刻的想法和感受..."
+              className="w-full h-48 bg-transparent text-[#2D2D2D] text-base leading-relaxed outline-none resize-none placeholder:text-gray-300"
+              autoFocus
+            />
+          </div>
+
+          {/* 图片区域 */}
+          <div className="mb-4">
+            <div className="flex gap-2 mb-2">
+              {currentJournal.images.map((_, idx) => (
+                <div key={idx} className="relative w-16 h-16 bg-gray-100 rounded-xl overflow-hidden">
+                  <div className="w-full h-full flex items-center justify-center text-gray-300">
+                    <Camera size={20} />
+                  </div>
+                  <button 
+                    onClick={() => setCurrentJournal({
+                      ...currentJournal, 
+                      images: currentJournal.images.filter((_, i) => i !== idx)
+                    })}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-400 text-white rounded-full flex items-center justify-center text-xs"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              {currentJournal.images.length < 4 && (
+                <button 
+                  onClick={() => setCurrentJournal({
+                    ...currentJournal, 
+                    images: [...currentJournal.images, 'placeholder']
+                  })}
+                  className="w-16 h-16 bg-[#F9FAFB] rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-[#FF85A1] hover:text-[#FF85A1] transition-all"
+                >
+                  <Camera size={20} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#FFFDF7]">
+      {/* 头部 */}
+      <div className="px-6 pt-8 pb-4 flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">心情日记</h2>
+          <p className="text-[10px] font-bold text-[#FF85A1] uppercase tracking-wider">
+            MOMENTS & THOUGHTS
+          </p>
+        </div>
+        <button 
+          onClick={() => openEditor()}
+          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all"
+          style={{ 
+            backgroundColor: '#FF85A1', 
+            boxShadow: '0 10px 20px -5px #FF85A166' 
+          }}
+        >
+          <Edit3 size={20} strokeWidth={3} />
+        </button>
+      </div>
+
+      {/* 日记列表 */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {journals.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center opacity-60">
+              <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center bg-pink-100">
+                <BookHeart size={40} className="text-pink-400" />
+              </div>
+              <p className="text-[#2D2D2D] font-bold text-lg">记录美好时光</p>
+              <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角开始写下今天的心情</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {journals.map(journal => {
+              const mood = moods.find(m => m.id === journal.mood);
+              return (
+                <div 
+                  key={journal.id}
+                  onClick={() => openEditor(journal)}
+                  className="bg-white rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-50"
+                >
+                  <div className="flex items-start gap-4">
+                    {/* 心情图标 */}
+                    <div 
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: mood ? mood.color + '20' : '#F9FAFB' }}
+                    >
+                      <span className="text-2xl">{mood?.emoji || '📝'}</span>
+                    </div>
+                    
+                    {/* 内容 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-gray-400">
+                          {formatDate(journal.date)}
+                        </span>
+                        {mood && (
+                          <span className="text-xs text-gray-400">{mood.label}</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-[#2D2D2D] leading-relaxed line-clamp-3">
+                        {journal.content}
+                      </p>
+                      {journal.images.length > 0 && (
+                        <div className="flex gap-1 mt-3">
+                          {journal.images.slice(0, 3).map((_, idx) => (
+                            <div key={idx} className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                              <Camera size={12} className="text-gray-400" />
+                            </div>
+                          ))}
+                          {journal.images.length > 3 && (
+                            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                              <span className="text-xs text-gray-400">+{journal.images.length - 3}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // 复盘视图
 const ReviewView = () => (
