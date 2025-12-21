@@ -6,7 +6,8 @@ import {
   ArrowRight, Sparkles, Target, Coffee, Zap,
   Edit3, Save, X, Camera, ChevronLeft,
   TrendingUp, Award, CheckCircle, RefreshCw, Brain, Lightbulb,
-  ListTodo, Moon, Utensils
+  ListTodo, Moon, Utensils,
+  Bell, Shield, Palette, Volume2, LogOut, Download, Upload
 } from 'lucide-react';
 
 // 类型定义
@@ -1397,24 +1398,307 @@ const PlanView = () => {
 };
 
 // 设置视图
-const SettingsView = () => (
-  <div className="flex flex-col h-full bg-[#FFFDF7] p-6">
-    <div className="text-center mb-6">
-      <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">个人设置</h2>
-      <p className="text-[10px] font-bold text-[#FFD23F] uppercase tracking-wider">PREFERENCES</p>
-    </div>
-    
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center opacity-60">
-        <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center bg-yellow-100">
-          <Settings2 size={40} className="text-yellow-400" />
-        </div>
-        <p className="text-[#2D2D2D] font-bold text-lg">个性化设置</p>
-        <p className="text-[#8A8A8A] text-sm mt-2 px-4">调整应用以适合你的习惯</p>
+const SettingsView = () => {
+  const [user] = useState({
+    name: '治愈体验官',
+    avatar: '🐱',
+    phone: '+86 138****8888'
+  });
+  
+  const [settings, setSettings] = useState({
+    notifications: true,
+    soundEnabled: true,
+    darkMode: false,
+    autoSync: true,
+    pomodoroWork: 25,
+    pomodoroBreak: 5,
+    language: 'zh-CN'
+  });
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const handleLogout = () => {
+    // 这里可以添加登出逻辑
+    setShowLogoutConfirm(false);
+    // 重置到登录页面等
+  };
+
+  const exportData = () => {
+    // 模拟导出数据
+    const data = {
+      user,
+      settings,
+      exportTime: new Date().toISOString()
+    };
+    console.log('导出数据:', data);
+    // 实际应用中这里会触发文件下载
+  };
+
+  const importData = () => {
+    // 模拟导入数据
+    console.log('导入数据功能');
+    // 实际应用中这里会打开文件选择器
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-[#FFFDF7]">
+      {/* 头部 */}
+      <div className="px-6 pt-8 pb-4">
+        <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">个人设置</h2>
+        <p className="text-[10px] font-bold text-[#FFD23F] uppercase tracking-wider">
+          PREFERENCES
+        </p>
       </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* 用户信息 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-400 rounded-3xl flex items-center justify-center text-3xl shadow-lg">
+              {user.avatar}
+            </div>
+            <div className="flex-1">
+              <h3 className="font-black text-[#2D2D2D] text-lg">{user.name}</h3>
+              <p className="text-gray-500 text-sm">{user.phone}</p>
+            </div>
+            <button className="text-gray-400 hover:text-[#FFD23F] p-2">
+              <Edit3 size={20} />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-gray-100">
+            <div className="text-center">
+              <div className="text-xl font-black text-[#2D2D2D]">127</div>
+              <div className="text-xs text-gray-500">专注时长(h)</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-black text-[#2D2D2D]">45</div>
+              <div className="text-xs text-gray-500">完成任务</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-black text-[#2D2D2D]">12</div>
+              <div className="text-xs text-gray-500">使用天数</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 番茄钟设置 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Timer size={20} className="text-red-500" />
+            番茄钟设置
+          </h3>
+          
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-gray-600">工作时长</span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSettings({...settings, pomodoroWork: Math.max(5, settings.pomodoroWork - 5)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  -
+                </button>
+                <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
+                  {settings.pomodoroWork}
+                </span>
+                <button 
+                  onClick={() => setSettings({...settings, pomodoroWork: Math.min(60, settings.pomodoroWork + 5)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  +
+                </button>
+                <span className="text-sm text-gray-500">分钟</span>
+              </div>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-gray-600">休息时长</span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSettings({...settings, pomodoroBreak: Math.max(1, settings.pomodoroBreak - 1)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  -
+                </button>
+                <span className="text-lg font-black text-[#2D2D2D] w-12 text-center">
+                  {settings.pomodoroBreak}
+                </span>
+                <button 
+                  onClick={() => setSettings({...settings, pomodoroBreak: Math.min(30, settings.pomodoroBreak + 1)})}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
+                >
+                  +
+                </button>
+                <span className="text-sm text-gray-500">分钟</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 通用设置 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Settings2 size={20} className="text-blue-500" />
+            通用设置
+          </h3>
+          
+          <div className="space-y-4">
+            {[
+              { key: 'notifications', label: '推送通知', icon: Bell, desc: '接收专注提醒和任务通知' },
+              { key: 'soundEnabled', label: '提示音效', icon: Volume2, desc: '播放计时器提示音' },
+              { key: 'autoSync', label: '自动同步', icon: RefreshCw, desc: '自动备份数据到云端' }
+            ].map(item => (
+              <div key={item.key} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <item.icon size={18} className="text-gray-400" />
+                  <div>
+                    <div className="text-sm font-bold text-gray-700">{item.label}</div>
+                    <div className="text-xs text-gray-500">{item.desc}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSettings({
+                    ...settings,
+                    [item.key]: !settings[item.key as keyof typeof settings]
+                  })}
+                  className={`w-12 h-6 rounded-full transition-all ${
+                    settings[item.key as keyof typeof settings]
+                      ? 'bg-[#FFD23F]'
+                      : 'bg-gray-200'
+                  }`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all ${
+                    settings[item.key as keyof typeof settings]
+                      ? 'translate-x-6'
+                      : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 主题设置 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Palette size={20} className="text-purple-500" />
+            主题外观
+          </h3>
+          
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { name: '治愈粉', color: '#FF8CA1' },
+              { name: '阳光黄', color: '#FFD23F' },
+              { name: '森林绿', color: '#42D4A4' },
+              { name: '天空蓝', color: '#6CB6FF' }
+            ].map(theme => (
+              <button
+                key={theme.name}
+                className="flex flex-col items-center p-3 rounded-2xl border-2 border-gray-100 hover:border-gray-200 transition-all"
+              >
+                <div 
+                  className="w-8 h-8 rounded-full mb-2"
+                  style={{ backgroundColor: theme.color }}
+                />
+                <span className="text-xs font-bold text-gray-600">{theme.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 数据管理 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
+            <Shield size={20} className="text-green-500" />
+            数据管理
+          </h3>
+          
+          <div className="space-y-3">
+            <button 
+              onClick={exportData}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Download size={18} className="text-gray-600" />
+                <span className="text-sm font-bold text-gray-700">导出数据</span>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </button>
+            
+            <button 
+              onClick={importData}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Upload size={18} className="text-gray-600" />
+                <span className="text-sm font-bold text-gray-700">导入数据</span>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* 关于应用 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h3 className="font-black text-[#2D2D2D] mb-4">关于应用</h3>
+          
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">版本号</span>
+              <span className="font-bold text-gray-800">v1.0.0</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">更新时间</span>
+              <span className="font-bold text-gray-800">2024-12-21</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">开发者</span>
+              <span className="font-bold text-gray-800">Kiro AI</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 退出登录 */}
+        <button 
+          onClick={() => setShowLogoutConfirm(true)}
+          className="w-full bg-red-50 border-2 border-red-100 rounded-3xl p-4 flex items-center justify-center gap-2 text-red-500 font-bold hover:bg-red-100 transition-all"
+        >
+          <LogOut size={20} />
+          退出登录
+        </button>
+      </div>
+
+      {/* 退出确认弹窗 */}
+      {showLogoutConfirm && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[85%] rounded-3xl p-6 shadow-2xl animate-scale-in">
+            <h3 className="text-xl font-black text-[#2D2D2D] mb-2 text-center">确认退出</h3>
+            <p className="text-gray-500 text-sm mb-6 text-center">
+              退出后需要重新登录，确定要退出吗？
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1"
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={handleLogout}
+                className="flex-1"
+                style={{ backgroundColor: '#FF8CA1' }}
+              >
+                确认退出
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 // 主应用组件
 export default function App() {
