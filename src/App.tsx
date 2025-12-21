@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
-  Plus, Heart, Play, Clock, BarChart3
+  Plus, Heart, Play, Clock, BarChart3, Smartphone, ChevronRight
 } from 'lucide-react';
 
 // 类型定义
@@ -86,26 +86,169 @@ const Button = ({
 };
 
 // 登录界面
-const LoginView = ({ onLogin }: { onLogin: () => void }) => (
-  <div className="flex flex-col h-full justify-center items-center px-6 bg-gradient-to-br from-pink-50 to-blue-50">
-    <div className="text-center mb-10">
-      <div className="w-20 h-20 bg-gradient-to-br from-pink-400 to-blue-400 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-2xl">
-        <Heart size={32} className="text-white" />
+const LoginView = ({ onLogin }: { onLogin: () => void }) => {
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [step, setStep] = useState<'phone' | 'code'>('phone');
+
+  // 倒计时逻辑
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // 发送验证码
+  const sendCode = () => {
+    if (phone.length === 11 && countdown === 0) {
+      setCountdown(60);
+      setStep('code');
+    }
+  };
+
+  // 登录
+  const handleLogin = () => {
+    if (code.length === 6) {
+      onLogin();
+    }
+  };
+
+  // 开发者模式快速登录
+  const devLogin = () => {
+    onLogin();
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gradient-to-br from-pink-50 to-blue-50">
+      {/* 顶部装饰 */}
+      <div className="flex-1 flex flex-col justify-center items-center px-6">
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-pink-400 to-blue-400 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-2xl">
+            <Heart size={32} className="text-white" />
+          </div>
+          <h1 className="text-3xl font-black text-gray-800 mb-2">治愈时光</h1>
+          <p className="text-gray-500 text-sm">温柔的时间管理伙伴</p>
+        </div>
+
+        {/* 登录表单 */}
+        <div className="w-full max-w-xs space-y-4">
+          {step === 'phone' ? (
+            <>
+              {/* 手机号输入 */}
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 text-gray-400">
+                  <Smartphone size={18} />
+                  <span className="text-sm font-bold">+86</span>
+                </div>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                  placeholder="请输入手机号"
+                  className="w-full h-14 pl-24 pr-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-pink-300 outline-none text-gray-800 font-bold transition-all"
+                />
+              </div>
+
+              {/* 获取验证码按钮 */}
+              <Button 
+                onClick={sendCode}
+                disabled={phone.length !== 11}
+              >
+                获取验证码
+              </Button>
+            </>
+          ) : (
+            <>
+              {/* 显示手机号 */}
+              <div className="text-center mb-2">
+                <p className="text-sm text-gray-500">验证码已发送至</p>
+                <p className="text-lg font-bold text-gray-800">+86 {phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1 $2 $3')}</p>
+              </div>
+
+              {/* 验证码输入 */}
+              <div className="flex gap-2 justify-center">
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className={`w-10 h-12 rounded-xl border-2 flex items-center justify-center text-xl font-black transition-all ${
+                      code[i] ? 'border-pink-400 bg-pink-50 text-pink-500' : 'border-gray-200 bg-white text-gray-300'
+                    }`}
+                  >
+                    {code[i] || '·'}
+                  </div>
+                ))}
+              </div>
+              <input
+                type="tel"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="opacity-0 absolute"
+                autoFocus
+              />
+
+              {/* 登录按钮 */}
+              <Button 
+                onClick={handleLogin}
+                disabled={code.length !== 6}
+              >
+                登录
+              </Button>
+
+              {/* 重新发送 */}
+              <div className="text-center">
+                {countdown > 0 ? (
+                  <span className="text-sm text-gray-400">{countdown}秒后可重新发送</span>
+                ) : (
+                  <button onClick={sendCode} className="text-sm text-pink-500 font-bold">
+                    重新发送验证码
+                  </button>
+                )}
+              </div>
+
+              {/* 返回修改手机号 */}
+              <button 
+                onClick={() => { setStep('phone'); setCode(''); }}
+                className="flex items-center justify-center gap-1 text-sm text-gray-400 mx-auto"
+              >
+                <ChevronRight size={14} className="rotate-180" />
+                修改手机号
+              </button>
+            </>
+          )}
+
+          {/* 协议勾选 */}
+          <div className="flex items-start gap-2 px-2">
+            <button
+              onClick={() => setAgreed(!agreed)}
+              className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
+                agreed ? 'bg-pink-400 border-pink-400' : 'border-gray-300'
+              }`}
+            >
+              {agreed && <span className="text-white text-xs">✓</span>}
+            </button>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              我已阅读并同意
+              <span className="text-pink-400">《用户协议》</span>
+              和
+              <span className="text-pink-400">《隐私政策》</span>
+            </p>
+          </div>
+
+          {/* 开发者模式快速登录 */}
+          <button 
+            onClick={devLogin}
+            className="w-full text-center text-xs text-gray-300 py-2 hover:text-gray-400 transition-colors"
+          >
+            开发者模式 · 跳过登录
+          </button>
+        </div>
       </div>
-      <h1 className="text-3xl font-black text-gray-800 mb-2">治愈时光</h1>
-      <p className="text-gray-500 text-base">温柔的时间管理伙伴</p>
     </div>
-    
-    <div className="w-full max-w-xs space-y-4">
-      <Button onClick={onLogin}>
-        开始使用
-      </Button>
-      <p className="text-[10px] text-gray-400 text-center px-4">
-        点击开始即表示同意用户协议和隐私政策
-      </p>
-    </div>
-  </div>
-);
+  );
+};
 
 // 计时器视图
 const TimerView = () => {
