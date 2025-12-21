@@ -1,38 +1,31 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState } from 'react';
 import { 
   Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
-  CloudSun, Check, Smartphone, MessageSquare, 
-  ChevronRight, ArrowRight, Minus, Plus,
-  Briefcase, Coffee, Moon, Gamepad2, Heart, Music, Sun,
-  PlusCircle, Trash2, MoreVertical, Play, Pause, Maximize2, Minimize2,
-  X, Clock, Hourglass, Zap, AlertCircle, 
-  Image as ImageIcon, Smile, Frown, Meh, Search, Share2, Camera, PenTool, Hash,
-  Trophy, Flame, BarChart3, LineChart, Archive, Bell, Link as LinkIcon, PartyPopper,
-  Sparkles, Brain, ListTodo, Utensils, Bath, ArrowUp, ArrowDown, PlayCircle, CheckCircle2, Copy, Star, Send,
-  User, LogOut, RefreshCw, Layers, Download, ShieldAlert, Ghost,
-  Layout, Sliders, RotateCw, CalendarDays, Edit3, Save, XCircle, ChevronLeft, Droplets
+  Plus, Heart, Play, Clock, BarChart3
 } from 'lucide-react';
+
+// 类型定义
+type CategoryId = 'work' | 'study' | 'rest' | 'life';
+type TabId = 'timer' | 'journal' | 'review' | 'plan' | 'settings';
+
+interface CategoryTheme {
+  primary: string;
+  light: string;
+  text: string;
+}
 
 // 配置常量
 const MACARON_COLORS = {
   bg: '#FFFDF7',
   categories: {
-    uncategorized: { primary: '#9CA3AF', light: '#F3F4F6', text: '#4B5563' },
     work: { primary: '#FF8CA1', light: '#FFF0F3', text: '#D9455F' },
     study: { primary: '#FFD23F', light: '#FFFBE6', text: '#B88E00' },
     rest: { primary: '#42D4A4', light: '#E0F9F1', text: '#1B8C69' },
-    sleep: { primary: '#6CB6FF', light: '#EAF4FF', text: '#2B73B8' },
     life: { primary: '#B589F6', light: '#F4EBFF', text: '#7E4CCB' },
-    entertainment: { primary: '#FF9F1C', light: '#FFF2DB', text: '#B86B00' },
-    health: { primary: '#2EC4B6', light: '#DDFBF8', text: '#15877B' },
-    hobby: { primary: '#FFBCB5', light: '#FFF5F4', text: '#D66D63' },
-  },
+  } as Record<CategoryId, CategoryTheme>,
   ui: {
     primary: '#FF8CA1', 
-    textPrimary: '#2D2D2D',
-    textSecondary: '#8A8A8A',
-    white: '#FFFFFF'
   },
   themes: {
     timer: '#6CB6FF',
@@ -41,17 +34,10 @@ const MACARON_COLORS = {
     plan: '#42D4A4',
     settings: '#FFD23F',
   },
-  moods: {
-    happy: '#FFD23F',
-    calm: '#42D4A4',
-    sad: '#6CB6FF',
-    angry: '#FF8CA1',
-    tired: '#E5E5E5',
-  }
 };
 
 // 状态栏组件
-const StatusBar = ({ mode = 'dark' }) => (
+const StatusBar = ({ mode = 'dark' }: { mode?: 'dark' | 'light' }) => (
   <div className={`w-full h-[47px] px-7 flex justify-between items-end pb-2 z-50 select-none ${mode === 'light' ? 'text-white' : 'text-[#2D2D2D]'}`}>
     <div className="text-[15px] font-semibold tracking-wide pl-2">9:41</div>
     <div className="flex items-center gap-1.5 pr-1">
@@ -63,7 +49,21 @@ const StatusBar = ({ mode = 'dark' }) => (
 );
 
 // 按钮组件
-const Button = ({ children, onClick, variant = 'primary', disabled = false, className = '', style = {} }) => {
+const Button = ({ 
+  children, 
+  onClick, 
+  variant = 'primary', 
+  disabled = false, 
+  className = '', 
+  style = {} 
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'primary' | 'outline' | 'ghost';
+  disabled?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}) => {
   const baseStyle = `w-full h-12 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50`;
   const variants = {
     primary: `text-white shadow-[0_8px_0_0_#FF5C7C] hover:shadow-[0_6px_0_0_#FF5C7C] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]`,
@@ -86,7 +86,7 @@ const Button = ({ children, onClick, variant = 'primary', disabled = false, clas
 };
 
 // 登录界面
-const LoginView = ({ onLogin }) => (
+const LoginView = ({ onLogin }: { onLogin: () => void }) => (
   <div className="flex flex-col h-full justify-center items-center px-6 bg-gradient-to-br from-pink-50 to-blue-50">
     <div className="text-center mb-10">
       <div className="w-20 h-20 bg-gradient-to-br from-pink-400 to-blue-400 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-2xl">
@@ -109,15 +109,15 @@ const LoginView = ({ onLogin }) => (
 
 // 计时器视图
 const TimerView = () => {
-  const [selectedCategory, setSelectedCategory] = useState('work');
-  const categories = [
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work');
+  const categories: { id: CategoryId; label: string; icon: string }[] = [
     { id: 'work', label: '工作', icon: '💼' },
     { id: 'study', label: '学习', icon: '📚' },
     { id: 'rest', label: '休息', icon: '☕' },
     { id: 'life', label: '生活', icon: '🌞' },
   ];
 
-  const theme = MACARON_COLORS.categories[selectedCategory] || MACARON_COLORS.categories.work;
+  const theme = MACARON_COLORS.categories[selectedCategory];
 
   return (
     <div className="flex h-full" style={{ backgroundColor: MACARON_COLORS.bg }}>
@@ -288,8 +288,8 @@ const SettingsView = () => (
 
 // 主应用组件
 export default function App() {
-  const [appState, setAppState] = useState('login');
-  const [activeTab, setActiveTab] = useState('timer');
+  const [appState, setAppState] = useState<'login' | 'main'>('login');
+  const [activeTab, setActiveTab] = useState<TabId>('timer');
 
   const handleLogin = () => {
     setAppState('main');
@@ -306,7 +306,7 @@ export default function App() {
     }
   };
 
-  const tabs = [
+  const tabs: { id: TabId; icon: typeof Timer; label: string; color: string }[] = [
     { id: 'timer', icon: Timer, label: '专注', color: MACARON_COLORS.themes.timer },
     { id: 'journal', icon: BookHeart, label: '日记', color: MACARON_COLORS.themes.journal },
     { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
@@ -315,7 +315,7 @@ export default function App() {
   ];
 
   // 手机模拟器容器
-  const PhoneContainer = ({ children }) => (
+  const PhoneContainer = ({ children }: { children: React.ReactNode }) => (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center p-4">
       <div className="relative">
         {/* 手机外壳 - 9:16 比例 */}
