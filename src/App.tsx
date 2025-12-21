@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { 
   Wifi, Battery, Signal, 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
-  Plus, Heart, Play, Clock, BarChart3, Smartphone, ChevronRight,
+  Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
-  Edit3, Save, X, Camera, ChevronLeft
+  Edit3, Save, X, Camera, ChevronLeft,
+  TrendingUp, Award, CheckCircle, RefreshCw, Brain, Lightbulb
 } from 'lucide-react';
 
 // 类型定义
@@ -759,24 +760,254 @@ const JournalView = () => {
 };
 
 // 复盘视图
-const ReviewView = () => (
-  <div className="flex flex-col h-full bg-[#FFFDF7] p-6">
-    <div className="text-center mb-6">
-      <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">今日复盘</h2>
-      <p className="text-[10px] font-bold text-[#B589F6] uppercase tracking-wider">DAILY REVIEW</p>
-    </div>
+const ReviewView = () => {
+  const [view, setView] = useState<'overview' | 'generating' | 'report'>('overview');
+  const [reportData, setReportData] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // 模拟数据
+  const todayStats = {
+    focusTime: 125, // 分钟
+    completedTasks: 3,
+    totalTasks: 5,
+    mood: 'productive',
+    categories: [
+      { name: '工作', time: 75, color: '#FF8CA1' },
+      { name: '学习', time: 30, color: '#FFD23F' },
+      { name: '休息', time: 20, color: '#42D4A4' }
+    ]
+  };
+
+  const generateReport = async () => {
+    setIsGenerating(true);
+    setView('generating');
     
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center opacity-60">
-        <div className="w-24 h-24 rounded-full mb-4 flex items-center justify-center bg-purple-100">
-          <BarChart3 size={40} className="text-purple-400" />
+    // 模拟AI生成过程
+    setTimeout(() => {
+      const mockReport = {
+        summary: "今天你的专注表现很棒！总共专注了2小时5分钟，完成了3个重要任务。",
+        highlights: [
+          "🎯 专注效率比昨天提升了15%",
+          "✅ 工作任务完成度达到60%",
+          "💡 在学习上投入了30分钟，保持了良好的学习习惯"
+        ],
+        suggestions: [
+          "建议明天适当增加休息时间，保持工作与生活的平衡",
+          "可以尝试将大任务分解成更小的子任务",
+          "继续保持当前的专注节奏，效果很好"
+        ],
+        score: 85
+      };
+      setReportData(mockReport);
+      setIsGenerating(false);
+      setView('report');
+    }, 3000);
+  };
+
+  if (view === 'generating') {
+    return (
+      <div className="flex flex-col h-full bg-[#FFFDF7] items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-400 to-blue-400 rounded-3xl mx-auto mb-6 flex items-center justify-center animate-pulse">
+            <Brain size={40} className="text-white" />
+          </div>
+          <h3 className="text-xl font-black text-[#2D2D2D] mb-2">AI 正在分析中...</h3>
+          <p className="text-gray-500 text-sm mb-8">正在为你生成专属的复盘报告</p>
+          
+          {/* 加载动画 */}
+          <div className="flex justify-center gap-1 mb-6">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              />
+            ))}
+          </div>
+          
+          <div className="text-xs text-gray-400">
+            分析你的专注数据、任务完成情况和时间分配...
+          </div>
         </div>
-        <p className="text-[#2D2D2D] font-bold text-lg">回顾今天的收获</p>
-        <p className="text-[#8A8A8A] text-sm mt-2 px-4">AI 将帮你生成专属复盘报告</p>
+      </div>
+    );
+  }
+
+  if (view === 'report' && reportData) {
+    return (
+      <div className="flex flex-col h-full bg-[#FFFDF7]">
+        {/* 头部 */}
+        <div className="px-6 pt-8 pb-4 flex justify-between items-center">
+          <button 
+            onClick={() => setView('overview')}
+            className="text-gray-400 hover:text-gray-600 p-2 -ml-2"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <span className="font-bold text-[#2D2D2D]">AI 复盘报告</span>
+          <button className="text-[#B589F6] font-bold p-2 -mr-2">
+            <RefreshCw size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {/* 评分卡片 */}
+          <div className="bg-gradient-to-br from-purple-500 to-blue-500 rounded-3xl p-6 text-white mb-6 relative overflow-hidden">
+            <div className="absolute top-4 right-4 opacity-20">
+              <Award size={60} />
+            </div>
+            <div className="relative z-10">
+              <h3 className="text-lg font-black mb-2">今日评分</h3>
+              <div className="flex items-end gap-2 mb-2">
+                <span className="text-4xl font-black">{reportData.score}</span>
+                <span className="text-lg opacity-80 mb-1">/ 100</span>
+              </div>
+              <p className="text-sm opacity-90">表现优秀，继续保持！</p>
+            </div>
+          </div>
+
+          {/* 总结 */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm mb-4 border border-gray-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-2xl flex items-center justify-center">
+                <Lightbulb size={20} className="text-purple-500" />
+              </div>
+              <h4 className="font-black text-[#2D2D2D]">今日总结</h4>
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed">{reportData.summary}</p>
+          </div>
+
+          {/* 亮点 */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm mb-4 border border-gray-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-green-100 rounded-2xl flex items-center justify-center">
+                <TrendingUp size={20} className="text-green-500" />
+              </div>
+              <h4 className="font-black text-[#2D2D2D]">今日亮点</h4>
+            </div>
+            <div className="space-y-2">
+              {reportData.highlights.map((highlight: string, index: number) => (
+                <div key={index} className="flex items-start gap-2">
+                  <CheckCircle size={16} className="text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm text-gray-600">{highlight}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 建议 */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm mb-4 border border-gray-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center">
+                <Brain size={20} className="text-blue-500" />
+              </div>
+              <h4 className="font-black text-[#2D2D2D]">AI 建议</h4>
+            </div>
+            <div className="space-y-3">
+              {reportData.suggestions.map((suggestion: string, index: number) => (
+                <div key={index} className="bg-blue-50 rounded-2xl p-3">
+                  <span className="text-sm text-gray-700">{suggestion}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#FFFDF7]">
+      {/* 头部 */}
+      <div className="px-6 pt-8 pb-4 flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-black text-[#2D2D2D] mb-2">今日复盘</h2>
+          <p className="text-[10px] font-bold text-[#B589F6] uppercase tracking-wider">
+            DAILY REVIEW
+          </p>
+        </div>
+        <button 
+          onClick={generateReport}
+          disabled={isGenerating}
+          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all disabled:opacity-50"
+          style={{ 
+            backgroundColor: '#B589F6', 
+            boxShadow: '0 10px 20px -5px #B589F666' 
+          }}
+        >
+          <Brain size={20} strokeWidth={3} />
+        </button>
+      </div>
+
+      {/* 今日数据概览 */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* 统计卡片 */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-50">
+            <div className="flex items-center justify-between mb-2">
+              <Clock size={20} className="text-blue-500" />
+              <span className="text-xs text-gray-400">专注时长</span>
+            </div>
+            <div className="text-2xl font-black text-[#2D2D2D]">
+              {Math.floor(todayStats.focusTime / 60)}h {todayStats.focusTime % 60}m
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-50">
+            <div className="flex items-center justify-between mb-2">
+              <CheckCircle size={20} className="text-green-500" />
+              <span className="text-xs text-gray-400">完成任务</span>
+            </div>
+            <div className="text-2xl font-black text-[#2D2D2D]">
+              {todayStats.completedTasks}/{todayStats.totalTasks}
+            </div>
+          </div>
+        </div>
+
+        {/* 分类时间分布 */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
+          <h4 className="font-black text-[#2D2D2D] mb-4">时间分布</h4>
+          <div className="space-y-3">
+            {todayStats.categories.map((category, index) => (
+              <div key={index} className="flex items-center gap-3">
+                <div 
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: category.color }}
+                />
+                <span className="text-sm font-bold text-gray-600 flex-1">{category.name}</span>
+                <span className="text-sm font-black text-[#2D2D2D]">{category.time}min</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 生成报告按钮 */}
+        <div className="text-center">
+          <Button 
+            onClick={generateReport}
+            disabled={isGenerating}
+            style={{ backgroundColor: '#B589F6' }}
+          >
+            {isGenerating ? (
+              <>
+                <RefreshCw size={20} className="animate-spin" />
+                生成中...
+              </>
+            ) : (
+              <>
+                <Brain size={20} />
+                生成 AI 复盘报告
+              </>
+            )}
+          </Button>
+          <p className="text-xs text-gray-400 mt-3 px-4">
+            AI 将分析你的专注数据，生成个性化的复盘建议
+          </p>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // 计划视图
 const PlanView = () => (
