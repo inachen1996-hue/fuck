@@ -1399,6 +1399,71 @@ const PlanView = ({ pomodoroSettings }: { pomodoroSettings: PomodoroSettings }) 
   const [scheduleData, setScheduleData] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskDuration, setNewTaskDuration] = useState(25); // 默认25分钟
+  
+  // 计时器状态
+  const [activeTimerId, setActiveTimerId] = useState<string | null>(null);
+  const [remainingTime, setRemainingTime] = useState<number>(0);
+  const [timerStatus, setTimerStatus] = useState<'idle' | 'running' | 'paused'>('idle');
+
+  // 计时器逻辑
+  useEffect(() => {
+    let interval: number;
+    
+    if (timerStatus === 'running' && remainingTime > 0) {
+      interval = window.setInterval(() => {
+        setRemainingTime(prev => {
+          if (prev <= 1) {
+            setTimerStatus('idle');
+            setActiveTimerId(null);
+            // 可以在这里添加完成提示音
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [timerStatus, remainingTime]);
+
+  // 开始计时
+  const startTimer = (taskId: string, duration: number) => {
+    setActiveTimerId(taskId);
+    setRemainingTime(duration * 60); // 转换为秒
+    setTimerStatus('running');
+  };
+
+  // 暂停计时
+  const pauseTimer = () => {
+    setTimerStatus('paused');
+  };
+
+  // 继续计时
+  const resumeTimer = () => {
+    setTimerStatus('running');
+  };
+
+  // 停止计时
+  const stopTimer = () => {
+    setActiveTimerId(null);
+    setRemainingTime(0);
+    setTimerStatus('idle');
+  };
+
+  // 格式化剩余时间
+  const formatRemainingTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const addTask = (name: string, duration: number = 25) => {
     if (name.trim()) {
@@ -1407,6 +1472,8 @@ const PlanView = ({ pomodoroSettings }: { pomodoroSettings: PomodoroSettings }) 
         name: name.trim(),
         duration
       }]);
+      setNewTaskName('');
+      setNewTaskDuration(25);
     }
   };
 
@@ -1683,9 +1750,56 @@ ${pomodoroInfo}
                 rest: { bg: '#6CB6FF', light: '#EAF4FF' }
               };
               const colors = typeColors[item.type as keyof typeof typeColors] || typeColors.pomodoro;
+              const isActive = activeTimerId === (item.id || `task-${index}`);
+              const taskId = item.id || `task-${index}`;
               
               return (
-                <div key={item.id || index} className="bg-white rounded-3xl p-4 shadow-sm border border-gray-50">
+                <div 
+                  key={taskId} 
+                  className={`bg-white rounded-3xl p-4 shadow-sm border-2 transition-all ${
+                    isActive ? 'border-green-400 shadow-lg' : 'border-gray-50'
+                  }`}
+                >
+                  {/* 计时器显示 */}
+                  {isActive && (
+                    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl">
+                      <div className="text-center">
+                        <div className="text-4xl font-black text-[#2D2D2D] font-mono mb-2">
+                          {formatRemainingTime(remainingTime)}
+                        </div>
+                        <p className="text-xs text-gray-500 mb-3">
+                          {timerStatus === 'running' ? '专注进行中...' : '已暂停'}
+                        </p>
+                        <div className="flex justify-center gap-3">
+                          {timerStatus === 'running' ? (
+                            <button
+                              onClick={pauseTimer}
+                              className="w-12 h-12 rounded-full bg-yellow-500 flex items-center justify-center text-white shadow-lg hover:bg-yellow-600 transition-all"
+                            >
+                              <div className="flex gap-1">
+                                <div className="w-1.5 h-5 bg-white rounded-sm"></div>
+                                <div className="w-1.5 h-5 bg-white rounded-sm"></div>
+                              </div>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={resumeTimer}
+                              className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition-all"
+                            >
+                              <Play size={20} fill="white" />
+                            </button>
+                          )}
+                          <button
+                            onClick={stopTimer}
+                            className="w-12 h-12 rounded-full bg-red-400 flex items-center justify-center text-white shadow-lg hover:bg-red-500 transition-all"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4">
                     <div 
                       className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -1709,12 +1823,18 @@ ${pomodoroInfo}
                       )}
                     </div>
                     
-                    <button 
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
-                      style={{ backgroundColor: colors.bg }}
-                    >
-                      <Play size={14} fill="white" />
-                    </button>
+                    {!isActive && (
+                      <button 
+                        onClick={() => startTimer(taskId, item.duration)}
+                        disabled={activeTimerId !== null}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white transition-all ${
+                          activeTimerId !== null ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
+                        }`}
+                        style={{ backgroundColor: colors.bg }}
+                      >
+                        <Play size={16} fill="white" />
+                      </button>
+                    )}
                   </div>
                   
                   {/* 番茄钟时间段 */}
@@ -1794,7 +1914,12 @@ ${pomodoroInfo}
               <div key={task.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl">
                 <div className="flex-1">
                   <span className="font-bold text-sm text-[#2D2D2D]">{task.name}</span>
-                  <span className="text-xs text-gray-500 ml-2">{task.duration}分钟</span>
+                  <span className="text-xs text-gray-500 ml-2">
+                    {task.duration >= 60 
+                      ? `${Math.floor(task.duration / 60)}小时${task.duration % 60 > 0 ? task.duration % 60 + '分钟' : ''}`
+                      : `${task.duration}分钟`
+                    }
+                  </span>
                 </div>
                 <button 
                   onClick={() => removeTask(task.id)}
@@ -1806,29 +1931,71 @@ ${pomodoroInfo}
             ))}
           </div>
 
-          <div className="flex gap-2">
+          {/* 任务名称输入 */}
+          <div className="space-y-3">
             <input
               type="text"
-              placeholder="添加新任务..."
-              className="flex-1 bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-green-200"
+              value={newTaskName}
+              onChange={(e) => setNewTaskName(e.target.value)}
+              placeholder="输入任务名称..."
+              className="w-full bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-green-200"
               onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  addTask((e.target as HTMLInputElement).value);
-                  (e.target as HTMLInputElement).value = '';
+                if (e.key === 'Enter' && newTaskName.trim()) {
+                  addTask(newTaskName, newTaskDuration);
                 }
               }}
             />
+            
+            {/* 时长选择 */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-gray-600 whitespace-nowrap">预计时长</span>
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="range"
+                  min="1"
+                  max="360"
+                  value={newTaskDuration}
+                  onChange={(e) => setNewTaskDuration(Number(e.target.value))}
+                  className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-500"
+                />
+                <span className="text-sm font-black text-[#2D2D2D] w-20 text-right">
+                  {newTaskDuration >= 60 
+                    ? `${Math.floor(newTaskDuration / 60)}h${newTaskDuration % 60 > 0 ? newTaskDuration % 60 + 'm' : ''}`
+                    : `${newTaskDuration}min`
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* 快捷时长选择 */}
+            <div className="flex gap-2 flex-wrap">
+              {[15, 30, 60, 90, 120, 180, 240, 360].map(duration => (
+                <button
+                  key={duration}
+                  onClick={() => setNewTaskDuration(duration)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                    newTaskDuration === duration
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {duration >= 60 ? `${duration / 60}h` : `${duration}min`}
+                </button>
+              ))}
+            </div>
+
+            {/* 添加按钮 */}
             <button 
               onClick={() => {
-                const input = document.querySelector('input[placeholder="添加新任务..."]') as HTMLInputElement;
-                if (input?.value) {
-                  addTask(input.value);
-                  input.value = '';
+                if (newTaskName.trim()) {
+                  addTask(newTaskName, newTaskDuration);
                 }
               }}
-              className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center text-white hover:bg-green-600 transition-colors"
+              disabled={!newTaskName.trim()}
+              className="w-full h-12 bg-green-500 rounded-xl flex items-center justify-center text-white font-bold hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Plus size={20} />
+              <Plus size={20} className="mr-2" />
+              添加任务
             </button>
           </div>
         </div>
