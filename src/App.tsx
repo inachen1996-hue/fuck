@@ -1536,7 +1536,7 @@ const ReviewView = ({
   // 复盘历史记录
   const [reportHistory, setReportHistory] = useState<Array<{
     id: string;
-    period: 'yesterday' | 'today' | 'week' | 'month';
+    period: 'yesterday' | 'today' | 'week' | 'month' | 'history';
     periodLabel: string;
     dateRange: string;
     createdAt: number;
@@ -1639,8 +1639,8 @@ const ReviewView = ({
     // 获取数据
     const actualDistribution = calculateActualTimeDistribution(aiPeriod);
     const periodJournals = getJournalsInPeriod(aiPeriod);
-    const periodLabels = { yesterday: '昨日', today: '今日', week: '本周', month: '本月' };
-    const periodDays = { yesterday: 1, today: 1, week: 7, month: 30 };
+    const periodLabels: Record<string, string> = { yesterday: '昨日', today: '今日', week: '本周', month: '本月', history: '历史' };
+    const periodDays: Record<string, number> = { yesterday: 1, today: 1, week: 7, month: 30, history: 365 };
     
     // 模拟AI分析过程
     setTimeout(() => {
