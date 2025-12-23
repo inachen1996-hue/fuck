@@ -9,7 +9,7 @@ export default defineConfig({
       '/api/deepseek': {
         target: 'https://api.deepseek.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
+        rewrite: (path) => path.replace(/^\/api\/deepseek/, '/v1/chat/completions'),
         secure: true,
       }
     }

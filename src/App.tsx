@@ -37,6 +37,7 @@ interface CurrentJournal {
 interface Timer {
   id: string;
   name: string;
+  icon: string; // emoji图标
   categoryId: CategoryId;
   duration: number; // 分钟
   remainingTime: number; // 秒
@@ -507,10 +508,36 @@ const TimerView = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#FF8CA1');
   const [newTimerName, setNewTimerName] = useState('');
-  const [newTimerDuration, setNewTimerDuration] = useState(25);
+  const [newTimerIcon, setNewTimerIcon] = useState('🎯');
+  const [newTimerCategory, setNewTimerCategory] = useState<CategoryId>(selectedCategory);
+  
+  // 计时模式选择弹窗状态
+  const [showTimerModeModal, setShowTimerModeModal] = useState(false);
+  const [pendingTimer, setPendingTimer] = useState<Timer | null>(null);
+  const [timerMode, setTimerMode] = useState<'countdown' | 'countup' | 'pomodoro'>('countdown');
+  const [timerDuration, setTimerDuration] = useState(25);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  
+  // 番茄钟配置
+  const [pomodoroConfig, setPomodoroConfig] = useState({
+    workDuration: 25,
+    breakDuration: 5,
+    rounds: 4,
+    longBreakDuration: 15
+  });
+  const [currentPomodoroRound, setCurrentPomodoroRound] = useState(1);
+  const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break' | 'longBreak'>('work');
+  
+  // 常用emoji列表
+  const commonEmojis = ['🎯', '💼', '📚', '✏️', '💻', '🎨', '🎵', '🏃', '🧘', '☕', '🍎', '💪', '🌟', '🔥', '⏰', '📝', '🎮', '📖', '🧠', '💡'];
   
   // 分类列表滚动容器 ref
   const categoryListRef = useRef<HTMLDivElement>(null);
+  
+  // 同步newTimerCategory与selectedCategory
+  useEffect(() => {
+    setNewTimerCategory(selectedCategory);
+  }, [selectedCategory]);
 
   // 计时器逻辑
   useEffect(() => {
@@ -518,29 +545,76 @@ const TimerView = ({
     
     if (activeTimer && activeTimer.status === 'running') {
       interval = window.setInterval(() => {
-        setActiveTimer(prev => {
-          if (!prev || prev.remainingTime <= 0) {
-            // 计时器完成
+        if (timerMode === 'countup') {
+          // 正计时模式
+          setElapsedTime(prev => prev + 1);
+        } else if (timerMode === 'countdown') {
+          // 倒计时模式
+          setActiveTimer(prev => {
+            if (!prev || prev.remainingTime <= 0) {
+              setTimers(timers => timers.map(t => 
+                t.id === prev?.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+              ));
+              return prev ? { ...prev, status: 'completed', remainingTime: 0 } : null;
+            }
+            
+            const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
             setTimers(timers => timers.map(t => 
-              t.id === prev?.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+              t.id === prev.id ? updated : t
             ));
-            return prev ? { ...prev, status: 'completed', remainingTime: 0 } : null;
-          }
-          
-          const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
-          // 同步更新timers数组
-          setTimers(timers => timers.map(t => 
-            t.id === prev.id ? updated : t
-          ));
-          return updated;
-        });
+            return updated;
+          });
+        } else if (timerMode === 'pomodoro') {
+          // 番茄钟模式
+          setActiveTimer(prev => {
+            if (!prev) return null;
+            
+            if (prev.remainingTime <= 1) {
+              // 当前阶段结束，切换到下一阶段
+              if (pomodoroPhase === 'work') {
+                if (currentPomodoroRound >= pomodoroConfig.rounds) {
+                  setPomodoroPhase('longBreak');
+                  setCurrentPomodoroRound(1);
+                  const newRemaining = pomodoroConfig.longBreakDuration * 60;
+                  const updated = { ...prev, remainingTime: newRemaining };
+                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  return updated;
+                } else {
+                  setPomodoroPhase('break');
+                  const newRemaining = pomodoroConfig.breakDuration * 60;
+                  const updated = { ...prev, remainingTime: newRemaining };
+                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  return updated;
+                }
+              } else if (pomodoroPhase === 'break') {
+                setPomodoroPhase('work');
+                setCurrentPomodoroRound(r => r + 1);
+                const newRemaining = pomodoroConfig.workDuration * 60;
+                const updated = { ...prev, remainingTime: newRemaining };
+                setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                return updated;
+              } else {
+                // 长休息结束
+                setTimers(timers => timers.map(t => 
+                  t.id === prev.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+                ));
+                setPomodoroPhase('work');
+                return { ...prev, status: 'completed', remainingTime: 0 };
+              }
+            }
+            
+            const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
+            setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+            return updated;
+          });
+        }
       }, 1000);
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeTimer?.status]);
+  }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig]);
 
   const theme = selectedCategory === 'uncategorized' 
     ? { primary: '#9ca3af', light: '#f3f4f6', text: '#6b7280' }
@@ -576,28 +650,70 @@ const TimerView = ({
       const timer: Timer = {
         id: Date.now().toString(),
         name: newTimerName.trim(),
-        categoryId: selectedCategory,
-        duration: newTimerDuration,
-        remainingTime: newTimerDuration * 60,
+        icon: newTimerIcon,
+        categoryId: newTimerCategory,
+        duration: 25, // 默认时长，实际使用时会在模式选择中设置
+        remainingTime: 25 * 60,
         status: 'idle',
         createdAt: Date.now()
       };
       setTimers([...timers, timer]);
       setNewTimerName('');
-      setNewTimerDuration(25);
+      setNewTimerIcon('🎯');
+      setNewTimerCategory(selectedCategory);
       setShowNewTimerModal(false);
     }
   };
-
-  const startTimer = (timer: Timer) => {
+  
+  // 打开计时模式选择弹窗
+  const openTimerModeModal = (timer: Timer) => {
+    setPendingTimer(timer);
+    setTimerDuration(25);
+    setPomodoroConfig({
+      workDuration: 25,
+      breakDuration: 5,
+      rounds: 4,
+      longBreakDuration: 15
+    });
+    setShowTimerModeModal(true);
+  };
+  
+  // 确认开始计时
+  const confirmStartTimer = () => {
+    if (!pendingTimer) return;
+    
     // 暂停其他正在运行的计时器
     setTimers(prev => prev.map(t => 
-      t.status === 'running' ? { ...t, status: 'paused' } : t
+      t.status === 'running' ? { ...t, status: 'paused' as TimerStatus } : t
     ));
     
-    const updatedTimer = { ...timer, status: 'running' as TimerStatus };
-    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    let remainingTime = 0;
+    if (timerMode === 'countdown') {
+      remainingTime = timerDuration * 60;
+    } else if (timerMode === 'pomodoro') {
+      remainingTime = pomodoroConfig.workDuration * 60;
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(1);
+    } else {
+      remainingTime = 0;
+      setElapsedTime(0);
+    }
+    
+    const updatedTimer = { 
+      ...pendingTimer, 
+      status: 'running' as TimerStatus,
+      duration: timerMode === 'countdown' ? timerDuration : (timerMode === 'pomodoro' ? pomodoroConfig.workDuration : 0),
+      remainingTime 
+    };
+    setTimers(prev => prev.map(t => t.id === pendingTimer.id ? updatedTimer : t));
     setActiveTimer(updatedTimer);
+    setShowTimerModeModal(false);
+    setPendingTimer(null);
+  };
+
+  const startTimer = (timer: Timer) => {
+    // 打开计时模式选择弹窗
+    openTimerModeModal(timer);
   };
 
   const pauseTimer = (timer: Timer) => {
@@ -614,8 +730,11 @@ const TimerView = ({
     };
     setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
     if (activeTimer?.id === timer.id) {
-      setActiveTimer(updatedTimer);
+      setActiveTimer(null);
     }
+    setElapsedTime(0);
+    setPomodoroPhase('work');
+    setCurrentPomodoroRound(1);
   };
 
   const deleteTimer = (timerId: string) => {
@@ -739,16 +858,16 @@ const TimerView = ({
                   <div className="flex flex-col h-full justify-between items-center">
                     <div className="flex items-center gap-3 w-full">
                       <div 
-                        className="w-14 h-14 rounded-[1.2rem] flex items-center justify-center text-white shadow-sm"
-                        style={{ backgroundColor: theme.primary }}
+                        className="w-14 h-14 rounded-[1.2rem] flex items-center justify-center shadow-sm text-2xl"
+                        style={{ backgroundColor: theme.light }}
                       >
-                        <Clock size={26} strokeWidth={2.5} />
+                        {timer.icon}
                       </div>
                       <div className="flex-1">
                         <h4 className="text-xl font-black text-[#2D2D2D]">{timer.name}</h4>
                         <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mt-1">
                           {timer.status === 'idle' && 'READY'}
-                          {timer.status === 'running' && 'FOCUSING'}
+                          {timer.status === 'running' && (timerMode === 'pomodoro' ? (pomodoroPhase === 'work' ? 'FOCUSING' : 'BREAK') : 'FOCUSING')}
                           {timer.status === 'paused' && 'PAUSED'}
                           {timer.status === 'completed' && 'COMPLETED'}
                         </p>
@@ -762,20 +881,40 @@ const TimerView = ({
                     </div>
 
                     <div className="text-center my-6">
+                      {/* 模式标签 */}
+                      {activeTimer?.id === timer.id && timer.status === 'running' && (
+                        <div className="flex justify-center mb-2">
+                          <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                            timerMode === 'countup' ? 'bg-blue-100 text-blue-600' :
+                            timerMode === 'pomodoro' ? 'bg-red-100 text-red-600' :
+                            'bg-green-100 text-green-600'
+                          }`}>
+                            {timerMode === 'countup' ? '⏱️ 正计时' :
+                             timerMode === 'pomodoro' ? `🍅 第${currentPomodoroRound}轮 · ${pomodoroPhase === 'work' ? '专注' : pomodoroPhase === 'break' ? '休息' : '长休息'}` :
+                             '⏳ 倒计时'}
+                          </span>
+                        </div>
+                      )}
+                      
                       <div className="text-5xl font-semibold font-mono text-[#2D2D2D] mb-3">
-                        {formatTime(timer.remainingTime)}
+                        {activeTimer?.id === timer.id && timerMode === 'countup' ? formatTime(elapsedTime) : formatTime(timer.remainingTime)}
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
-                        <div 
-                          className="h-2 rounded-full transition-all duration-1000"
-                          style={{ 
-                            backgroundColor: timer.status === 'completed' ? '#42D4A4' : theme.primary,
-                            width: `${((timer.duration * 60 - timer.remainingTime) / (timer.duration * 60)) * 100}%`
-                          }}
-                        />
-                      </div>
+                      {timerMode !== 'countup' && timer.duration > 0 && (
+                        <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
+                          <div 
+                            className="h-2 rounded-full transition-all duration-1000"
+                            style={{ 
+                              backgroundColor: timer.status === 'completed' ? '#42D4A4' : 
+                                              (timerMode === 'pomodoro' && pomodoroPhase !== 'work') ? '#6CB6FF' : theme.primary,
+                              width: `${((timer.duration * 60 - timer.remainingTime) / (timer.duration * 60)) * 100}%`
+                            }}
+                          />
+                        </div>
+                      )}
                       <p className="text-[#2D2D2D] opacity-60 font-medium text-sm px-4">
-                        {timer.status === 'completed' ? '恭喜完成专注时间！' : '全神贯注，此刻即是永恒。'}
+                        {timer.status === 'completed' ? '恭喜完成专注时间！' : 
+                         timerMode === 'pomodoro' && pomodoroPhase !== 'work' ? '休息一下，放松身心' :
+                         '全神贯注，此刻即是永恒。'}
                       </p>
                     </div>
 
@@ -894,10 +1033,39 @@ const TimerView = ({
       {/* 新增计时器弹窗 */}
       {showNewTimerModal && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-          <div className="bg-white w-[85%] rounded-3xl p-6 shadow-2xl animate-scale-in">
+          <div className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto">
             <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">新增计时器</h3>
             
             <div className="space-y-4">
+              {/* 选择图标 */}
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">选择图标</label>
+                <div className="grid grid-cols-10 gap-2">
+                  {commonEmojis.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => setNewTimerIcon(emoji)}
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-xl transition-all ${
+                        newTimerIcon === emoji ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">也可以直接输入其他emoji：</p>
+                <input
+                  type="text"
+                  value={newTimerIcon}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) setNewTimerIcon(value.slice(-2)); // 取最后一个emoji
+                  }}
+                  className="w-20 bg-gray-50 rounded-xl px-3 py-2 text-center text-xl outline-none focus:bg-white focus:ring-2 focus:ring-purple-200 mt-2"
+                />
+              </div>
+              
+              {/* 计时器名称 */}
               <div>
                 <label className="text-sm font-bold text-gray-600 block mb-2">计时器名称</label>
                 <input
@@ -906,29 +1074,35 @@ const TimerView = ({
                   onChange={(e) => setNewTimerName(e.target.value)}
                   placeholder="输入计时器名称..."
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-pink-200"
-                  autoFocus
                 />
               </div>
               
+              {/* 选择分类 */}
               <div>
-                <label className="text-sm font-bold text-gray-600 block mb-2">专注时长（分钟）</label>
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => setNewTimerDuration(Math.max(5, newTimerDuration - 5))}
-                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
-                  >
-                    -
-                  </button>
-                  <span className="text-2xl font-black text-[#2D2D2D] w-16 text-center">
-                    {newTimerDuration}
-                  </span>
-                  <button 
-                    onClick={() => setNewTimerDuration(Math.min(120, newTimerDuration + 5))}
-                    className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200"
-                  >
-                    +
-                  </button>
-                  <span className="text-sm text-gray-500">分钟</span>
+                <label className="text-sm font-bold text-gray-600 block mb-2">选择分类</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => {
+                    const catTheme = MACARON_COLORS.categories[cat.id as CategoryId] || {
+                      primary: cat.color || '#FF8CA1',
+                      light: '#FFF0F3',
+                      text: '#D9455F'
+                    };
+                    const isSelected = newTimerCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setNewTimerCategory(cat.id as CategoryId)}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                          isSelected ? 'text-white shadow-md' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        }`}
+                        style={{ 
+                          backgroundColor: isSelected ? catTheme.primary : undefined
+                        }}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -939,7 +1113,8 @@ const TimerView = ({
                 onClick={() => {
                   setShowNewTimerModal(false);
                   setNewTimerName('');
-                  setNewTimerDuration(25);
+                  setNewTimerIcon('🎯');
+                  setNewTimerCategory(selectedCategory);
                 }}
                 className="flex-1"
               >
@@ -952,6 +1127,196 @@ const TimerView = ({
                 style={{ backgroundColor: theme.primary }}
               >
                 创建计时器
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 计时模式选择弹窗 */}
+      {showTimerModeModal && pendingTimer && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto">
+            <h3 className="text-xl font-black text-[#2D2D2D] mb-2 text-center">选择计时模式</h3>
+            <p className="text-sm text-gray-500 text-center mb-4">{pendingTimer.icon} {pendingTimer.name}</p>
+            
+            {/* 模式选择 */}
+            <div className="space-y-3 mb-4">
+              <button
+                onClick={() => setTimerMode('countup')}
+                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
+                  timerMode === 'countup' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
+                  timerMode === 'countup' ? 'bg-blue-500' : 'bg-gray-400'
+                }`}>
+                  <Timer size={24} />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-[#2D2D2D]">⏱️ 正计时</div>
+                  <div className="text-xs text-gray-500">从0开始计时，记录实际用时</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setTimerMode('countdown')}
+                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
+                  timerMode === 'countdown' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
+                  timerMode === 'countdown' ? 'bg-green-500' : 'bg-gray-400'
+                }`}>
+                  <Clock size={24} />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-[#2D2D2D]">⏳ 倒计时</div>
+                  <div className="text-xs text-gray-500">设定时长，倒计时结束</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setTimerMode('pomodoro')}
+                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
+                  timerMode === 'pomodoro' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
+                  timerMode === 'pomodoro' ? 'bg-red-500' : 'bg-gray-400'
+                }`}>
+                  <Target size={24} />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-[#2D2D2D]">🍅 番茄钟</div>
+                  <div className="text-xs text-gray-500">专注与休息交替进行</div>
+                </div>
+              </button>
+            </div>
+            
+            {/* 倒计时时长设置 */}
+            {timerMode === 'countdown' && (
+              <div className="bg-green-50 rounded-2xl p-4 mb-4">
+                <label className="text-sm font-bold text-gray-600 block mb-3">设置时长</label>
+                <div className="flex items-center justify-center gap-4">
+                  <button 
+                    onClick={() => setTimerDuration(Math.max(1, timerDuration - 5))}
+                    className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow-sm"
+                  >
+                    -
+                  </button>
+                  <span className="text-3xl font-black text-[#2D2D2D] w-20 text-center">
+                    {timerDuration}
+                  </span>
+                  <button 
+                    onClick={() => setTimerDuration(Math.min(180, timerDuration + 5))}
+                    className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow-sm"
+                  >
+                    +
+                  </button>
+                  <span className="text-sm text-gray-500">分钟</span>
+                </div>
+              </div>
+            )}
+            
+            {/* 番茄钟参数设置 */}
+            {timerMode === 'pomodoro' && (
+              <div className="bg-red-50 rounded-2xl p-4 mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">专注时长</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(60, prev.workDuration + 5) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">休息时长</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">几轮后长休息</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.max(1, prev.rounds - 1) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.rounds}轮</span>
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.min(10, prev.rounds + 1) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">长休息时长</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
+                    <button
+                      onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowTimerModeModal(false);
+                  setPendingTimer(null);
+                }}
+                className="flex-1"
+              >
+                取消
+              </Button>
+              <Button 
+                onClick={confirmStartTimer}
+                className="flex-1"
+                style={{ backgroundColor: timerMode === 'countup' ? '#3b82f6' : timerMode === 'pomodoro' ? '#ef4444' : '#22c55e' }}
+              >
+                开始计时
               </Button>
             </div>
           </div>
@@ -1642,194 +2007,148 @@ const ReviewView = ({
     const periodLabels: Record<string, string> = { yesterday: '昨日', today: '今日', week: '本周', month: '本月', history: '历史' };
     const periodDays: Record<string, number> = { yesterday: 1, today: 1, week: 7, month: 30, history: 365 };
     
-    // 模拟AI分析过程
-    setTimeout(() => {
-      // 分析日记情绪
-      const moodCounts: Record<string, number> = {};
-      periodJournals.forEach(j => {
-        if (j.mood) {
-          moodCounts[j.mood] = (moodCounts[j.mood] || 0) + 1;
-        }
+    // 准备数据
+    const days = periodDays[aiPeriod];
+    const totalActualHours = Object.values(actualDistribution).reduce((sum, h) => sum + h, 0);
+    
+    // 分析日记情绪
+    const moodCounts: Record<string, number> = {};
+    periodJournals.forEach(j => {
+      if (j.mood) {
+        moodCounts[j.mood] = (moodCounts[j.mood] || 0) + 1;
+      }
+    });
+    
+    // 计算理想与实际的差距
+    const gaps: Array<{category: string, ideal: number, actual: number, diff: number}> = [];
+    timeCategories.forEach(cat => {
+      const idealHours = (idealTimeAllocation[cat.id] || 0) * days;
+      const actualHours = actualDistribution[cat.id] || 0;
+      gaps.push({
+        category: cat.label,
+        ideal: idealHours,
+        actual: actualHours,
+        diff: actualHours - idealHours
       });
-      const dominantMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'calm';
-      
-      // 计算理想与实际的差距
-      const gaps: Array<{category: string, ideal: number, actual: number, diff: number}> = [];
-      const days = periodDays[aiPeriod];
-      
-      timeCategories.forEach(cat => {
-        const idealHours = (idealTimeAllocation[cat.id] || 0) * days;
-        const actualHours = actualDistribution[cat.id] || 0;
-        const diff = actualHours - idealHours;
-        gaps.push({
-          category: cat.label,
-          ideal: idealHours,
-          actual: actualHours,
-          diff: diff
-        });
+    });
+    
+    // 构建AI提示词
+    const prompt = `你是一位专业的时间管理和心理健康顾问。请根据以下用户数据，生成一份深度、温暖、有洞察力的复盘报告。
+
+## 用户数据
+- 时间周期：${periodLabels[aiPeriod]}（${days}天）
+- 日记数量：${periodJournals.length}篇
+- 时间记录总时长：${totalActualHours.toFixed(1)}小时
+
+## 时间分配情况（实际 vs 理想）
+${gaps.map(g => `- ${g.category}：实际${g.actual.toFixed(1)}h，理想${g.ideal.toFixed(1)}h，差距${g.diff > 0 ? '+' : ''}${g.diff.toFixed(1)}h`).join('\n')}
+
+## 情绪记录
+${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood, count]) => `- ${moodMap[mood] || mood}：${count}次`).join('\n') : '暂无情绪记录'}
+
+## 日记内容摘要
+${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
+
+请以JSON格式返回复盘报告，格式如下：
+{
+  "score": 75,
+  "summary": {
+    "overview": "总体概述，包含数据统计",
+    "moodAnalysis": "情绪分析，温暖有洞察",
+    "timeOverview": "时间分配分析"
+  },
+  "insights": {
+    "burnoutRisk": {
+      "level": "good或warning或danger",
+      "title": "标题带emoji",
+      "content": "详细分析，使用**加粗**标记重点"
+    },
+    "gapAnalysis": {
+      "title": "📊 理想与现实的差距",
+      "overItems": [{"category": "分类名", "message": "超出描述"}],
+      "underItems": [{"category": "分类名", "message": "不足描述"}]
+    },
+    "habits": {
+      "title": "🔍 行为模式洞察",
+      "positive": ["好习惯分析1", "好习惯分析2"],
+      "negative": ["需改进1", "需改进2"]
+    }
+  },
+  "advice": {
+    "futureVision": {
+      "title": "🔮 三个月后的你",
+      "positive": "保持好习惯的愿景",
+      "warning": "不调整的风险提醒"
+    },
+    "protectList": {
+      "title": "🛡️ 当前最需要守护的三件事",
+      "items": [
+        {"icon": "emoji", "name": "事项名", "reason": "原因"}
+      ]
+    },
+    "timeAdjustment": {
+      "title": "⏰ 具体调整建议",
+      "suggestions": ["建议1", "建议2", "建议3"]
+    }
+  }
+}
+
+要求：
+1. 语气温暖、有同理心，像一位关心用户的朋友
+2. 分析要有深度，不要泛泛而谈
+3. 建议要具体可行，不要空洞
+4. 使用**加粗**标记重点内容
+5. score评分范围45-100，根据实际情况给出
+6. 只返回JSON，不要其他内容`;
+
+    try {
+      // 调用DeepSeek API（通过代理）
+      const response = await fetch('/api/deepseek', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一位专业的时间管理和心理健康顾问，擅长分析用户的时间使用情况和情绪状态，给出温暖、有洞察力的建议。请以JSON格式返回分析报告。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 3000
+        })
       });
 
-      // 找出最大的正负差距
-      const overworked = gaps.filter(g => g.diff > 0).sort((a, b) => b.diff - a.diff);
-      const underinvested = gaps.filter(g => g.diff < 0).sort((a, b) => a.diff - b.diff);
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status}`);
+      }
 
-      // 计算总工作/学习时间占比
-      const totalActualHours = Object.values(actualDistribution).reduce((sum, h) => sum + h, 0);
-      const workStudyHours = (actualDistribution['work'] || 0) + (actualDistribution['study'] || 0);
-      const workStudyRatio = totalActualHours > 0 ? (workStudyHours / totalActualHours * 100) : 0;
+      const data = await response.json();
+      const aiResponse = data.choices[0].message.content;
       
-      // 深度分析指标
-      const sleepHours = actualDistribution['sleep'] || 0;
-      const restHours = actualDistribution['rest'] || 0;
-      const healthHours = actualDistribution['health'] || 0;
-      const entertainmentHours = actualDistribution['entertainment'] || 0;
-      const lifeHours = actualDistribution['life'] || 0;
-      const hobbyHours = actualDistribution['hobby'] || 0;
-      
-      const idealSleep = idealTimeAllocation['sleep'] * days;
-      const idealRest = idealTimeAllocation['rest'] * days;
-      const idealHealth = idealTimeAllocation['health'] * days;
-      const sleepDebt = Math.max(0, idealSleep - sleepHours);
-      
-      const isSleepDeprived = sleepHours < idealSleep * 0.75;
-      const isOverworking = workStudyRatio > 55 || (actualDistribution['work'] || 0) > idealTimeAllocation['work'] * days * 1.2;
-      const isNeglectingHealth = healthHours < idealHealth * 0.3;
-      const isNeglectingRest = restHours < idealRest * 0.5;
-      const hasLifeBalance = (lifeHours + hobbyHours + entertainmentHours) >= (idealTimeAllocation['life'] + idealTimeAllocation['hobby'] + idealTimeAllocation['entertainment']) * days * 0.5;
-      
-      // 情绪深度分析
-      const negativeMoods = (moodCounts['sad'] || 0) + (moodCounts['tired'] || 0);
-      const positiveMoods = (moodCounts['happy'] || 0) + (moodCounts['excited'] || 0);
-      const moodBalance = periodJournals.length > 0 ? (positiveMoods - negativeMoods) / periodJournals.length : 0;
-      
-      // 计算综合评分
-      let score = 75;
-      if (overworked.length <= 2 && underinvested.length <= 2) score += 8;
-      if (!isSleepDeprived) score += 6;
-      if (!isOverworking) score += 5;
-      if (hasLifeBalance) score += 4;
-      if (moodBalance > 0) score += 4;
-      if (periodJournals.length >= days * 0.3) score += 3;
-      if (isNeglectingHealth) score -= 8;
-      if (isSleepDeprived) score -= 10;
-      if (isOverworking) score -= 5;
-      score = Math.min(100, Math.max(45, score));
-
-      // 生成深度情绪分析
-      const moodInsight = periodJournals.length === 0 
-        ? '📝 这段时间没有日记记录。日记是了解内心的窗口，建议每天花几分钟记录感受，帮助您觉察情绪变化、及时调整状态。'
-        : moodBalance > 0.3 
-          ? `✨ 从日记来看，您的情绪整体 **积极向上**，${moodMap[dominantMood] || '开心'}的时刻占据主导。这种正向情绪是宝贵的内在资源，能增强您面对挑战的韧性。`
-          : moodBalance < -0.3 
-            ? `💭 日记显示近期 **${moodMap[dominantMood] || '疲惫'}** 的感受较多。这是身心在发出信号，提醒您需要关注自己。不必苛责，每个人都有低谷期，重要的是觉察并温柔对待自己。`
-            : `🌿 您的情绪状态 **较为平稳**，这种稳定是一种力量。在平静中，您更容易做出理性决策，也更能感知生活中的细微美好。`;
-
-      // 生成透支分析
-      const burnoutIssues: string[] = [];
-      if (isSleepDeprived) burnoutIssues.push(`睡眠仅为理想值的 **${((sleepHours / idealSleep) * 100).toFixed(0)}%**，累积约 **${sleepDebt.toFixed(1)}小时** 睡眠债务`);
-      if (isOverworking) burnoutIssues.push(`工作学习占比 **${workStudyRatio.toFixed(0)}%**，超出健康阈值`);
-      if (isNeglectingHealth) burnoutIssues.push(`健康运动严重不足，仅完成理想的 **${((healthHours / idealHealth) * 100).toFixed(0)}%**`);
-      if (isNeglectingRest) burnoutIssues.push(`休息时间被压缩，大脑缺乏必要恢复期`);
-
-      const burnoutAnalysis = burnoutIssues.length === 0 
-        ? { level: 'good', title: '✅ 身心状态健康', content: '从数据看，您的时间分配较为合理，工作与休息保持良好平衡。这种状态下创造力和效率都能得到较好发挥。继续保持这种节奏，它是可持续发展的基础。' }
-        : burnoutIssues.length <= 2 
-          ? { level: 'warning', title: '⚠️ 轻度透支信号', content: `检测到：${burnoutIssues.join('；')}。\n\n这些信号提示您正在 **轻度透支**。短期可能感觉还好，但身体会默默记账。建议接下来一周有意识调整，避免累积成更大问题。` }
-          : { level: 'danger', title: '🚨 需要立即关注', content: `多项指标显示 **明显透支**：${burnoutIssues.join('；')}。\n\n您的身心正在发出求救信号。这不是软弱，而是智慧的提醒。请认真对待，适当放慢脚步。**照顾好自己，才能更好地照顾其他事情**。` };
-
-      // 生成报告
-      const report = {
-        period: periodLabels[aiPeriod],
-        score: score,
-        
-        // 总结部分
-        summary: {
-          overview: `${periodLabels[aiPeriod]}共记录了 **${periodJournals.length}** 篇日记，时间记录 **${timeRecords.length}** 条。${totalActualHours > 0 ? `有效追踪时间 **${totalActualHours.toFixed(1)}小时**。` : ''}`,
-          moodAnalysis: moodInsight,
-          timeOverview: totalActualHours > 0 
-            ? `时间分布上，工作学习占 **${workStudyRatio.toFixed(0)}%**，休息恢复占 **${(((sleepHours + restHours + healthHours) / totalActualHours) * 100).toFixed(0)}%**。${workStudyRatio > 55 ? '产出型活动占比较高，注意平衡。' : hasLifeBalance ? '整体分布较为均衡。' : '生活娱乐时间偏少，注意劳逸结合。'}`
-            : '暂无足够时间记录数据。建议使用计时器记录日常活动，帮助您了解时间都去哪了。'
-        },
-
-        // 洞察部分
-        insights: {
-          burnoutRisk: burnoutAnalysis,
-
-          // 与理想配比的差距
-          gapAnalysis: {
-            title: '📊 理想与现实的差距',
-            overItems: overworked.slice(0, 2).map(g => ({
-              category: g.category,
-              message: `**${g.category}** 超出理想 ${Math.abs(g.diff).toFixed(1)}h`
-            })),
-            underItems: underinvested.slice(0, 2).map(g => ({
-              category: g.category,
-              message: `**${g.category}** 不足理想 ${Math.abs(g.diff).toFixed(1)}h`
-            }))
-          },
-
-          // 坚持的益处/坏处 - 深度分析
-          habits: {
-            title: '🔍 行为模式洞察',
-            positive: [
-              periodJournals.length >= days * 0.5 ? '📝 **坚持记录日记** — 这个习惯正在帮助您建立自我觉察能力。研究表明，定期书写能减轻焦虑、提升情绪调节能力。' : null,
-              healthHours >= idealHealth * 0.7 ? '🏃 **保持运动习惯** — 运动不仅强健体魄，还能促进多巴胺分泌，是天然的"快乐药"。您正在为未来储蓄健康。' : null,
-              (actualDistribution['study'] || 0) >= idealTimeAllocation['study'] * days * 0.8 ? '📚 **持续学习成长** — 在快速变化的时代，学习能力就是核心竞争力。您的投入会产生复利效应。' : null,
-              sleepHours >= idealSleep * 0.9 ? '😴 **重视睡眠质量** — 充足睡眠是高效工作的前提。您正在用科学方式管理精力。' : null,
-              hasLifeBalance ? '🏠 **平衡生活与工作** — 您没有让工作吞噬生活，这种边界感是心理健康的重要保障。' : null,
-            ].filter(Boolean),
-            negative: [
-              isSleepDeprived ? '😴 **睡眠债务累积** — 睡眠不足会导致：注意力下降、情绪波动、免疫力降低、长期记忆受损。这是在"透支未来"换取"现在的时间"，代价很高。' : null,
-              isNeglectingHealth ? '🏃 **久坐少动** — 身体长期缺乏活动会导致代谢下降、肌肉流失、情绪低落。每天哪怕站起来走动10分钟，也是改变的开始。' : null,
-              workStudyRatio > 65 ? '💼 **工作生活失衡** — 当工作占据生活大部分，其他维度就会萎缩。长此以往，可能感到空虚、倦怠，甚至影响人际关系。' : null,
-              isNeglectingRest && isOverworking ? '⚡ **持续高压运转** — 没有休息的努力不可持续。大脑需要"空闲时间"来整合信息、产生创意。适当的"无所事事"其实是高效的一部分。' : null,
-            ].filter(Boolean)
-          }
-        },
-
-        // 建议部分
-        advice: {
-          // 三个月后的愿景 - 深度分析
-          futureVision: {
-            title: '🔮 三个月后的你',
-            positive: !isOverworking && !isSleepDeprived 
-              ? `🌟 **如果保持并优化当前的好习惯**：\n• 精力管理进入良性循环，工作效率稳步提升\n• 身心状态保持稳定，面对压力时更有韧性\n${healthHours > 0 ? '• 坚持运动让体能和精神状态更上一层楼\n' : ''}${hasLifeBalance ? '• 生活的丰富度带来更多幸福感和创造力' : ''}`
-              : `🌟 **如果从现在开始调整**：\n• 睡眠质量改善，白天精力更充沛\n• 工作效率提升，用更少时间完成更多事\n• 情绪更稳定，人际关系更和谐`,
-            warning: isSleepDeprived || isOverworking || isNeglectingHealth
-              ? `💭 **如果不做调整**，可能会：\n${isSleepDeprived ? '• 睡眠债务逐渐显现：记忆力下降、反应变慢、情绪波动\n' : ''}${isOverworking ? '• 持续高强度工作导致职业倦怠，创造力和热情逐渐消退\n' : ''}${isNeglectingHealth ? '• 缺乏运动让身体机能下降，可能出现亚健康症状\n' : ''}${!hasLifeBalance ? '• 生活单一化带来空虚感，影响整体幸福度\n' : ''}\n但这不是要吓您——**意识到问题就是改变的开始**。从今天起，每天做一点小调整，三个月后会看到不同。`
-              : `继续保持当前的平衡状态，您的生活质量会稳步提升。记住：**可持续的努力比短期冲刺更有价值**。`
-          },
-
-          // 最需要保护的三样事情 - 个性化
-          protectList: {
-            title: '🛡️ 当前最需要守护的三件事',
-            items: [
-              isSleepDeprived || sleepDebt > 2 
-                ? { icon: '😴', name: '睡眠时间', reason: '这是您当前最需要补回的"债务"' }
-                : { icon: '😴', name: '睡眠质量', reason: '好睡眠是一切精力的源泉' },
-              moodBalance < 0 || negativeMoods > positiveMoods 
-                ? { icon: '🧘', name: '情绪健康', reason: '给自己更多温柔和理解' }
-                : { icon: '🧘', name: '内心平静', reason: '在忙碌中保持觉察' },
-              !hasLifeBalance 
-                ? { icon: '🌈', name: '生活热情', reason: '别让工作吞噬了生活的色彩' }
-                : { icon: '👨‍👩‍👧', name: '重要关系', reason: '人际连接是幸福的重要来源' }
-            ]
-          },
-
-          // 时间调整建议 - 具体可行
-          timeAdjustment: {
-            title: '⏰ 具体调整建议',
-            suggestions: [
-              overworked.length > 0 && overworked[0].diff > 1 ? `📉 **${overworked[0].category}时间可适当减少**：目前每天超出理想值约 ${(overworked[0].diff / days).toFixed(1)} 小时。试着设定明确的结束时间，用"截止日期效应"提高效率。` : null,
-              isSleepDeprived ? `😴 **优先保障睡眠**：建议每天提前 ${Math.min(60, Math.ceil(sleepDebt / days * 60))} 分钟上床。睡眠不是浪费时间，而是为明天的效率充电。` : null,
-              isNeglectingHealth ? `🏃 **每天安排运动时间**：不需要很长，15-30分钟就够。可以是散步、拉伸或任何让身体动起来的活动。把它当作"必须完成的会议"写进日程。` : null,
-              isNeglectingRest ? `☕ **设置强制休息时间**：尝试番茄工作法（25分钟工作+5分钟休息），或每90分钟休息15分钟。休息不是偷懒，是为了更好地工作。` : null,
-              underinvested.some(g => g.category === '兴趣') ? `🎨 **重拾一项爱好**：每周至少安排1-2小时做自己真正喜欢的事。这些"无用"的时光，往往是最滋养心灵的部分。` : null,
-              '🎯 **关注"质量"而非"数量"**：在每个时间段内更专注、更投入，比单纯增加时长更有效。'
-            ].filter(Boolean)
-          }
+      // 解析AI返回的JSON
+      let report;
+      try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          report = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('无法解析AI响应');
         }
-      };
+      } catch (parseError) {
+        console.error('解析AI响应失败:', parseError);
+        throw new Error('AI响应格式错误，请重试');
+      }
+      
+      // 添加period字段
+      report.period = periodLabels[aiPeriod];
       
       // 生成日期范围描述
       const now = new Date();
@@ -1847,7 +2166,7 @@ const ReviewView = ({
         dateRange = `${monthAgo.getMonth() + 1}月${monthAgo.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
       }
       
-      // 保存到历史记录（相同时间段覆盖旧记录）
+      // 保存到历史记录
       const historyEntry = {
         id: `${aiPeriod}_${now.toISOString().split('T')[0]}`,
         period: aiPeriod,
@@ -1858,24 +2177,27 @@ const ReviewView = ({
       };
       
       setReportHistory(prev => {
-        // 查找是否有相同时间段的记录
         const existingIndex = prev.findIndex(h => h.period === aiPeriod);
         if (existingIndex >= 0) {
-          // 覆盖旧记录
           const newHistory = [...prev];
           newHistory[existingIndex] = historyEntry;
           return newHistory;
         } else {
-          // 添加新记录
           return [historyEntry, ...prev];
         }
       });
       
       setReportData(report);
       setIsGenerating(false);
-    }, 2500);
+      
+    } catch (error) {
+      console.error('生成复盘报告失败:', error);
+      setIsGenerating(false);
+      const errorMessage = error instanceof Error ? error.message : 'AI复盘生成失败，请检查网络连接后重试';
+      alert(errorMessage);
+    }
   };
-
+  
   // 计算真实时间分布数据
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
@@ -2823,7 +3145,7 @@ const PlanView = ({
 
   const callDeepSeekAPI = async (prompt: string) => {
     try {
-      const response = await fetch('/api/deepseek/v1/chat/completions', {
+      const response = await fetch('/api/deepseek', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3278,34 +3600,24 @@ ${pomodoroInfo}
                     )}
                   </div>
                   
-                  {/* 番茄钟时间段 */}
+                  {/* 番茄钟时间段 - 合并展示 */}
                   {item.pomodoroSlots && item.pomodoroSlots.length > 0 && !isEditMode && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Timer size={14} className="text-red-400" />
-                        <span className="text-xs font-bold text-gray-500">番茄钟时间段</span>
-                      </div>
-                      <div className="space-y-2">
-                        {item.pomodoroSlots.map((slot: any, slotIndex: number) => (
-                          <div 
-                            key={slotIndex} 
-                            className={`flex items-center gap-2 text-xs p-2 rounded-xl ${
-                              slot.isLongBreak ? 'bg-purple-50' : 'bg-red-50'
-                            }`}
-                          >
-                            <span className="font-bold text-gray-600">第{slotIndex + 1}轮</span>
-                            <span className="text-gray-500">
-                              🎯 {slot.workStart}-{slot.workEnd}
+                      <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl">
+                        <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                          <span className="text-lg">🍅</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                            <span>番茄钟模式</span>
+                            <span className="text-xs font-normal text-gray-500">
+                              {item.pomodoroSlots[0]?.workStart} - {item.pomodoroSlots[item.pomodoroSlots.length - 1]?.breakEnd}
                             </span>
-                            <span className="text-gray-400">→</span>
-                            <span className={slot.isLongBreak ? 'text-purple-500' : 'text-green-500'}>
-                              {slot.isLongBreak ? '🌴' : '☕'} 休息至 {slot.breakEnd}
-                            </span>
-                            {slot.isLongBreak && (
-                              <span className="text-purple-400 text-[10px]">(长休息)</span>
-                            )}
                           </div>
-                        ))}
+                          <div className="text-xs text-gray-500 mt-1">
+                            共 {item.pomodoroSlots.length} 轮 · 专注 {item.pomodoroSlots.filter((s: any) => !s.isLongBreak).length > 0 ? `${25}分钟` : ''} · 休息 {item.pomodoroSlots.some((s: any) => s.isLongBreak) ? '含长休息' : '5分钟/轮'}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
