@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>上传计时器铃声</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #2D3436;
+      font-size: 24px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .subtitle {
+      color: #636e72;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .upload-area {
+      border: 3px dashed #dfe6e9;
+      border-radius: 16px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 20px;
+    }
+    .upload-area:hover {
+      border-color: #00b894;
+      background: #f0fff4;
+    }
+    .upload-area.dragover {
+      border-color: #00b894;
+      background: #e8f5e9;
+    }
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .upload-text {
+      color: #636e72;
+      font-size: 14px;
+    }
+    .upload-text strong {
+      color: #00b894;
+    }
+    input[type="file"] { display: none; }
+    .preview {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .preview.show { display: block; }
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .preview-icon { font-size: 32px; }
+    .preview-info { flex: 1; }
+    .preview-name {
+      font-weight: 600;
+      color: #2D3436;
+      font-size: 14px;
+    }
+    .preview-size {
+      color: #636e72;
+      font-size: 12px;
+    }
+    .audio-player {
+      width: 100%;
+      margin-top: 12px;
+    }
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn-primary {
+      background: #00b894;
+      color: white;
+    }
+    .btn-primary:hover { background: #00a884; }
+    .btn-primary:disabled {
+      background: #b2bec3;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      display: none;
+    }
+    .result.show { display: block; }
+    .result.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .result.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .code-block {
+      background: #2D3436;
+      color: #00b894;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      margin-top: 12px;
+      word-break: break-all;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .tips {
+      margin-top: 24px;
+      padding: 16px;
+      background: #fff3cd;
+      border-radius: 12px;
+      font-size: 13px;
+      color: #856404;
+    }
+    .tips-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .tips ul {
+      margin-left: 20px;
+    }
+    .tips li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔔 上传计时器铃声</h1>
+    <p class="subtitle">支持 MP3、WAV、OGG 格式，建议文件小于 500KB</p>
+    
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-icon">🎵</div>
+      <p class="upload-text">
+        拖拽音频文件到这里<br>
+        或 <strong>点击选择文件</strong>
+      </p>
+    </div>
+    <input type="file" id="fileInput" accept="audio/*">
+    
+    <div class="preview" id="preview">
+      <div class="preview-header">
+        <span class="preview-icon">🎶</span>
+        <div class="preview-info">
+          <div class="preview-name" id="fileName">-</div>
+          <div class="preview-size" id="fileSize">-</div>
+        </div>
+      </div>
+      <audio controls class="audio-player" id="audioPlayer"></audio>
+    </div>
+    
+    <button class="btn btn-primary" id="convertBtn" disabled>保存为计时器铃声</button>
+    
+    <div class="result" id="result">
+      <strong>✅ 铃声已保存！</strong>
+      <p style="margin-top: 8px; font-size: 13px;">计时器结束时将播放此铃声，你可以关闭此页面了。</p>
+    </div>
+    
+    <div class="current-sound" id="currentSound" style="margin-top: 20px; padding: 16px; background: #e8f5e9; border-radius: 12px; display: none;">
+      <div style="font-weight: 600; color: #2e7d32; margin-bottom: 8px;">🔔 当前已保存的铃声</div>
+      <audio controls id="savedAudio" style="width: 100%;"></audio>
+      <button class="btn" style="margin-top: 12px; background: #ef5350; color: white;" onclick="clearSound()">删除已保存的铃声</button>
+    </div>
+    
+    <div class="tips">
+      <div class="tips-title">💡 使用说明</div>
+      <ul>
+        <li>选择一个短促的提示音（建议 1-3 秒）</li>
+        <li>上传后铃声会自动保存，计时器结束时循环播放 10 秒</li>
+        <li>推荐使用清脆的铃声或提示音</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const convertBtn = document.getElementById('convertBtn');
+    const result = document.getElementById('result');
+    const codeBlock = document.getElementById('codeBlock');
+    
+    let currentFile = null;
+    let base64Result = '';
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) handleFile(files[0]);
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+    
+    function handleFile(file) {
+      if (!file.type.startsWith('audio/')) {
+        alert('请选择音频文件！');
+        return;
+      }
+      
+      currentFile = file;
+      fileName.textContent = file.name;
+      fileSize.textContent = formatSize(file.size);
+      
+      const url = URL.createObjectURL(file);
+      audioPlayer.src = url;
+      
+      preview.classList.add('show');
+      convertBtn.disabled = false;
+      result.classList.remove('show');
+    }
+    
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    
+    convertBtn.addEventListener('click', () => {
+      if (!currentFile) return;
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        base64Result = e.target.result;
+        // 直接保存到 localStorage
+        localStorage.setItem('alarmSound', base64Result);
+        result.classList.add('show');
+        result.classList.add('success');
+        // 更新当前铃声显示
+        checkSavedSound();
+      };
+      reader.readAsDataURL(currentFile);
+    });
+    
+    function copyCode() {
+      navigator.clipboard.writeText(base64Result).then(() => {
+        alert('已复制到剪贴板！');
+      }).catch(() => {
+        // Fallback
+        const textarea = document.createElement('textarea');
+        textarea.value = base64Result;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('已复制到剪贴板！');
+      });
+    }
+    
+    function clearSound() {
+      localStorage.removeItem('alarmSound');
+      document.getElementById('currentSound').style.display = 'none';
+      alert('已删除保存的铃声，将使用默认铃声');
+    }
+    
+    function checkSavedSound() {
+      const saved = localStorage.getItem('alarmSound');
+      const currentSoundDiv = document.getElementById('currentSound');
+      const savedAudio = document.getElementById('savedAudio');
+      
+      if (saved) {
+        currentSoundDiv.style.display = 'block';
+        savedAudio.src = saved;
+      } else {
+        currentSoundDiv.style.display = 'none';
+      }
+    }
+    
+    // 页面加载时检查是否有已保存的铃声
+    checkSavedSound();
+  </script>
+</body>
+</html>

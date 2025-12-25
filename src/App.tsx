@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Timer, BookHeart, PieChart, Calendar, Settings2, 
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
-  Edit3, Save, X, Camera, ChevronLeft,
+  Edit3, Save, X, Camera, ChevronLeft, Check,
   Award, CheckCircle, RefreshCw, Brain, Lightbulb,
   ListTodo, Moon, Utensils,
   Shield, LogOut, Download, Upload, Trash2, Database
@@ -72,6 +72,87 @@ interface TimeRecord {
   createdAt: number;
 }
 
+// 持久化计时器状态接口 - 用于页面关闭后恢复计时器
+interface PersistentTimerState {
+  // 专注页面计时器
+  focusTimer: {
+    activeTimerId: string | null;
+    timerMode: 'countdown' | 'countup' | 'pomodoro';
+    startTimestamp: number | null;  // 计时开始的时间戳
+    pausedAt: number | null;        // 暂停时的剩余时间或已过时间
+    totalDuration: number;          // 总时长（秒）
+    pomodoroConfig: {
+      workDuration: number;
+      breakDuration: number;
+      rounds: number;
+      longBreakDuration: number;
+    };
+    currentPomodoroRound: number;
+    pomodoroPhase: 'work' | 'break' | 'longBreak';
+    status: 'idle' | 'running' | 'paused';
+  } | null;
+  // 今日规划页面计时器
+  planTimer: {
+    activeTimerId: string | null;
+    timerMode: 'countdown' | 'countup' | 'pomodoro';
+    startTimestamp: number | null;
+    pausedAt: number | null;
+    totalDuration: number;
+    pomodoroConfig: {
+      workDuration: number;
+      breakDuration: number;
+      rounds: number;
+      longBreakDuration: number;
+    };
+    currentPomodoroRound: number;
+    pomodoroPhase: 'work' | 'break' | 'longBreak';
+    status: 'idle' | 'running' | 'paused';
+    taskName: string;
+  } | null;
+}
+
+// 持久化计时器状态的localStorage key
+const PERSISTENT_TIMER_KEY = 'persistentTimerState';
+
+// 保存计时器状态到localStorage
+const savePersistentTimerState = (state: PersistentTimerState) => {
+  localStorage.setItem(PERSISTENT_TIMER_KEY, JSON.stringify(state));
+};
+
+// 从localStorage读取计时器状态
+const loadPersistentTimerState = (): PersistentTimerState | null => {
+  const saved = localStorage.getItem(PERSISTENT_TIMER_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+// 计算基于时间戳的当前剩余时间或已过时间
+const calculateCurrentTime = (
+  startTimestamp: number,
+  totalDuration: number,
+  mode: 'countdown' | 'countup' | 'pomodoro'
+): { remainingTime: number; elapsedTime: number; isCompleted: boolean } => {
+  const now = Date.now();
+  const elapsed = Math.floor((now - startTimestamp) / 1000);
+  
+  if (mode === 'countup') {
+    return { remainingTime: 0, elapsedTime: elapsed, isCompleted: false };
+  } else {
+    const remaining = Math.max(0, totalDuration - elapsed);
+    return { remainingTime: remaining, elapsedTime: elapsed, isCompleted: remaining <= 0 };
+  }
+};
+
+// 计时器铃声 Base64 编码（默认使用简单的提示音，可通过 /upload-sound.html 页面上传自定义铃声）
+// 这是一个简单的提示音 Base64（空音频占位，用户需要上传自己的铃声）
+const ALARM_SOUND_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
 // Toast 组件
 const Toast = ({ message, visible, onClose }: { message: string; visible: boolean; onClose: () => void }) => {
   useEffect(() => {
@@ -92,6 +173,49 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
   );
 };
 
+// 铃声播放器类
+class AlarmPlayer {
+  private audio: HTMLAudioElement | null = null;
+  private timeoutId: number | null = null;
+  
+  play(duration: number = 10000) {
+    this.stop(); // 先停止之前的播放
+    
+    // 从 localStorage 获取自定义铃声，如果没有则使用默认铃声
+    const customSound = localStorage.getItem('alarmSound');
+    const soundSrc = customSound || ALARM_SOUND_BASE64;
+    
+    this.audio = new Audio(soundSrc);
+    this.audio.loop = true;
+    this.audio.volume = 0.7;
+    this.audio.play().catch(err => console.log('播放铃声失败:', err));
+    
+    // 设置自动停止
+    this.timeoutId = window.setTimeout(() => {
+      this.stop();
+    }, duration);
+  }
+  
+  stop() {
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this.audio = null;
+    }
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+  }
+  
+  isPlaying() {
+    return this.audio !== null && !this.audio.paused;
+  }
+}
+
+// 全局铃声播放器实例
+const alarmPlayer = new AlarmPlayer();
+
 // 配置常量 - 升级版马卡龙配色 (Mixed Macaron Palette)
 const MACARON_COLORS = {
   bg: '#FFFDF7',
@@ -111,8 +235,8 @@ const MACARON_COLORS = {
   themes: {
     timer: '#a78bfa',    // 香芋紫
     journal: '#f472b6',  // 草莓粉
-    review: '#7dd3fc',   // 海盐蓝
-    plan: '#5eead4',     // 薄荷绿
+    review: '#89CFF0',   // 天空蓝
+    plan: '#00B894',     // 翡翠绿（与生成AI规划按钮同色）
     settings: '#fde047', // 柠檬黄
   },
   // 撞色配置
@@ -128,7 +252,7 @@ const MACARON_COLORS = {
     timer: 'from-purple-50 via-white to-cyan-50',
     journal: 'from-pink-50 via-white to-lime-50',
     review: 'from-sky-50 via-white to-rose-50',
-    plan: 'from-teal-50 via-white to-orange-50',
+    plan: 'from-[#E8F5E9] to-[#E8F5E9]',
     settings: 'from-yellow-50 via-white to-blue-50',
   },
 };
@@ -469,10 +593,18 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 // 计时器视图
 const TimerView = ({ 
   selectedCategory: propSelectedCategory, 
-  setSelectedCategory: propSetSelectedCategory 
+  setSelectedCategory: propSetSelectedCategory,
+  timeRecords,
+  setTimeRecords,
+  globalTimers,
+  setGlobalTimers
 }: {
   selectedCategory?: CategoryId;
   setSelectedCategory?: (category: CategoryId) => void;
+  timeRecords: TimeRecord[];
+  setTimeRecords: (records: TimeRecord[]) => void;
+  globalTimers: Timer[];
+  setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>(propSelectedCategory || 'work');
   // 同步外部传入的selectedCategory
@@ -500,8 +632,11 @@ const TimerView = ({
     { id: 'health', label: '健康' },
     { id: 'hobby', label: '兴趣' },
   ]);
-  const [timers, setTimers] = useState<Timer[]>([]);
+  // 使用全局timers
+  const timers = globalTimers;
+  const setTimers = setGlobalTimers;
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
+  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null); // 记录计时开始时间
   const [showNewCategoryModal, setShowNewCategoryModal] = useState(false);
   const [showManageCategoryModal, setShowManageCategoryModal] = useState(false);
   const [showNewTimerModal, setShowNewTimerModal] = useState(false);
@@ -511,12 +646,24 @@ const TimerView = ({
   const [newTimerIcon, setNewTimerIcon] = useState('🎯');
   const [newTimerCategory, setNewTimerCategory] = useState<CategoryId>(selectedCategory);
   
+  // 编辑计时器状态
+  const [showEditTimerModal, setShowEditTimerModal] = useState(false);
+  const [editingTimer, setEditingTimer] = useState<Timer | null>(null);
+  const [editTimerName, setEditTimerName] = useState('');
+  const [editTimerIcon, setEditTimerIcon] = useState('🎯');
+  const [editTimerCategory, setEditTimerCategory] = useState<CategoryId>('work');
+  
+  // 计时器滑动状态
+  const [swipedTimerId, setSwipedTimerId] = useState<string | null>(null);
+  
   // 计时模式选择弹窗状态
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
   const [pendingTimer, setPendingTimer] = useState<Timer | null>(null);
   const [timerMode, setTimerMode] = useState<'countdown' | 'countup' | 'pomodoro'>('countdown');
   const [timerDuration, setTimerDuration] = useState(25);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [showCountdownSettings, setShowCountdownSettings] = useState(false);
+  const [showPomodoroSettingsTimer, setShowPomodoroSettingsTimer] = useState(false);
   
   // 番茄钟配置
   const [pomodoroConfig, setPomodoroConfig] = useState({
@@ -528,6 +675,9 @@ const TimerView = ({
   const [currentPomodoroRound, setCurrentPomodoroRound] = useState(1);
   const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break' | 'longBreak'>('work');
   
+  // 铃声播放状态
+  const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
+  
   // 常用emoji列表
   const commonEmojis = ['🎯', '💼', '📚', '✏️', '💻', '🎨', '🎵', '🏃', '🧘', '☕', '🍎', '💪', '🌟', '🔥', '⏰', '📝', '🎮', '📖', '🧠', '💡'];
   
@@ -538,6 +688,98 @@ const TimerView = ({
   useEffect(() => {
     setNewTimerCategory(selectedCategory);
   }, [selectedCategory]);
+
+  // 计时开始时间戳（用于持久化）
+  const [timerStartTimestamp, setTimerStartTimestamp] = useState<number | null>(null);
+
+  // 从localStorage恢复计时器状态
+  useEffect(() => {
+    const persistentState = loadPersistentTimerState();
+    if (persistentState?.focusTimer && persistentState.focusTimer.status !== 'idle') {
+      const { focusTimer } = persistentState;
+      const timer = globalTimers.find(t => t.id === focusTimer.activeTimerId);
+      
+      if (timer && focusTimer.startTimestamp) {
+        // 恢复计时器模式和配置
+        setTimerMode(focusTimer.timerMode);
+        setPomodoroConfig(focusTimer.pomodoroConfig);
+        setCurrentPomodoroRound(focusTimer.currentPomodoroRound);
+        setPomodoroPhase(focusTimer.pomodoroPhase);
+        
+        if (focusTimer.status === 'running') {
+          // 计算当前时间
+          const { remainingTime, elapsedTime: elapsed, isCompleted } = calculateCurrentTime(
+            focusTimer.startTimestamp,
+            focusTimer.totalDuration,
+            focusTimer.timerMode
+          );
+          
+          if (isCompleted) {
+            // 计时已完成，播放铃声
+            alarmPlayer.play(10000);
+            setIsAlarmPlaying(true);
+            setTimeout(() => setIsAlarmPlaying(false), 10000);
+            
+            const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+            setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+            setActiveTimer(updatedTimer);
+            
+            // 清除持久化状态
+            savePersistentTimerState({ ...persistentState, focusTimer: null });
+          } else {
+            // 恢复运行状态
+            setTimerStartTimestamp(focusTimer.startTimestamp);
+            setElapsedTime(elapsed);
+            
+            const updatedTimer = { ...timer, status: 'running' as TimerStatus, remainingTime };
+            setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+            setActiveTimer(updatedTimer);
+          }
+        } else if (focusTimer.status === 'paused' && focusTimer.pausedAt !== null) {
+          // 恢复暂停状态
+          if (focusTimer.timerMode === 'countup') {
+            setElapsedTime(focusTimer.pausedAt);
+          }
+          const updatedTimer = { 
+            ...timer, 
+            status: 'paused' as TimerStatus, 
+            remainingTime: focusTimer.timerMode === 'countup' ? 0 : focusTimer.pausedAt 
+          };
+          setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+          setActiveTimer(updatedTimer);
+        }
+      }
+    }
+  }, []);
+
+  // 保存计时器状态到localStorage
+  useEffect(() => {
+    if (activeTimer && (activeTimer.status === 'running' || activeTimer.status === 'paused')) {
+      const persistentState = loadPersistentTimerState() || { focusTimer: null, planTimer: null };
+      
+      const focusTimerState = {
+        activeTimerId: activeTimer.id,
+        timerMode,
+        startTimestamp: timerStartTimestamp,
+        pausedAt: activeTimer.status === 'paused' 
+          ? (timerMode === 'countup' ? elapsedTime : activeTimer.remainingTime)
+          : null,
+        totalDuration: timerMode === 'countup' ? 0 : activeTimer.duration * 60,
+        pomodoroConfig,
+        currentPomodoroRound,
+        pomodoroPhase,
+        status: activeTimer.status as 'running' | 'paused'
+      };
+      
+      savePersistentTimerState({ ...persistentState, focusTimer: focusTimerState });
+    } else if (!activeTimer || activeTimer.status === 'idle' || activeTimer.status === 'completed') {
+      // 清除持久化状态
+      const persistentState = loadPersistentTimerState();
+      if (persistentState) {
+        savePersistentTimerState({ ...persistentState, focusTimer: null });
+      }
+    }
+  }, [activeTimer?.status, activeTimer?.id, timerStartTimestamp, elapsedTime, timerMode, pomodoroConfig, currentPomodoroRound, pomodoroPhase]);
 
   // 计时器逻辑
   useEffect(() => {
@@ -555,6 +797,10 @@ const TimerView = ({
               setTimers(timers => timers.map(t => 
                 t.id === prev?.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
               ));
+              // 倒计时结束，播放铃声
+              alarmPlayer.play(10000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000);
               return prev ? { ...prev, status: 'completed', remainingTime: 0 } : null;
             }
             
@@ -570,7 +816,12 @@ const TimerView = ({
             if (!prev) return null;
             
             if (prev.remainingTime <= 1) {
-              // 当前阶段结束，切换到下一阶段
+              // 当前阶段结束，播放铃声提醒
+              alarmPlayer.play(10000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000);
+              
+              // 切换到下一阶段
               if (pomodoroPhase === 'work') {
                 if (currentPomodoroRound >= pomodoroConfig.rounds) {
                   setPomodoroPhase('longBreak');
@@ -578,12 +829,16 @@ const TimerView = ({
                   const newRemaining = pomodoroConfig.longBreakDuration * 60;
                   const updated = { ...prev, remainingTime: newRemaining };
                   setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  // 更新时间戳
+                  setTimerStartTimestamp(Date.now());
                   return updated;
                 } else {
                   setPomodoroPhase('break');
                   const newRemaining = pomodoroConfig.breakDuration * 60;
                   const updated = { ...prev, remainingTime: newRemaining };
                   setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  // 更新时间戳
+                  setTimerStartTimestamp(Date.now());
                   return updated;
                 }
               } else if (pomodoroPhase === 'break') {
@@ -592,6 +847,8 @@ const TimerView = ({
                 const newRemaining = pomodoroConfig.workDuration * 60;
                 const updated = { ...prev, remainingTime: newRemaining };
                 setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                // 更新时间戳
+                setTimerStartTimestamp(Date.now());
                 return updated;
               } else {
                 // 长休息结束
@@ -615,6 +872,14 @@ const TimerView = ({
       if (interval) clearInterval(interval);
     };
   }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig]);
+
+  // 监听计时器完成，保存记录
+  useEffect(() => {
+    if (activeTimer?.status === 'completed' && timerStartTime) {
+      saveTimeRecord(activeTimer, timerStartTime, new Date());
+      setTimerStartTime(null);
+    }
+  }, [activeTimer?.status]);
 
   const theme = selectedCategory === 'uncategorized' 
     ? { primary: '#9ca3af', light: '#f3f4f6', text: '#6b7280' }
@@ -699,6 +964,11 @@ const TimerView = ({
       setElapsedTime(0);
     }
     
+    // 记录开始时间
+    setTimerStartTime(new Date());
+    // 记录开始时间戳（用于持久化）
+    setTimerStartTimestamp(Date.now());
+    
     const updatedTimer = { 
       ...pendingTimer, 
       status: 'running' as TimerStatus,
@@ -709,6 +979,29 @@ const TimerView = ({
     setActiveTimer(updatedTimer);
     setShowTimerModeModal(false);
     setPendingTimer(null);
+  };
+  
+  // 保存计时记录到timeRecords
+  const saveTimeRecord = (timer: Timer, startTime: Date, endTime: Date) => {
+    const formatTimeStr = (date: Date) => {
+      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    };
+    const formatDateStr = (date: Date) => {
+      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    };
+    
+    const newRecord: TimeRecord = {
+      id: `timer_${Date.now()}`,
+      name: timer.name,
+      date: formatDateStr(startTime),
+      startTime: formatTimeStr(startTime),
+      endTime: formatTimeStr(endTime),
+      source: 'timer',
+      categoryId: timer.categoryId,
+      createdAt: Date.now()
+    };
+    
+    setTimeRecords([...timeRecords, newRecord]);
   };
 
   const startTimer = (timer: Timer) => {
@@ -723,6 +1016,11 @@ const TimerView = ({
   };
 
   const resetTimer = (timer: Timer) => {
+    // 保存计时记录（如果有开始时间）
+    if (timerStartTime && activeTimer?.id === timer.id) {
+      saveTimeRecord(timer, timerStartTime, new Date());
+    }
+    
     const updatedTimer = { 
       ...timer, 
       status: 'idle' as TimerStatus, 
@@ -731,10 +1029,52 @@ const TimerView = ({
     setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
     if (activeTimer?.id === timer.id) {
       setActiveTimer(null);
+      setTimerStartTime(null);
     }
     setElapsedTime(0);
     setPomodoroPhase('work');
     setCurrentPomodoroRound(1);
+  };
+
+  // 跳过当前番茄钟阶段（提前休息/提前结束休息）
+  const skipPomodoroPhase = (timer: Timer) => {
+    if (timerMode !== 'pomodoro' || !activeTimer) return;
+    
+    let newRemainingTime = 0;
+    
+    if (pomodoroPhase === 'work') {
+      // 当前是专注阶段，跳到休息
+      if (currentPomodoroRound >= pomodoroConfig.rounds) {
+        // 已经是最后一轮，直接完成番茄钟
+        const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+        setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+        setActiveTimer(updatedTimer);
+        setPomodoroPhase('work');
+        setCurrentPomodoroRound(1);
+        return;
+      } else {
+        // 进入短休息
+        setPomodoroPhase('break');
+        newRemainingTime = pomodoroConfig.breakDuration * 60;
+      }
+    } else if (pomodoroPhase === 'break') {
+      // 当前是短休息，跳到下一轮专注
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(prev => prev + 1);
+      newRemainingTime = pomodoroConfig.workDuration * 60;
+    } else {
+      // 当前是长休息，完成番茄钟
+      const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+      setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+      setActiveTimer(updatedTimer);
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(1);
+      return;
+    }
+    
+    const updatedTimer = { ...timer, remainingTime: newRemainingTime };
+    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    setActiveTimer(updatedTimer);
   };
 
   const deleteTimer = (timerId: string) => {
@@ -744,7 +1084,56 @@ const TimerView = ({
     }
   };
 
+  // 打开编辑计时器弹窗
+  const openEditTimerModal = (timer: Timer) => {
+    setEditingTimer(timer);
+    setEditTimerName(timer.name);
+    setEditTimerIcon(timer.icon);
+    setEditTimerCategory(timer.categoryId);
+    setShowEditTimerModal(true);
+  };
+
+  // 保存编辑的计时器
+  const saveEditTimer = () => {
+    if (!editingTimer || !editTimerName.trim()) return;
+    
+    const updatedTimer = {
+      ...editingTimer,
+      name: editTimerName.trim(),
+      icon: editTimerIcon,
+      categoryId: editTimerCategory
+    };
+    
+    setTimers(prev => prev.map(t => t.id === editingTimer.id ? updatedTimer : t));
+    
+    // 如果是当前活动的计时器，也更新activeTimer
+    if (activeTimer?.id === editingTimer.id) {
+      setActiveTimer(updatedTimer);
+    }
+    
+    setShowEditTimerModal(false);
+    setEditingTimer(null);
+  };
+
   const categoryTimers = timers.filter(t => t.categoryId === selectedCategory);
+
+  // 获取当前分类的主题色
+  const currentCategoryTheme = MACARON_COLORS.categories[selectedCategory] || {
+    primary: '#9ca3af',
+    light: '#F9F9F9',
+    text: '#6b7280'
+  };
+  
+  // 将hex颜色转换为带透明度的rgba
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+  
+  // 背景色：主色 + 4% 不透明度 (96% 透明度)
+  const categoryBgColor = hexToRgba(currentCategoryTheme.primary, 0.04);
 
   return (
     <div className="flex h-full relative overflow-hidden">
@@ -753,17 +1142,20 @@ const TimerView = ({
       <div className="absolute top-10 right-10 w-32 h-32 rounded-full bg-purple-100 blur-xl opacity-50"></div>
       
       {/* 侧边栏 */}
-      <div className="w-[70px] h-full flex flex-col items-center py-6 border-r border-white/40 bg-white/20 backdrop-blur-sm z-10">
+      <div 
+        className="w-[70px] h-full flex flex-col items-center py-6 border-r border-gray-200 z-10 transition-colors duration-300" 
+        style={{ backgroundColor: categoryBgColor }}
+      >
         {/* 管理分类按钮 - 置顶 */}
         <button 
           onClick={() => setShowManageCategoryModal(true)}
-          className="w-[calc(100%-8px)] mx-1 py-2 mb-3 rounded-xl flex flex-col items-center justify-center transition-all hover:bg-white/80 hover:scale-105 border-2 border-dashed border-gray-300"
+          className="w-[calc(100%-8px)] mx-1 py-2 mb-4 rounded-xl flex flex-col items-center justify-center transition-all hover:bg-white/80 hover:scale-105 border-2 border-dashed border-gray-300"
         >
           <Settings2 size={14} className="text-gray-400 mb-1" />
-          <span className="text-[8px] font-black text-gray-400">管理</span>
+          <span className="text-[8px] font-black text-gray-400">管理分类</span>
         </button>
         
-        <div className="space-y-2 w-full flex flex-col items-center px-1 flex-1 overflow-y-auto">
+        <div className="space-y-2 w-full flex flex-col items-center px-1 pt-1 flex-1 overflow-y-auto">
           {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
             const catTheme = MACARON_COLORS.categories[cat.id as CategoryId] || {
@@ -807,159 +1199,257 @@ const TimerView = ({
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden z-10">
-        <div className="px-6 pt-8 pb-3 flex justify-between items-end">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-3xl font-black text-[#2D2D2D] tracking-tight">
-                {selectedCategory === 'uncategorized' ? '待分类' : categories.find(c => c.id === selectedCategory)?.label}
-              </h2>
-              <div className="w-2 h-2 rounded-full bg-cyan-200 ring-2 ring-purple-200"></div>
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-wider opacity-60" style={{ color: theme.primary }}>
-              FOCUS MODE
-            </p>
-          </div>
-          <button 
-            onClick={() => setShowNewTimerModal(true)}
-            className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all border-b-4"
-            style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66`, borderBottomColor: theme.primary + '80' }}
-          >
-            <Plus size={24} strokeWidth={3} />
-          </button>
+      <div 
+        className="flex-1 flex flex-col h-full relative overflow-hidden z-10 transition-colors duration-300"
+        style={{ backgroundColor: categoryBgColor }}
+        onClick={() => swipedTimerId && setSwipedTimerId(null)}
+      >
+        <div className="px-6 pt-8 pb-3">
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-6">
           {categoryTimers.length === 0 ? (
             // 空状态
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center opacity-60">
-                <div className="w-24 h-24 rounded-[2rem] mb-4 flex items-center justify-center" style={{ backgroundColor: theme.light }}>
-                  <Timer size={40} style={{ color: theme.primary }} />
-                </div>
-                <p className="text-[#2D2D2D] font-bold text-lg">创建专注计时器</p>
-                <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角 + 号开始创建你的第一个计时器</p>
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <button 
+                onClick={() => setShowNewTimerModal(true)}
+                className="px-8 py-6 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-bold hover:border-gray-400 hover:text-gray-500 hover:bg-white/50 active:scale-95 transition-all flex flex-col items-center gap-3"
+              >
+                <span>创建「{selectedCategory === 'uncategorized' ? '待分类' : categories.find(c => c.id === selectedCategory)?.label}」的第一个计时器吧～</span>
+                <Plus size={32} strokeWidth={2} />
+              </button>
             </div>
           ) : (
-            // 计时器列表
-            <div className="space-y-4">
-              {categoryTimers.map(timer => (
+            // 计时器列表 - 两列网格
+            <div className="grid grid-cols-2 gap-3">
+              {categoryTimers.map(timer => {
+                const isTimerActive = activeTimer?.id === timer.id && (timer.status === 'running' || timer.status === 'paused');
+                const isSwiped = swipedTimerId === timer.id;
+                const theme = MACARON_COLORS.categories[timer.categoryId as CategoryId] || {
+                  primary: '#9ca3af',
+                  light: '#f3f4f6',
+                  text: '#6b7280'
+                };
+                
+                return (
                 <div 
                   key={timer.id}
-                  className={`relative w-full rounded-[2rem] p-6 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.08)] bg-white/90 backdrop-blur-xl border-2 border-white transition-all duration-500 ${
-                    activeTimer?.id === timer.id ? 'scale-105 ring-4 ring-purple-50' : 'hover:-translate-y-1'
-                  }`}
-                  style={{ 
-                    borderColor: timer.status === 'running' ? theme.primary : 
-                                timer.status === 'completed' ? '#42D4A4' : 'white'
-                  }}
+                  className="relative overflow-hidden rounded-2xl"
                 >
-                  <div className="flex flex-col h-full justify-between items-center">
-                    <div className="flex items-center gap-3 w-full">
-                      <div 
-                        className="w-14 h-14 rounded-[1.2rem] flex items-center justify-center shadow-sm text-2xl"
-                        style={{ backgroundColor: theme.light }}
-                      >
-                        {timer.icon}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-xl font-black text-[#2D2D2D]">{timer.name}</h4>
-                        <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mt-1">
-                          {timer.status === 'idle' && 'READY'}
-                          {timer.status === 'running' && (timerMode === 'pomodoro' ? (pomodoroPhase === 'work' ? 'FOCUSING' : 'BREAK') : 'FOCUSING')}
-                          {timer.status === 'paused' && 'PAUSED'}
-                          {timer.status === 'completed' && 'COMPLETED'}
-                        </p>
-                      </div>
-                      <button 
-                        onClick={() => deleteTimer(timer.id)}
-                        className="text-gray-300 hover:text-red-400 hover:bg-red-50 p-2 rounded-full transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <div className="text-center my-6">
-                      {/* 模式标签 */}
-                      {activeTimer?.id === timer.id && timer.status === 'running' && (
-                        <div className="flex justify-center mb-2">
-                          <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                  {/* 背景操作按钮 */}
+                  {/* 背景操作按钮 - 只在滑动时显示 */}
+                  <div 
+                    className={`absolute right-0 top-0 bottom-0 flex items-center transition-opacity duration-300 ${isSwiped ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditTimerModal(timer);
+                        setSwipedTimerId(null);
+                      }}
+                      className="h-full w-12 flex items-center justify-center text-white"
+                      style={{ backgroundColor: '#5C7CFA' }}
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteTimer(timer.id);
+                        setSwipedTimerId(null);
+                      }}
+                      className="h-full w-12 flex items-center justify-center text-white rounded-r-2xl"
+                      style={{ backgroundColor: '#FF6B6B' }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  
+                  {/* 卡片内容 - 可滑动 */}
+                  <div 
+                    className={`relative w-full rounded-2xl p-3 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.1)] bg-white border-2 border-white transition-transform duration-300 ${
+                      activeTimer?.id === timer.id ? 'ring-2 ring-purple-100' : ''
+                    }`}
+                    style={{ 
+                      borderColor: timer.status === 'running' ? theme.primary : 
+                                  timer.status === 'completed' ? '#42D4A4' : 'white',
+                      transform: isSwiped ? 'translateX(-96px)' : 'translateX(0)',
+                      touchAction: 'pan-y'
+                    }}
+                    onTouchStart={(e) => {
+                      const touch = e.touches[0];
+                      const target = e.currentTarget as HTMLElement;
+                      target.dataset.startX = String(touch.clientX);
+                      target.dataset.startY = String(touch.clientY);
+                    }}
+                    onTouchEnd={(e) => {
+                      const target = e.currentTarget as HTMLElement;
+                      const startX = Number(target.dataset.startX || 0);
+                      const startY = Number(target.dataset.startY || 0);
+                      const touch = e.changedTouches[0];
+                      const diffX = startX - touch.clientX;
+                      const diffY = Math.abs(touch.clientY - startY);
+                      
+                      // 水平滑动距离大于50且大于垂直滑动距离
+                      if (diffX > 50 && diffX > diffY * 2) {
+                        // 向左滑动
+                        setSwipedTimerId(timer.id);
+                      } else if (diffX < -50 && Math.abs(diffX) > diffY * 2) {
+                        // 向右滑动
+                        setSwipedTimerId(null);
+                      } else if (Math.abs(diffX) < 10 && diffY < 10) {
+                        // 点击（几乎没有移动）
+                        if (isSwiped) {
+                          setSwipedTimerId(null);
+                        }
+                      }
+                    }}
+                  >
+                  {/* 更多按钮 - 右上角 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSwipedTimerId(isSwiped ? null : timer.id);
+                    }}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-lg flex flex-col items-center justify-center gap-[2px] hover:bg-gray-100 transition-all"
+                  >
+                    <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+                    <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+                    <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+                  </button>
+                  
+                  {/* 卡片主体 - 垂直布局 */}
+                  <div className="flex flex-col items-center text-center">
+                    {isTimerActive ? (
+                      // 计时中的内容
+                      <>
+                        {/* 模式标签 */}
+                        <div className="flex justify-center mb-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             timerMode === 'countup' ? 'bg-blue-100 text-blue-600' :
                             timerMode === 'pomodoro' ? 'bg-red-100 text-red-600' :
                             'bg-green-100 text-green-600'
                           }`}>
                             {timerMode === 'countup' ? '⏱️ 正计时' :
-                             timerMode === 'pomodoro' ? `🍅 第${currentPomodoroRound}轮 · ${pomodoroPhase === 'work' ? '专注' : pomodoroPhase === 'break' ? '休息' : '长休息'}` :
+                             timerMode === 'pomodoro' ? `🍅 ${pomodoroPhase === 'work' ? '专注' : '休息'}` :
                              '⏳ 倒计时'}
                           </span>
                         </div>
-                      )}
-                      
-                      <div className="text-5xl font-semibold font-mono text-[#2D2D2D] mb-3">
-                        {activeTimer?.id === timer.id && timerMode === 'countup' ? formatTime(elapsedTime) : formatTime(timer.remainingTime)}
-                      </div>
-                      {timerMode !== 'countup' && timer.duration > 0 && (
-                        <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
-                          <div 
-                            className="h-2 rounded-full transition-all duration-1000"
-                            style={{ 
-                              backgroundColor: timer.status === 'completed' ? '#42D4A4' : 
-                                              (timerMode === 'pomodoro' && pomodoroPhase !== 'work') ? '#6CB6FF' : theme.primary,
-                              width: `${((timer.duration * 60 - timer.remainingTime) / (timer.duration * 60)) * 100}%`
-                            }}
-                          />
-                        </div>
-                      )}
-                      <p className="text-[#2D2D2D] opacity-60 font-medium text-sm px-4">
-                        {timer.status === 'completed' ? '恭喜完成专注时间！' : 
-                         timerMode === 'pomodoro' && pomodoroPhase !== 'work' ? '休息一下，放松身心' :
-                         '全神贯注，此刻即是永恒。'}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3">
-                      {timer.status === 'idle' || timer.status === 'paused' ? (
-                        <button 
-                          onClick={() => startTimer(timer)}
-                          className="w-16 h-16 rounded-[1.2rem] flex items-center justify-center text-white shadow-lg active:scale-90 transition-all hover:brightness-110 hover:scale-105 border-b-4"
-                          style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66`, borderBottomColor: theme.primary + '80' }}
-                        >
-                          <Play fill="white" size={28} className="ml-1" />
-                        </button>
-                      ) : timer.status === 'running' ? (
-                        <button 
-                          onClick={() => pauseTimer(timer)}
-                          className="w-16 h-16 rounded-[1.2rem] flex items-center justify-center text-white shadow-lg active:scale-90 transition-all hover:brightness-110 hover:scale-105 border-b-4"
-                          style={{ backgroundColor: theme.primary, boxShadow: `0 10px 20px -5px ${theme.primary}66`, borderBottomColor: theme.primary + '80' }}
-                        >
-                          <div className="flex gap-1">
-                            <div className="w-2 h-6 bg-white rounded-sm"></div>
-                            <div className="w-2 h-6 bg-white rounded-sm"></div>
+                        
+                        {/* 番茄钟轮次显示 */}
+                        {timerMode === 'pomodoro' && (
+                          <div className="text-[10px] text-gray-500 mb-1">
+                            第 {currentPomodoroRound} / {pomodoroConfig.rounds} 轮
                           </div>
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => resetTimer(timer)}
-                          className="w-16 h-16 rounded-[1.2rem] flex items-center justify-center text-white shadow-lg active:scale-90 transition-all hover:brightness-110 hover:scale-105 border-b-4 border-emerald-500/30"
-                          style={{ backgroundColor: '#42D4A4', boxShadow: '0 10px 20px -5px #42D4A466' }}
+                        )}
+                        
+                        {/* 计时显示 */}
+                        <div className="text-2xl font-black text-[#2D3436] font-mono mb-1">
+                          {timerMode === 'countup' ? formatTime(elapsedTime) : formatTime(timer.remainingTime)}
+                        </div>
+                        <p className="text-[10px] text-gray-500 mb-2">
+                          {timer.status === 'running' ? 
+                            (timerMode === 'pomodoro' && pomodoroPhase !== 'work' ? '休息中...' : '专注中...') : 
+                            '已暂停'}
+                        </p>
+                        
+                        {/* 控制按钮 */}
+                        <div className="flex justify-center gap-2">
+                          {timer.status === 'running' ? (
+                            <button
+                              onClick={() => pauseTimer(timer)}
+                              className="w-8 h-8 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-all"
+                            >
+                              <div className="flex gap-0.5">
+                                <div className="w-0.5 h-3 bg-gray-400 rounded-sm"></div>
+                                <div className="w-0.5 h-3 bg-gray-400 rounded-sm"></div>
+                              </div>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const updatedTimer = { ...timer, status: 'running' as TimerStatus };
+                                setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+                                setActiveTimer(updatedTimer);
+                              }}
+                              className="w-10 h-10 rounded-full bg-[#00B894] flex items-center justify-center text-white shadow-lg hover:bg-[#00a383] transition-all"
+                            >
+                              <Play size={16} />
+                            </button>
+                          )}
+                          {/* 番茄钟跳过按钮 */}
+                          {timerMode === 'pomodoro' && (
+                            <button
+                              onClick={() => skipPomodoroPhase(timer)}
+                              className="px-2 h-8 rounded-full border-2 border-orange-300 flex items-center justify-center text-orange-400 hover:border-orange-400 hover:text-orange-500 transition-all text-[10px] font-bold"
+                            >
+                              跳过
+                            </button>
+                          )}
+                          <button
+                            onClick={() => resetTimer(timer)}
+                            className="w-8 h-8 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-all"
+                          >
+                            <X size={14} />
+                          </button>
+                          {/* 停止铃声按钮 */}
+                          {isAlarmPlaying && (
+                            <button
+                              onClick={() => {
+                                alarmPlayer.stop();
+                                setIsAlarmPlaying(false);
+                              }}
+                              className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg hover:bg-pink-600 transition-all animate-pulse text-sm"
+                            >
+                              🔔
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      // 默认内容
+                      <>
+                        <div 
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm text-2xl mb-2"
+                          style={{ backgroundColor: theme.light }}
                         >
-                          <RefreshCw size={24} />
-                        </button>
-                      )}
-                      
-                      {(timer.status === 'running' || timer.status === 'paused') && (
-                        <button 
-                          onClick={() => resetTimer(timer)}
-                          className="w-12 h-12 rounded-[1rem] flex items-center justify-center text-gray-400 bg-gray-100 hover:bg-gray-200 active:scale-90 transition-all"
-                        >
-                          <RefreshCw size={20} />
-                        </button>
-                      )}
-                    </div>
+                          {timer.icon}
+                        </div>
+                        <h4 className="text-sm font-bold text-[#2D2D2D] truncate w-full px-1">{timer.name}</h4>
+                        
+                        {/* 状态按钮 */}
+                        {timer.status === 'completed' ? (
+                          <button 
+                            onClick={() => resetTimer(timer)}
+                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all"
+                            style={{ backgroundColor: '#42D4A4' }}
+                          >
+                            <RefreshCw size={14} className="mr-1" />
+                            重置
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => startTimer(timer)}
+                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center font-bold text-xs active:scale-98 transition-all hover:brightness-95"
+                            style={{ backgroundColor: theme.light, color: theme.primary }}
+                          >
+                            开始计时
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                   </div>
                 </div>
-              ))}
+              )})}
+              
+              {/* 添加计时器按钮 */}
+              <div 
+                onClick={() => setShowNewTimerModal(true)}
+                className="relative rounded-2xl p-3 bg-white border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50 active:scale-98 transition-all cursor-pointer flex items-center justify-center"
+              >
+                <Plus size={32} className="text-gray-400" />
+              </div>
             </div>
           )}
         </div>
@@ -1133,191 +1623,320 @@ const TimerView = ({
         </div>
       )}
 
-      {/* 计时模式选择弹窗 */}
-      {showTimerModeModal && pendingTimer && (
+      {/* 编辑计时器弹窗 */}
+      {showEditTimerModal && editingTimer && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
           <div className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto">
-            <h3 className="text-xl font-black text-[#2D2D2D] mb-2 text-center">选择计时模式</h3>
-            <p className="text-sm text-gray-500 text-center mb-4">{pendingTimer.icon} {pendingTimer.name}</p>
+            <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">编辑计时器</h3>
             
-            {/* 模式选择 */}
-            <div className="space-y-3 mb-4">
-              <button
-                onClick={() => setTimerMode('countup')}
-                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
-                  timerMode === 'countup' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
-                  timerMode === 'countup' ? 'bg-blue-500' : 'bg-gray-400'
-                }`}>
-                  <Timer size={24} />
+            <div className="space-y-4">
+              {/* 选择图标 */}
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">选择图标</label>
+                <div className="grid grid-cols-10 gap-2">
+                  {commonEmojis.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => setEditTimerIcon(emoji)}
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center text-xl transition-all ${
+                        editTimerIcon === emoji ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
                 </div>
-                <div className="text-left">
-                  <div className="font-bold text-[#2D2D2D]">⏱️ 正计时</div>
-                  <div className="text-xs text-gray-500">从0开始计时，记录实际用时</div>
-                </div>
-              </button>
+                <p className="text-xs text-gray-400 mt-2">也可以直接输入其他emoji：</p>
+                <input
+                  type="text"
+                  value={editTimerIcon}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) setEditTimerIcon(value.slice(-2));
+                  }}
+                  className="w-20 bg-gray-50 rounded-xl px-3 py-2 text-center text-xl outline-none focus:bg-white focus:ring-2 focus:ring-purple-200 mt-2"
+                />
+              </div>
               
-              <button
-                onClick={() => setTimerMode('countdown')}
-                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
-                  timerMode === 'countdown' ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
-                  timerMode === 'countdown' ? 'bg-green-500' : 'bg-gray-400'
-                }`}>
-                  <Clock size={24} />
-                </div>
-                <div className="text-left">
-                  <div className="font-bold text-[#2D2D2D]">⏳ 倒计时</div>
-                  <div className="text-xs text-gray-500">设定时长，倒计时结束</div>
-                </div>
-              </button>
+              {/* 计时器名称 */}
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">计时器名称</label>
+                <input
+                  type="text"
+                  value={editTimerName}
+                  onChange={(e) => setEditTimerName(e.target.value)}
+                  placeholder="输入计时器名称..."
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-base outline-none focus:bg-white focus:ring-2 focus:ring-pink-200"
+                />
+              </div>
               
-              <button
-                onClick={() => setTimerMode('pomodoro')}
-                className={`w-full p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${
-                  timerMode === 'pomodoro' ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
-                  timerMode === 'pomodoro' ? 'bg-red-500' : 'bg-gray-400'
-                }`}>
-                  <Target size={24} />
+              {/* 选择分类 */}
+              <div>
+                <label className="text-sm font-bold text-gray-600 block mb-2">选择分类</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => {
+                    const catTheme = MACARON_COLORS.categories[cat.id as CategoryId] || {
+                      primary: cat.color || '#FF8CA1',
+                      light: '#FFF0F3',
+                      text: '#D9455F'
+                    };
+                    const isSelected = editTimerCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setEditTimerCategory(cat.id as CategoryId)}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                          isSelected ? 'text-white shadow-md' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        }`}
+                        style={{ 
+                          backgroundColor: isSelected ? catTheme.primary : undefined
+                        }}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="text-left">
-                  <div className="font-bold text-[#2D2D2D]">🍅 番茄钟</div>
-                  <div className="text-xs text-gray-500">专注与休息交替进行</div>
-                </div>
-              </button>
+              </div>
             </div>
-            
-            {/* 倒计时时长设置 */}
-            {timerMode === 'countdown' && (
-              <div className="bg-green-50 rounded-2xl p-4 mb-4">
-                <label className="text-sm font-bold text-gray-600 block mb-3">设置时长</label>
-                <div className="flex items-center justify-center gap-4">
-                  <button 
-                    onClick={() => setTimerDuration(Math.max(1, timerDuration - 5))}
-                    className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow-sm"
-                  >
-                    -
-                  </button>
-                  <span className="text-3xl font-black text-[#2D2D2D] w-20 text-center">
-                    {timerDuration}
-                  </span>
-                  <button 
-                    onClick={() => setTimerDuration(Math.min(180, timerDuration + 5))}
-                    className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow-sm"
-                  >
-                    +
-                  </button>
-                  <span className="text-sm text-gray-500">分钟</span>
-                </div>
-              </div>
-            )}
-            
-            {/* 番茄钟参数设置 */}
-            {timerMode === 'pomodoro' && (
-              <div className="bg-red-50 rounded-2xl p-4 mb-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">专注时长</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      -
-                    </button>
-                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(60, prev.workDuration + 5) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">休息时长</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      -
-                    </button>
-                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">几轮后长休息</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.max(1, prev.rounds - 1) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      -
-                    </button>
-                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.rounds}轮</span>
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.min(10, prev.rounds + 1) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">长休息时长</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      -
-                    </button>
-                    <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
-                    <button
-                      onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
-                      className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-6">
               <Button 
                 variant="outline" 
                 onClick={() => {
-                  setShowTimerModeModal(false);
-                  setPendingTimer(null);
+                  setShowEditTimerModal(false);
+                  setEditingTimer(null);
                 }}
                 className="flex-1"
               >
                 取消
               </Button>
               <Button 
-                onClick={confirmStartTimer}
+                onClick={saveEditTimer}
+                disabled={!editTimerName.trim()}
                 className="flex-1"
-                style={{ backgroundColor: timerMode === 'countup' ? '#3b82f6' : timerMode === 'pomodoro' ? '#ef4444' : '#22c55e' }}
+                style={{ backgroundColor: theme.primary }}
               >
-                开始计时
+                保存修改
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 计时模式选择弹窗 */}
+      {showTimerModeModal && pendingTimer && (
+        <div 
+          className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center animate-fade-in"
+          onClick={() => {
+            setShowTimerModeModal(false);
+            setPendingTimer(null);
+            setShowCountdownSettings(false);
+            setShowPomodoroSettingsTimer(false);
+          }}
+        >
+          <div 
+            className="bg-white w-[90%] max-w-sm rounded-3xl p-6 relative animate-scale-in max-h-[85%] overflow-y-auto"
+            style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 60px rgba(0, 0, 0, 0.1)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => {
+                setShowTimerModeModal(false);
+                setPendingTimer(null);
+                setShowCountdownSettings(false);
+                setShowPomodoroSettingsTimer(false);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-all"
+            >
+              <X size={20} />
+            </button>
+            
+            <h3 className="text-xl font-black text-[#2D3436] mb-4 text-center">选择计时模式</h3>
+            
+            {/* 顶部Tab切换 */}
+            <div className="flex rounded-2xl bg-gray-100 p-1 mb-4">
+              <button
+                onClick={() => setTimerMode('countup')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                  timerMode === 'countup' ? 'bg-white text-[#5C7CFA] shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                ⏱️ 正计时
+              </button>
+              <button
+                onClick={() => setTimerMode('countdown')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                  timerMode === 'countdown' ? 'bg-white text-[#009688] shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                ⏳ 倒计时
+              </button>
+              <button
+                onClick={() => setTimerMode('pomodoro')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                  timerMode === 'pomodoro' ? 'bg-white text-[#FF7675] shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                🍅 番茄钟
+              </button>
+            </div>
+            
+            {/* 内容区域 */}
+            <div className="min-h-[200px]">
+              {/* 正计时内容 */}
+              {timerMode === 'countup' && (
+                <div className="p-4 rounded-2xl" style={{ backgroundColor: '#EEF2FF' }}>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-2">⏱️</div>
+                    <div className="font-bold text-lg" style={{ color: '#5C7CFA' }}>正计时模式</div>
+                    <div className="text-sm text-gray-500 mt-2">从0开始计时，记录实际用时</div>
+                  </div>
+                  <button
+                    onClick={() => confirmStartTimer()}
+                    className="w-full py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                    style={{ backgroundColor: '#5C7CFA' }}
+                  >
+                    开始计时
+                  </button>
+                </div>
+              )}
+              
+              {/* 倒计时内容 */}
+              {timerMode === 'countdown' && (
+                <div className="p-4 rounded-2xl" style={{ backgroundColor: '#E0F2F1' }}>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-2">⏳</div>
+                    <div className="font-bold text-lg" style={{ color: '#009688' }}>倒计时模式</div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">倒计时时长</span>
+                      <span className="text-lg font-bold text-[#009688]">{timerDuration} 分钟</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="180"
+                      value={timerDuration}
+                      onChange={(e) => setTimerDuration(Number(e.target.value))}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full h-2 bg-[#B2DFDB] rounded-full appearance-none cursor-pointer accent-[#009688]"
+                      style={{
+                        background: `linear-gradient(to right, #009688 0%, #009688 ${(timerDuration / 180) * 100}%, #B2DFDB ${(timerDuration / 180) * 100}%, #B2DFDB 100%)`
+                      }}
+                    />
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>1分</span>
+                      <span>180分</span>
+                    </div>
+                    <button
+                      onClick={() => confirmStartTimer()}
+                      className="w-full mt-2 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                      style={{ backgroundColor: '#009688' }}
+                    >
+                      开始计时
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* 番茄钟内容 */}
+              {timerMode === 'pomodoro' && (
+                <div className="p-4 rounded-2xl" style={{ backgroundColor: '#FFF0F0' }}>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-2">🍅</div>
+                    <div className="font-bold text-lg" style={{ color: '#FF7675' }}>番茄钟模式</div>
+                    <div className="text-xs text-gray-500 mt-1">专注与休息交替进行</div>
+                  </div>
+                  <div className="space-y-3">
+                    {/* 专注时长 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">专注时长</span>
+                        <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.workDuration} 分钟</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="90"
+                        value={pomodoroConfig.workDuration}
+                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
+                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                        style={{
+                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 休息时长 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">休息时长</span>
+                        <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.breakDuration} 分钟</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="30"
+                        value={pomodoroConfig.breakDuration}
+                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
+                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                        style={{
+                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 轮数 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">几轮后长休息</span>
+                        <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.rounds} 轮</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={pomodoroConfig.rounds}
+                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, rounds: Number(e.target.value) }))}
+                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                        style={{
+                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.rounds - 1) / 9) * 100}%, #FFCDD2 ${((pomodoroConfig.rounds - 1) / 9) * 100}%, #FFCDD2 100%)`
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 长休息时长 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">长休息时长</span>
+                        <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.longBreakDuration} 分钟</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="60"
+                        value={pomodoroConfig.longBreakDuration}
+                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
+                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                        style={{
+                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
+                        }}
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={() => confirmStartTimer()}
+                      className="w-full mt-2 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                      style={{ backgroundColor: '#FF7675' }}
+                    >
+                      开始专注
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1487,6 +2106,7 @@ const JournalView = ({
     images: []
   });
   const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
+  const [editingJournalDate, setEditingJournalDate] = useState<string>(''); // YYYY-MM-DD 格式
   const [previewImages, setPreviewImages] = useState<{ images: string[], index: number } | null>(null);
 
   const moods = [
@@ -1497,9 +2117,28 @@ const JournalView = ({
     { id: 'tired', emoji: '😴', label: '疲惫', color: '#E5E5E5' }
   ];
 
+  // 获取今天的日期字符串
+  const getTodayStr = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+  };
+
+  // 将时间戳转换为日期字符串
+  const timestampToDateStr = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+  };
+
+  // 将日期字符串转换为时间戳（当天开始时间）
+  const dateStrToTimestamp = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day).getTime();
+  };
+
   const openEditor = (journal: Journal | null = null) => {
     if (journal) {
       setEditingJournalId(journal.id);
+      setEditingJournalDate(timestampToDateStr(journal.date));
       setCurrentJournal({
         content: journal.content,
         mood: journal.mood,
@@ -1507,6 +2146,7 @@ const JournalView = ({
       });
     } else {
       setEditingJournalId(null);
+      setEditingJournalDate(getTodayStr());
       setCurrentJournal({
         content: '',
         mood: null,
@@ -1519,18 +2159,20 @@ const JournalView = ({
   const saveJournal = () => {
     if (!currentJournal.content.trim()) return;
     
+    const journalDate = dateStrToTimestamp(editingJournalDate);
+    
     if (editingJournalId) {
       // 编辑现有日记
       setJournals(journals.map(j => 
         j.id === editingJournalId 
-          ? { ...j, mood: currentJournal.mood, content: currentJournal.content, images: currentJournal.images }
+          ? { ...j, date: journalDate, mood: currentJournal.mood, content: currentJournal.content, images: currentJournal.images }
           : j
       ));
     } else {
       // 新增日记
       const newJournal = {
         id: Date.now().toString(),
-        date: Date.now(),
+        date: journalDate,
         mood: currentJournal.mood,
         content: currentJournal.content,
         images: currentJournal.images
@@ -1577,11 +2219,53 @@ const JournalView = ({
             className="text-pink-500 font-bold p-2 -mr-2"
             disabled={!currentJournal.content.trim()}
           >
-            <Save size={24} />
+            <Check size={24} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-6 z-10">
+          {/* 日期选择 */}
+          <div className="mb-6">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">
+              日期
+            </span>
+            <div className="relative">
+              <input
+                type="date"
+                value={editingJournalDate}
+                onChange={(e) => setEditingJournalDate(e.target.value)}
+                max={getTodayStr()}
+                className="w-full px-5 py-4 rounded-2xl border-2 border-pink-100 bg-white/80 backdrop-blur-sm text-gray-700 font-bold text-base focus:border-pink-300 focus:outline-none focus:ring-4 focus:ring-pink-50 transition-all shadow-sm appearance-none cursor-pointer"
+                style={{
+                  colorScheme: 'light'
+                }}
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <Calendar size={20} className="text-pink-300" />
+              </div>
+            </div>
+            {/* 显示友好的日期格式 */}
+            {editingJournalDate && (
+              <p className="text-xs text-pink-400 mt-2 ml-1">
+                {(() => {
+                  const [year, month, day] = editingJournalDate.split('-').map(Number);
+                  const date = new Date(year, month - 1, day);
+                  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                  const today = new Date();
+                  const yesterday = new Date(today.getTime() - 86400000);
+                  
+                  if (date.toDateString() === today.toDateString()) {
+                    return `📅 今天 · ${weekdays[date.getDay()]}`;
+                  } else if (date.toDateString() === yesterday.toDateString()) {
+                    return `📅 昨天 · ${weekdays[date.getDay()]}`;
+                  } else {
+                    return `📅 ${month}月${day}日 · ${weekdays[date.getDay()]}`;
+                  }
+                })()}
+              </p>
+            )}
+          </div>
+
           {/* 心情选择 */}
           <div className="mb-6">
             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">
@@ -1707,7 +2391,7 @@ const JournalView = ({
             boxShadow: '0 10px 20px -5px #f472b666' 
           }}
         >
-          <Edit3 size={20} strokeWidth={3} />
+          <Plus size={24} strokeWidth={3} />
         </button>
       </div>
 
@@ -1896,7 +2580,12 @@ const ReviewView = ({
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingPeriod, setGeneratingPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | null>(null); // 记录正在生成的时间段
+  const [generatingProgress, setGeneratingProgress] = useState('');
   const [reportData, setReportData] = useState<any>(null);
+  
+  // 当前进度时间周期
+  const [progressPeriod, setProgressPeriod] = useState<'today' | 'week' | 'month'>('today');
   
   // 复盘历史记录
   const [reportHistory, setReportHistory] = useState<Array<{
@@ -1908,6 +2597,94 @@ const ReviewView = ({
     report: any;
   }>>([]);
   const [viewingHistoryReport, setViewingHistoryReport] = useState<any>(null);
+
+  // 习惯追踪状态
+  const [trackedHabits, setTrackedHabits] = useState<Array<{
+    id: string;
+    name: string;
+    icon: string;
+    linkedEventNames: string[]; // 关联的事件名称（支持多个）
+  }>>(() => {
+    const saved = localStorage.getItem('trackedHabits');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 兼容旧数据格式
+      return parsed.map((h: any) => ({
+        ...h,
+        linkedEventNames: h.linkedEventNames || (h.linkedEventName ? [h.linkedEventName] : [])
+      }));
+    }
+    return [
+      { id: '1', name: '运动', icon: '🏃', linkedEventNames: ['运动'] },
+      { id: '2', name: '阅读', icon: '📚', linkedEventNames: ['阅读'] },
+    ];
+  });
+  const [showAddHabitModal, setShowAddHabitModal] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<{id: string; name: string; icon: string; linkedEventNames: string[]} | null>(null);
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitIcon, setNewHabitIcon] = useState('✨');
+  const [newHabitLinkedEvents, setNewHabitLinkedEvents] = useState<string[]>([]);
+  
+  // 习惯日历当前查看的月份 (每个习惯独立)
+  const [habitCalendarMonth, setHabitCalendarMonth] = useState<Record<string, { year: number; month: number }>>({});
+
+  // 保存习惯到localStorage
+  useEffect(() => {
+    localStorage.setItem('trackedHabits', JSON.stringify(trackedHabits));
+  }, [trackedHabits]);
+
+  // 获取所有唯一事件名称（用于关联选择）
+  const uniqueEventNames = useMemo(() => {
+    const names = new Set<string>();
+    timeRecords.forEach(r => names.add(r.name));
+    return Array.from(names).sort();
+  }, [timeRecords]);
+
+  // 检查某天是否完成了某个习惯（任一关联事件有记录即算完成）
+  const isHabitCompletedOnDate = (linkedEventNames: string[], dateStr: string) => {
+    return linkedEventNames.some(eventName => 
+      timeRecords.some(r => r.date === dateStr && r.name === eventName)
+    );
+  };
+
+  // 获取指定月份的所有日期
+  const getMonthDays = (year: number, month: number) => {
+    const days: string[] = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(`${year}-${month.toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`);
+    }
+    return days;
+  };
+
+  // 获取习惯的当前查看月份
+  const getHabitMonth = (habitId: string) => {
+    if (habitCalendarMonth[habitId]) {
+      return habitCalendarMonth[habitId];
+    }
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  };
+
+  // 切换习惯日历月份
+  const changeHabitMonth = (habitId: string, delta: number) => {
+    const current = getHabitMonth(habitId);
+    let newMonth = current.month + delta;
+    let newYear = current.year;
+    
+    if (newMonth > 12) {
+      newMonth = 1;
+      newYear++;
+    } else if (newMonth < 1) {
+      newMonth = 12;
+      newYear--;
+    }
+    
+    setHabitCalendarMonth(prev => ({
+      ...prev,
+      [habitId]: { year: newYear, month: newMonth }
+    }));
+  };
 
   // 时间分类配置
   const timeCategories = [
@@ -1933,27 +2710,41 @@ const ReviewView = ({
   // 计算实际时间分布
   const calculateActualTimeDistribution = (period: string) => {
     const now = new Date();
-    let startDate = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    
+    let startDateStr = '';
     
     switch (period) {
-      case 'yesterday':
-        startDate.setDate(now.getDate() - 1);
-        startDate.setHours(0, 0, 0, 0);
+      case 'yesterday': {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        startDateStr = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
         break;
+      }
       case 'today':
-        startDate.setHours(0, 0, 0, 0);
+        startDateStr = todayStr;
         break;
-      case 'week':
-        startDate.setDate(now.getDate() - 7);
+      case 'week': {
+        // 获取本周一
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        startDateStr = `${monday.getFullYear()}-${(monday.getMonth() + 1).toString().padStart(2, '0')}-${monday.getDate().toString().padStart(2, '0')}`;
         break;
-      case 'month':
-        startDate.setMonth(now.getMonth() - 1);
+      }
+      case 'month': {
+        // 获取本月第一天
+        startDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-01`;
         break;
+      }
+      default:
+        startDateStr = todayStr;
     }
 
     const filteredRecords = timeRecords.filter(r => {
-      const recordDate = new Date(r.date);
-      return recordDate >= startDate && recordDate <= now;
+      // 使用字符串比较日期
+      return r.date >= startDateStr && r.date <= todayStr;
     });
 
     // 按分类统计时间（小时）
@@ -1961,8 +2752,21 @@ const ReviewView = ({
     filteredRecords.forEach(record => {
       const start = record.startTime.split(':').map(Number);
       const end = record.endTime.split(':').map(Number);
-      const hours = (end[0] * 60 + end[1] - start[0] * 60 - start[1]) / 60;
       
+      // 计算分钟数
+      let minutes = end[0] * 60 + end[1] - start[0] * 60 - start[1];
+      
+      // 处理跨天情况（结束时间小于开始时间）
+      if (minutes < 0) {
+        minutes += 24 * 60;
+      }
+      
+      // 如果开始和结束时间相同，至少算1分钟
+      if (minutes === 0) {
+        minutes = 1;
+      }
+      
+      const hours = minutes / 60;
       const category = record.categoryId || 'uncategorized';
       distribution[category] = (distribution[category] || 0) + hours;
     });
@@ -1973,39 +2777,58 @@ const ReviewView = ({
   // 获取时间段内的日记
   const getJournalsInPeriod = (period: string) => {
     const now = new Date();
-    let startDate = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    
+    let startDateStr = '';
     
     switch (period) {
-      case 'yesterday':
-        startDate.setDate(now.getDate() - 1);
-        startDate.setHours(0, 0, 0, 0);
+      case 'yesterday': {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        startDateStr = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
         break;
+      }
       case 'today':
-        startDate.setHours(0, 0, 0, 0);
+        startDateStr = todayStr;
         break;
-      case 'week':
-        startDate.setDate(now.getDate() - 7);
+      case 'week': {
+        // 获取本周一
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        startDateStr = `${monday.getFullYear()}-${(monday.getMonth() + 1).toString().padStart(2, '0')}-${monday.getDate().toString().padStart(2, '0')}`;
         break;
-      case 'month':
-        startDate.setMonth(now.getMonth() - 1);
+      }
+      case 'month': {
+        // 获取本月第一天
+        startDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-01`;
         break;
+      }
+      default:
+        startDateStr = todayStr;
     }
 
     return journals.filter(j => {
       const journalDate = new Date(j.date);
-      return journalDate >= startDate && journalDate <= now;
+      const journalDateStr = `${journalDate.getFullYear()}-${(journalDate.getMonth() + 1).toString().padStart(2, '0')}-${journalDate.getDate().toString().padStart(2, '0')}`;
+      return journalDateStr >= startDateStr && journalDateStr <= todayStr;
     });
   };
 
   // 生成AI复盘报告
   const generateReport = async () => {
     setIsGenerating(true);
+    setGeneratingPeriod(aiPeriod as 'yesterday' | 'today' | 'week' | 'month');
+    setGeneratingProgress('正在收集数据...');
     
     // 获取数据
     const actualDistribution = calculateActualTimeDistribution(aiPeriod);
     const periodJournals = getJournalsInPeriod(aiPeriod);
     const periodLabels: Record<string, string> = { yesterday: '昨日', today: '今日', week: '本周', month: '本月', history: '历史' };
     const periodDays: Record<string, number> = { yesterday: 1, today: 1, week: 7, month: 30, history: 365 };
+    
+    setGeneratingProgress('正在分析时间分布...');
     
     // 准备数据
     const days = periodDays[aiPeriod];
@@ -2018,6 +2841,8 @@ const ReviewView = ({
         moodCounts[j.mood] = (moodCounts[j.mood] || 0) + 1;
       }
     });
+    
+    setGeneratingProgress('正在计算理想与实际差距...');
     
     // 计算理想与实际的差距
     const gaps: Array<{category: string, ideal: number, actual: number, diff: number}> = [];
@@ -2032,8 +2857,14 @@ const ReviewView = ({
       });
     });
     
+    setGeneratingProgress('正在构建AI提示词...');
+    
     // 构建AI提示词
-    const prompt = `你是一位专业的时间管理和心理健康顾问。请根据以下用户数据，生成一份深度、温暖、有洞察力的复盘报告。
+    const prompt = `# Role
+你是一位**客观、敏锐的数据生活策略师**。你的特长是透过冰冷的时间数据，洞察用户当下的能量状态和长期趋势。你的风格**简洁有力、中肯深入**，拒绝泛泛而谈的鸡汤，也不使用危言耸听的警告。
+
+# Input Data
+用户的时间记录数据 + 日记复盘内容
 
 ## 用户数据
 - 时间周期：${periodLabels[aiPeriod]}（${days}天）
@@ -2049,57 +2880,43 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
+# Analysis Goals & Constraints (必须遵守)
+1.  **透支诊断：** 必须分析"产出"与"休息"的比例，判断是否存在"借用未来能量"的行为。
+2.  **长期推演：** 基于当前模式，描绘3个月后的状态。**重点描述"坏的变化"**（如创造力枯竭、情绪波动），作为客观预警，**语气要冷静客观，点到为止，不要制造恐慌**。
+3.  **筛选信号：** 明确指出哪些行为是"高杠杆"（坚持有益），哪些是"负资产"（坚持有害）。
+4.  **排版要求：**
+* 分为 **📊 Summary** 和 **💡 Advice** 两个大板块。
+* 使用自然分段，避免全是零散的列点。
+* **重点内容必须加粗**。
+* 适当使用emoji作为视觉引导，但不要滥用。
+
+# Output Structure (严格按照此格式输出JSON)
 请以JSON格式返回复盘报告，格式如下：
 {
-  "score": 75,
   "summary": {
-    "overview": "总体概述，包含数据统计",
-    "moodAnalysis": "情绪分析，温暖有洞察",
-    "timeOverview": "时间分配分析"
-  },
-  "insights": {
-    "burnoutRisk": {
-      "level": "good或warning或danger",
-      "title": "标题带emoji",
-      "content": "详细分析，使用**加粗**标记重点"
-    },
-    "gapAnalysis": {
-      "title": "📊 理想与现实的差距",
-      "overItems": [{"category": "分类名", "message": "超出描述"}],
-      "underItems": [{"category": "分类名", "message": "不足描述"}]
-    },
-    "habits": {
-      "title": "🔍 行为模式洞察",
-      "positive": ["好习惯分析1", "好习惯分析2"],
-      "negative": ["需改进1", "需改进2"]
-    }
+    "energyAudit": "能量审计分析：用一段话直接分析数据是否显示在透支，结合日记情绪与客观记录的矛盾，指出这种状态是可持续的还是虚假的繁荣",
+    "positiveSignal": "📈 坚持下去有益处：指出数据中体现的一个核心亮点或好习惯",
+    "negativeSignal": "📉 坚持下去有坏处：指出一个正在悄悄侵蚀效率或健康的隐患"
   },
   "advice": {
-    "futureVision": {
-      "title": "🔮 三个月后的你",
-      "positive": "保持好习惯的愿景",
-      "warning": "不调整的风险提醒"
-    },
-    "protectList": {
-      "title": "🛡️ 当前最需要守护的三件事",
-      "items": [
-        {"icon": "emoji", "name": "事项名", "reason": "原因"}
-      ]
-    },
-    "timeAdjustment": {
-      "title": "⏰ 具体调整建议",
-      "suggestions": ["建议1", "建议2", "建议3"]
-    }
+    "threeMonthWarning": "三个月后的预警：如果维持现状不变，三个月后会发生什么负面变化。侧重于边际效应递减、精力崩塌或热情耗尽。语气保持中肯评价，客观描述后果",
+    "protections": [
+      "🛡️ 守护事项1：基于缺口，最不能牺牲的东西",
+      "🛡️ 守护事项2",
+      "🛡️ 守护事项3"
+    ],
+    "adjustment": "时间分布调整建议：针对记录缺陷，给出具体的时间配比建议。不要只说多休息，要说将工作切块，强制插入15分钟留白等具体操作"
   }
 }
 
 要求：
-1. 语气温暖、有同理心，像一位关心用户的朋友
-2. 分析要有深度，不要泛泛而谈
+1. 语气简洁有力、中肯深入，拒绝泛泛而谈的鸡汤
+2. 分析要有深度，透过数据洞察能量状态
 3. 建议要具体可行，不要空洞
 4. 使用**加粗**标记重点内容
-5. score评分范围45-100，根据实际情况给出
-6. 只返回JSON，不要其他内容`;
+5. 只返回JSON，不要其他内容`;
+
+    setGeneratingProgress('正在调用AI分析...');
 
     try {
       // 调用DeepSeek API（通过代理）
@@ -2114,7 +2931,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是一位专业的时间管理和心理健康顾问，擅长分析用户的时间使用情况和情绪状态，给出温暖、有洞察力的建议。请以JSON格式返回分析报告。'
+              content: '你是一位客观、敏锐的数据生活策略师。你的特长是透过冰冷的时间数据，洞察用户当下的能量状态和长期趋势。你的风格简洁有力、中肯深入，拒绝泛泛而谈的鸡汤，也不使用危言耸听的警告。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -2130,6 +2947,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         throw new Error(`API请求失败: ${response.status}`);
       }
 
+      setGeneratingProgress('正在解析AI响应...');
       const data = await response.json();
       const aiResponse = data.choices[0].message.content;
       
@@ -2189,10 +3007,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       
       setReportData(report);
       setIsGenerating(false);
+      setGeneratingPeriod(null);
       
     } catch (error) {
       console.error('生成复盘报告失败:', error);
       setIsGenerating(false);
+      setGeneratingPeriod(null);
       const errorMessage = error instanceof Error ? error.message : 'AI复盘生成失败，请检查网络连接后重试';
       alert(errorMessage);
     }
@@ -2201,35 +3021,61 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
   // 计算真实时间分布数据
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
-  // 获取今日的时间记录
-  const getTodayRecords = () => {
+  // 根据时间周期获取记录
+  const getRecordsByPeriod = (period: 'today' | 'week' | 'month') => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return timeRecords.filter(r => {
-      const recordDate = new Date(r.date);
-      recordDate.setHours(0, 0, 0, 0);
-      return recordDate.getTime() === today.getTime();
-    });
+    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    
+    if (period === 'today') {
+      return timeRecords.filter(r => r.date === todayStr);
+    } else if (period === 'week') {
+      // 获取本周一的日期
+      const dayOfWeek = today.getDay();
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + mondayOffset);
+      monday.setHours(0, 0, 0, 0);
+      
+      return timeRecords.filter(r => {
+        const recordDate = new Date(r.date + 'T00:00:00');
+        return recordDate >= monday && recordDate <= today;
+      });
+    } else {
+      // 获取本月第一天
+      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      return timeRecords.filter(r => {
+        const recordDate = new Date(r.date + 'T00:00:00');
+        return recordDate >= firstDayOfMonth && recordDate <= today;
+      });
+    }
   };
   
   // 计算分类时间分布
   const calculateCategoryDistribution = () => {
-    const todayRecords = getTodayRecords();
+    const periodRecords = getRecordsByPeriod(progressPeriod);
     const distribution: Record<string, { totalMinutes: number; records: Array<{ name: string; minutes: number }> }> = {};
     
-    // 初始化所有分类
+    // 初始化所有预定义分类
     timeCategories.forEach(cat => {
       distribution[cat.id] = { totalMinutes: 0, records: [] };
     });
     distribution['uncategorized'] = { totalMinutes: 0, records: [] };
     
-    todayRecords.forEach(record => {
+    periodRecords.forEach(record => {
       const start = record.startTime.split(':').map(Number);
       const end = record.endTime.split(':').map(Number);
-      const minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+      let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+      
+      // 如果结束时间小于开始时间，可能是跨天，暂时设为1分钟
+      // 如果开始和结束相同，也设为1分钟（表示有这个活动记录）
+      if (minutes <= 0) {
+        minutes = 1;
+      }
       
       const categoryId = record.categoryId || 'uncategorized';
       if (!distribution[categoryId]) {
+        // 动态添加未知分类
         distribution[categoryId] = { totalMinutes: 0, records: [] };
       }
       distribution[categoryId].totalMinutes += minutes;
@@ -2242,18 +3088,31 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
   const categoryDistribution = calculateCategoryDistribution();
   const totalMinutes = Object.values(categoryDistribution).reduce((sum, cat) => sum + cat.totalMinutes, 0);
   
-  // 生成饼图数据
-  const pieData = timeCategories
-    .map(cat => ({
-      id: cat.id,
-      label: cat.label,
-      color: cat.color,
-      icon: cat.icon,
-      minutes: categoryDistribution[cat.id]?.totalMinutes || 0,
-      percentage: totalMinutes > 0 ? ((categoryDistribution[cat.id]?.totalMinutes || 0) / totalMinutes) * 100 : 0,
-      records: categoryDistribution[cat.id]?.records || []
-    }))
-    .filter(item => item.minutes > 0);
+  // 生成饼图数据 - 包含所有有数据的分类
+  const pieData: Array<{
+    id: string;
+    label: string;
+    color: string;
+    icon: string;
+    minutes: number;
+    percentage: number;
+    records: Array<{ name: string; minutes: number }>;
+  }> = [];
+  
+  // 先添加预定义分类
+  timeCategories.forEach(cat => {
+    if (categoryDistribution[cat.id]?.totalMinutes > 0) {
+      pieData.push({
+        id: cat.id,
+        label: cat.label,
+        color: cat.color,
+        icon: cat.icon,
+        minutes: categoryDistribution[cat.id].totalMinutes,
+        percentage: totalMinutes > 0 ? (categoryDistribution[cat.id].totalMinutes / totalMinutes) * 100 : 0,
+        records: categoryDistribution[cat.id].records
+      });
+    }
+  });
   
   // 添加待分类
   if (categoryDistribution['uncategorized']?.totalMinutes > 0) {
@@ -2268,18 +3127,46 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     });
   }
   
-  // 计算饼图路径
+  // 添加其他自定义分类（不在预定义列表中的）
+  const predefinedIds = [...timeCategories.map(c => c.id), 'uncategorized'];
+  const customColors = ['#8B5CF6', '#EC4899', '#14B8A6', '#F59E0B', '#6366F1', '#EF4444'];
+  let colorIndex = 0;
+  
+  Object.keys(categoryDistribution).forEach(catId => {
+    if (!predefinedIds.includes(catId) && categoryDistribution[catId].totalMinutes > 0) {
+      pieData.push({
+        id: catId,
+        label: catId.replace('custom_', '自定义'),
+        color: customColors[colorIndex % customColors.length],
+        icon: '📌',
+        minutes: categoryDistribution[catId].totalMinutes,
+        percentage: (categoryDistribution[catId].totalMinutes / totalMinutes) * 100,
+        records: categoryDistribution[catId].records
+      });
+      colorIndex++;
+    }
+  });
+  
+  // 计算饼图路径 - 使用圆弧描边实现圆角效果
   const generatePieSlices = () => {
     if (pieData.length === 0) return [];
     
     let currentAngle = -90; // 从顶部开始
-    const slices: Array<{ path: string; color: string; id: string }> = [];
-    const cx = 100, cy = 100, r = 80;
+    const slices: Array<{ 
+      path: string; 
+      color: string; 
+      id: string;
+      startAngle: number;
+      endAngle: number;
+    }> = [];
+    const cx = 100, cy = 100, r = 68; // 圆弧的中心半径
     
     pieData.forEach(item => {
       const angle = (item.percentage / 100) * 360;
-      const startAngle = currentAngle;
-      const endAngle = currentAngle + angle;
+      // 为每段留出小间隙以显示圆角效果
+      const gap = pieData.length > 1 ? 2 : 0;
+      const startAngle = currentAngle + gap / 2;
+      const endAngle = currentAngle + angle - gap / 2;
       
       const startRad = (startAngle * Math.PI) / 180;
       const endRad = (endAngle * Math.PI) / 180;
@@ -2291,27 +3178,26 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       
       const largeArc = angle > 180 ? 1 : 0;
       
-      const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-      slices.push({ path, color: item.color, id: item.id });
+      // 使用圆弧路径而不是扇形
+      const path = `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
+      slices.push({ 
+        path, 
+        color: item.color, 
+        id: item.id,
+        startAngle,
+        endAngle
+      });
       
-      currentAngle = endAngle;
+      currentAngle += angle;
     });
     
     return slices;
   };
 
-  // 习惯打卡数据
-  const habits = [
-    { id: '1', name: '早起', icon: '🌅', streak: 7, completed: true },
-    { id: '2', name: '运动', icon: '🏃', streak: 3, completed: false },
-    { id: '3', name: '阅读', icon: '📚', streak: 12, completed: true },
-    { id: '4', name: '冥想', icon: '🧘', streak: 5, completed: false },
-  ];
-
   const tabs = [
     { id: 'progress' as const, label: '当前进度' },
     { id: 'ai' as const, label: 'AI复盘' },
-    { id: 'habits' as const, label: '习惯打卡' },
+    { id: 'habits' as const, label: '习惯追踪' },
   ];
 
   const aiPeriods = [
@@ -2323,29 +3209,28 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
   ];
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #F0F8FF, #FFF0F5)' }}>
       {/* 背景装饰 */}
       <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-sky-100 blur-2xl opacity-50"></div>
       <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-rose-100 blur-xl opacity-40"></div>
       
       {/* 头部 */}
-      <div className="px-6 pt-8 pb-2 z-10">
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-2xl font-black text-sky-600">数据复盘</h2>
-          <div className="w-2 h-2 rounded-full bg-rose-200 ring-2 ring-sky-200"></div>
-        </div>
-        
+      <div className="px-6 pt-4 pb-2 z-10">
         {/* 主Tab切换 */}
-        <div className="flex bg-gray-100 rounded-2xl p-1">
+        <div className="flex rounded-2xl p-1" style={{ backgroundColor: '#F7F9FC' }}>
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
                 activeTab === tab.id 
-                  ? 'bg-white text-sky-600 shadow-sm' 
-                  : 'text-gray-500'
+                  ? 'text-white' 
+                  : ''
               }`}
+              style={activeTab === tab.id 
+                ? { backgroundColor: '#89CFF0', boxShadow: '0 4px 12px rgba(137, 207, 240, 0.4)' }
+                : { backgroundColor: 'transparent', color: '#BDBDBD' }
+              }
             >
               {tab.label}
             </button>
@@ -2358,16 +3243,49 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         {/* 当前进度 */}
         {activeTab === 'progress' && (
           <div className="pt-4">
+            {/* 时间周期切换 - 下划线样式 */}
+            <div className="flex mb-4">
+              {[
+                { id: 'today', label: '今日' },
+                { id: 'week', label: '本周' },
+                { id: 'month', label: '本月' }
+              ].map(period => (
+                <button
+                  key={period.id}
+                  onClick={() => {
+                    setProgressPeriod(period.id as 'today' | 'week' | 'month');
+                    setSelectedCategory(null);
+                  }}
+                  className="flex-1 py-2 text-xs font-bold transition-all relative"
+                  style={{ 
+                    color: progressPeriod === period.id ? '#89CFF0' : '#BDBDBD'
+                  }}
+                >
+                  {period.label}
+                  {progressPeriod === period.id && (
+                    <div 
+                      className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full"
+                      style={{ backgroundColor: '#89CFF0' }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+            
             {/* 时间分布饼图 */}
             <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-sky-100">
-              <h4 className="font-black text-sky-700 mb-4">📊 今日时间分布</h4>
+              <h4 className="font-black text-sky-700 mb-4">
+                {progressPeriod === 'today' ? '今日' : progressPeriod === 'week' ? '本周' : '本月'}时间分布
+              </h4>
               
               {totalMinutes === 0 ? (
                 <div className="text-center py-8">
                   <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-3 flex items-center justify-center">
                     <Clock size={32} className="text-gray-300" />
                   </div>
-                  <p className="text-gray-400 text-sm">今日暂无时间记录</p>
+                  <p className="text-gray-400 text-sm">
+                    {progressPeriod === 'today' ? '今日' : progressPeriod === 'week' ? '本周' : '本月'}暂无时间记录
+                  </p>
                   <p className="text-gray-300 text-xs mt-1">使用计时器或导入日历数据后显示</p>
                 </div>
               ) : selectedCategory ? (
@@ -2384,6 +3302,19 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   {(() => {
                     const catData = pieData.find(p => p.id === selectedCategory);
                     if (!catData) return null;
+                    
+                    // 合并同名记录
+                    const mergedRecords: Array<{ name: string; minutes: number }> = [];
+                    catData.records.forEach(record => {
+                      const existing = mergedRecords.find(r => r.name === record.name);
+                      if (existing) {
+                        existing.minutes += record.minutes;
+                      } else {
+                        mergedRecords.push({ ...record });
+                      }
+                    });
+                    // 按时间降序排序
+                    mergedRecords.sort((a, b) => b.minutes - a.minutes);
                     
                     return (
                       <div>
@@ -2403,10 +3334,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         
                         <div className="space-y-2">
-                          {catData.records.length === 0 ? (
+                          {mergedRecords.length === 0 ? (
                             <p className="text-gray-400 text-sm text-center py-4">该分类下暂无记录</p>
                           ) : (
-                            catData.records.map((record, idx) => (
+                            mergedRecords.map((record, idx) => (
                               <div 
                                 key={idx}
                                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
@@ -2437,13 +3368,16 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                           <path
                             key={idx}
                             d={slice.path}
-                            fill={slice.color}
-                            className="transition-all duration-300 hover:opacity-80 cursor-pointer"
+                            fill="none"
+                            stroke={slice.color}
+                            strokeWidth="24"
+                            strokeLinecap="round"
+                            className="hover:opacity-80 cursor-pointer"
                             onClick={() => setSelectedCategory(slice.id)}
                           />
                         ))}
                         {/* 中心圆 */}
-                        <circle cx="100" cy="100" r="50" fill="white" />
+                        <circle cx="100" cy="100" r="48" fill="white" />
                         <text x="100" y="95" textAnchor="middle" className="text-2xl font-black fill-gray-700">
                           {Math.floor(totalMinutes / 60)}h{totalMinutes % 60 > 0 ? ` ${totalMinutes % 60}m` : ''}
                         </text>
@@ -2455,32 +3389,62 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                   
                   {/* 图例 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {pieData.map(item => (
-                      <button
-                        key={item.id}
-                        onClick={() => setSelectedCategory(item.id)}
-                        className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all text-left"
-                      >
-                        <div 
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1">
-                            <span className="text-sm">{item.icon}</span>
-                            <span className="text-sm font-bold text-gray-700 truncate">{item.label}</span>
+                  <div className="space-y-3">
+                    {[...pieData].sort((a, b) => b.minutes - a.minutes).map(item => {
+                      // 计算理想时间（根据时间周期）
+                      const daysInPeriod = progressPeriod === 'today' ? 1 : progressPeriod === 'week' ? 7 : 30;
+                      const idealHoursPerDay = idealTimeAllocation[item.id] || 0;
+                      const idealMinutes = idealHoursPerDay * 60 * daysInPeriod;
+                      const progressPercent = idealMinutes > 0 ? Math.min((item.minutes / idealMinutes) * 100, 100) : 0;
+                      
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setSelectedCategory(item.id)}
+                          className="w-full p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all text-left"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div 
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <div className="flex items-center gap-1 flex-1">
+                              <span className="text-sm">{item.icon}</span>
+                              <span className="text-sm font-bold text-gray-700">{item.label}</span>
+                              <span className="text-xs text-gray-400 ml-1">{item.percentage.toFixed(0)}%</span>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {item.minutes >= 60 
+                                ? `${Math.floor(item.minutes / 60)}h ${item.minutes % 60}m`
+                                : `${item.minutes}m`
+                              }
+                              {idealMinutes > 0 && (
+                                <span className="text-gray-400">
+                                  {' / '}
+                                  {idealMinutes >= 60 
+                                    ? `${Math.floor(idealMinutes / 60)}h${idealMinutes % 60 > 0 ? ` ${idealMinutes % 60}m` : ''}`
+                                    : `${idealMinutes}m`
+                                  }
+                                </span>
+                              )}
+                            </span>
+                            <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
                           </div>
-                          <p className="text-xs text-gray-400">
-                            {item.minutes >= 60 
-                              ? `${Math.floor(item.minutes / 60)}h ${item.minutes % 60}m`
-                              : `${item.minutes}m`
-                            } · {item.percentage.toFixed(0)}%
-                          </p>
-                        </div>
-                        <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
-                      </button>
-                    ))}
+                          {/* 进度条 */}
+                          {idealMinutes > 0 && (
+                            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#F0F4F8' }}>
+                              <div 
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ 
+                                  width: `${progressPercent}%`,
+                                  backgroundColor: item.color
+                                }}
+                              />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2491,19 +3455,24 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         {/* AI复盘 */}
         {activeTab === 'ai' && (
           <div className="pt-4">
-            {/* 时间段选择 */}
-            <div className="flex gap-1 mb-6">
+            {/* 时间段选择 - 下划线样式 */}
+            <div className="flex mb-6">
               {aiPeriods.map(period => (
                 <button
                   key={period.id}
                   onClick={() => { setAiPeriod(period.id); if (period.id !== 'history') setReportData(null); setViewingHistoryReport(null); }}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                    aiPeriod === period.id 
-                      ? 'bg-sky-500 text-white shadow-lg shadow-sky-200' 
-                      : 'bg-white text-gray-500 border border-gray-200'
-                  }`}
+                  className="flex-1 py-2 text-xs font-bold transition-all relative"
+                  style={{ 
+                    color: aiPeriod === period.id ? '#89CFF0' : '#BDBDBD'
+                  }}
                 >
                   {period.label}
+                  {aiPeriod === period.id && (
+                    <div 
+                      className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full"
+                      style={{ backgroundColor: '#89CFF0' }}
+                    />
+                  )}
                 </button>
               ))}
             </div>
@@ -2522,79 +3491,81 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 评分卡片 */}
-                    <div className="bg-gradient-to-br from-sky-400 to-indigo-500 rounded-[2rem] p-5 text-white relative overflow-hidden shadow-lg shadow-sky-200">
-                      <div className="absolute top-3 right-3 opacity-20">
-                        <Award size={50} />
-                      </div>
-                      <div className="relative z-10">
-                        <h3 className="text-sm font-bold opacity-80 mb-1">{viewingHistoryReport.period}综合评分</h3>
-                        <div className="flex items-end gap-2">
-                          <span className="text-4xl font-black">{viewingHistoryReport.score}</span>
-                          <span className="text-lg opacity-80 mb-1">/ 100</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Summary 总结 */}
+                    {/* 📊 Summary 深度复盘 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
                           <Lightbulb size={18} className="text-purple-500" />
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">📋 Summary 总结</h4>
+                        <h4 className="font-black text-gray-800 text-lg">📊 Summary 深度复盘</h4>
                       </div>
-                      <div className="space-y-3 text-sm text-gray-600 leading-relaxed">
-                        <p dangerouslySetInnerHTML={{ __html: viewingHistoryReport.summary.overview.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
-                        <p dangerouslySetInnerHTML={{ __html: viewingHistoryReport.summary.moodAnalysis.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
-                        <p dangerouslySetInnerHTML={{ __html: viewingHistoryReport.summary.timeOverview.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
+                      
+                      {/* 能量审计 */}
+                      <div className="mb-4">
+                        <h5 className="font-bold text-gray-700 mb-2">1. 能量审计 (Energy Audit)</h5>
+                        <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
+                          __html: (viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') 
+                        }} />
+                      </div>
+                      
+                      {/* 行为信号 */}
+                      <div>
+                        <h5 className="font-bold text-gray-700 mb-2">2. 行为信号 (Behavioral Signals)</h5>
+                        <div className="space-y-2">
+                          <div className="bg-green-50 rounded-xl p-3">
+                            <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                              __html: (viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
+                            }} />
+                          </div>
+                          <div className="bg-orange-50 rounded-xl p-3">
+                            <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                              __html: (viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                            }} />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* 透支风险 */}
-                    <div className={`rounded-2xl p-4 border-2 ${
-                      viewingHistoryReport.insights.burnoutRisk.level === 'danger' 
-                        ? 'bg-red-50 border-red-200'
-                        : viewingHistoryReport.insights.burnoutRisk.level === 'warning' 
-                          ? 'bg-amber-50 border-amber-200' 
-                          : 'bg-green-50 border-green-200'
-                    }`}>
-                      <h4 className={`font-bold mb-2 ${
-                        viewingHistoryReport.insights.burnoutRisk.level === 'danger' ? 'text-red-700' :
-                        viewingHistoryReport.insights.burnoutRisk.level === 'warning' ? 'text-amber-700' : 'text-green-700'
-                      }`}>
-                        {viewingHistoryReport.insights.burnoutRisk.title}
-                      </h4>
-                      <p className="text-sm text-gray-600 whitespace-pre-line">{viewingHistoryReport.insights.burnoutRisk.content}</p>
-                    </div>
-
-                    {/* Advice 建议 */}
+                    {/* 💡 Advice 未来指引 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <Brain size={18} className="text-sky-500" />
+                          <Lightbulb size={18} className="text-sky-500" />
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">💡 Advice 建议</h4>
+                        <h4 className="font-black text-sky-800 text-lg">💡 Advice 未来指引</h4>
                       </div>
                       
-                      <div className="mb-4">
-                        <h5 className="font-bold text-gray-700 mb-2">{viewingHistoryReport.advice.futureVision.title}</h5>
-                        <div className="bg-white/60 rounded-xl p-3 space-y-2">
-                          <p className="text-sm text-green-700 whitespace-pre-line">{viewingHistoryReport.advice.futureVision.positive}</p>
-                          <p className="text-sm text-amber-700 whitespace-pre-line">{viewingHistoryReport.advice.futureVision.warning}</p>
+                      {/* 三个月后的预警 */}
+                      <div className="mb-5">
+                        <h5 className="font-bold text-gray-700 mb-2">1. 三个月后的预警 (The 3-Month Trajectory)</h5>
+                        <div className="bg-white/60 rounded-xl p-3">
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                          }} />
                         </div>
                       </div>
 
-                      <div>
-                        <h5 className="font-bold text-gray-700 mb-2">{viewingHistoryReport.advice.protectList.title}</h5>
-                        <div className="grid grid-cols-3 gap-2">
-                          {viewingHistoryReport.advice.protectList.items.map((item: any, i: number) => (
-                            <div key={i} className="bg-white/60 rounded-xl p-3 text-center">
-                              <div className="text-2xl mb-1">{item.icon}</div>
-                              <p className="text-xs font-bold text-gray-700">{item.name}</p>
-                              <p className="text-[10px] text-gray-500 mt-1">{item.reason}</p>
+                      {/* 当前最需守护的三件事 */}
+                      <div className="mb-5">
+                        <h5 className="font-bold text-gray-700 mb-2">2. 当前最需守护的三件事 (Top 3 Protections)</h5>
+                        <div className="space-y-2">
+                          {(viewingHistoryReport.advice?.protections || []).map((item: string, i: number) => (
+                            <div key={i} className="bg-white/60 rounded-xl p-3">
+                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                                __html: item.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                              }} />
                             </div>
                           ))}
+                        </div>
+                      </div>
+
+                      {/* 时间分布调整建议 */}
+                      <div>
+                        <h5 className="font-bold text-gray-700 mb-2">3. 时间分布调整建议 (Adjustment)</h5>
+                        <div className="bg-white/60 rounded-xl p-3">
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                          }} />
                         </div>
                       </div>
                     </div>
@@ -2636,20 +3607,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                                   <p className="text-xs text-gray-400">{history.dateRange}</p>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <div className={`px-3 py-1 rounded-full text-sm font-bold ${
-                                  history.report.score >= 80 ? 'bg-green-100 text-green-600' :
-                                  history.report.score >= 60 ? 'bg-yellow-100 text-yellow-600' :
-                                  'bg-red-100 text-red-600'
-                                }`}>
-                                  {history.report.score}分
-                                </div>
-                                <ChevronRight size={16} className="text-gray-400" />
-                              </div>
+                              <ChevronRight size={16} className="text-gray-400" />
                             </div>
                             <div className="mt-3 pt-3 border-t border-gray-50">
                               <p className="text-xs text-gray-500 line-clamp-2">
-                                {history.report.insights.burnoutRisk.title} · {new Date(history.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                {new Date(history.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
                           </button>
@@ -2659,12 +3621,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                 )}
               </div>
-            ) : isGenerating ? (
+            ) : (isGenerating && generatingPeriod === aiPeriod) ? (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gradient-to-br from-sky-400 to-indigo-500 rounded-[1.5rem] mx-auto mb-4 flex items-center justify-center animate-pulse shadow-lg shadow-sky-200">
-                  <Brain size={32} className="text-white" />
-                </div>
-                <h3 className="text-lg font-black text-sky-600 mb-2">AI 正在分析中...</h3>
+                <h3 className="text-lg font-black text-sky-600 mb-3">{generatingProgress}</h3>
                 <div className="flex justify-center gap-1">
                   {[0, 1, 2].map((i) => (
                     <div
@@ -2677,156 +3636,113 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               </div>
             ) : reportData ? (
               <div className="space-y-4">
-                {/* 评分卡片 */}
-                <div className="bg-gradient-to-br from-sky-400 to-indigo-500 rounded-[2rem] p-5 text-white relative overflow-hidden shadow-lg shadow-sky-200">
-                  <div className="absolute top-3 right-3 opacity-20">
-                    <Award size={50} />
+                {/* 报告头部 - 显示时间周期和重新生成按钮 */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">
+                      {reportData.period || aiPeriods.find(p => p.id === aiPeriod)?.label}复盘报告
+                    </span>
                   </div>
-                  <div className="relative z-10">
-                    <h3 className="text-sm font-bold opacity-80 mb-1">{reportData.period}综合评分</h3>
-                    <div className="flex items-end gap-2">
-                      <span className="text-4xl font-black">{reportData.score}</span>
-                      <span className="text-lg opacity-80 mb-1">/ 100</span>
-                    </div>
-                  </div>
+                  <button
+                    onClick={generateReport}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 transition-all"
+                  >
+                    <RefreshCw size={12} />
+                    重新生成
+                  </button>
                 </div>
 
-                {/* ===== Summary 总结部分 ===== */}
+                {/* ===== 📊 Summary 深度复盘 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
                       <Lightbulb size={18} className="text-purple-500" />
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">📋 Summary 总结</h4>
+                    <h4 className="font-black text-gray-800 text-lg">📊 Summary 深度复盘</h4>
                   </div>
                   
-                  <div className="space-y-3 text-sm text-gray-600 leading-relaxed">
-                    <p dangerouslySetInnerHTML={{ __html: reportData.summary.overview.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
-                    <p dangerouslySetInnerHTML={{ __html: reportData.summary.moodAnalysis.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
-                    <p dangerouslySetInnerHTML={{ __html: reportData.summary.timeOverview.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') }} />
+                  {/* 能量审计 */}
+                  <div className="mb-4">
+                    <h5 className="font-bold text-gray-700 mb-2">1. 能量审计 (Energy Audit)</h5>
+                    <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
+                      __html: (reportData.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') 
+                    }} />
+                  </div>
+                  
+                  {/* 行为信号 */}
+                  <div>
+                    <h5 className="font-bold text-gray-700 mb-2">2. 行为信号 (Behavioral Signals)</h5>
+                    <div className="space-y-2">
+                      <div className="bg-green-50 rounded-xl p-3">
+                        <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                          __html: (reportData.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
+                        }} />
+                      </div>
+                      <div className="bg-orange-50 rounded-xl p-3">
+                        <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                          __html: (reportData.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                        }} />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* 透支风险提示 */}
-                <div className={`rounded-2xl p-4 border-2 ${
-                  reportData.insights.burnoutRisk.level === 'warning' 
-                    ? 'bg-amber-50 border-amber-200' 
-                    : 'bg-green-50 border-green-200'
-                }`}>
-                  <h4 className={`font-bold mb-2 ${
-                    reportData.insights.burnoutRisk.level === 'warning' ? 'text-amber-700' : 'text-green-700'
-                  }`}>
-                    {reportData.insights.burnoutRisk.title}
-                  </h4>
-                  <p className="text-sm text-gray-600">{reportData.insights.burnoutRisk.content}</p>
-                </div>
-
-                {/* 理想与现实差距 */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                  <h4 className="font-bold text-gray-800 mb-3">{reportData.insights.gapAnalysis.title}</h4>
-                  
-                  {reportData.insights.gapAnalysis.overItems.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs text-red-500 font-bold mb-2">⬆️ 超出理想</p>
-                      {reportData.insights.gapAnalysis.overItems.map((item: any, i: number) => (
-                        <p key={i} className="text-sm text-gray-600 ml-4" dangerouslySetInnerHTML={{ 
-                          __html: item.message.replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-600">$1</strong>') 
-                        }} />
-                      ))}
-                    </div>
-                  )}
-                  
-                  {reportData.insights.gapAnalysis.underItems.length > 0 && (
-                    <div>
-                      <p className="text-xs text-blue-500 font-bold mb-2">⬇️ 低于理想</p>
-                      {reportData.insights.gapAnalysis.underItems.map((item: any, i: number) => (
-                        <p key={i} className="text-sm text-gray-600 ml-4" dangerouslySetInnerHTML={{ 
-                          __html: item.message.replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-600">$1</strong>') 
-                        }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 行为洞察 */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                  <h4 className="font-bold text-gray-800 mb-3">{reportData.insights.habits.title}</h4>
-                  
-                  {reportData.insights.habits.positive.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs text-green-600 font-bold mb-2">💚 坚持下去有益处</p>
-                      {reportData.insights.habits.positive.map((item: string, i: number) => (
-                        <p key={i} className="text-sm text-gray-600 mb-1">{item}</p>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {reportData.insights.habits.negative.length > 0 && (
-                    <div>
-                      <p className="text-xs text-orange-500 font-bold mb-2">🧡 需要注意调整</p>
-                      {reportData.insights.habits.negative.map((item: string, i: number) => (
-                        <p key={i} className="text-sm text-gray-600 mb-1">{item}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* ===== Advice 建议部分 ===== */}
+                {/* ===== 💡 Advice 未来指引 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <Brain size={18} className="text-sky-500" />
+                      <Lightbulb size={18} className="text-sky-500" />
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">💡 Advice 建议</h4>
+                    <h4 className="font-black text-sky-800 text-lg">💡 Advice 未来指引</h4>
                   </div>
 
-                  {/* 三个月愿景 */}
+                  {/* 三个月后的预警 */}
                   <div className="mb-5">
-                    <h5 className="font-bold text-gray-700 mb-2">{reportData.advice.futureVision.title}</h5>
-                    <div className="bg-white/60 rounded-xl p-3 space-y-2">
-                      <p className="text-sm text-green-700">✨ {reportData.advice.futureVision.positive}</p>
-                      <p className="text-sm text-amber-700">💭 {reportData.advice.futureVision.warning}</p>
+                    <h5 className="font-bold text-gray-700 mb-2">1. 三个月后的预警 (The 3-Month Trajectory)</h5>
+                    <div className="bg-white/60 rounded-xl p-3">
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                      }} />
                     </div>
                   </div>
 
-                  {/* 最需要保护的三件事 */}
+                  {/* 当前最需守护的三件事 */}
                   <div className="mb-5">
-                    <h5 className="font-bold text-gray-700 mb-2">{reportData.advice.protectList.title}</h5>
-                    <div className="grid grid-cols-3 gap-2">
-                      {reportData.advice.protectList.items.map((item: any, i: number) => (
-                        <div key={i} className="bg-white/60 rounded-xl p-3 text-center">
-                          <div className="text-2xl mb-1">{item.icon}</div>
-                          <p className="text-xs font-bold text-gray-700">{item.name}</p>
-                          <p className="text-[10px] text-gray-500 mt-1">{item.reason}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 时间调整建议 */}
-                  <div>
-                    <h5 className="font-bold text-gray-700 mb-2">{reportData.advice.timeAdjustment.title}</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">2. 当前最需守护的三件事 (Top 3 Protections)</h5>
                     <div className="space-y-2">
-                      {reportData.advice.timeAdjustment.suggestions.map((suggestion: string, i: number) => (
-                        <div key={i} className="flex items-start gap-2 bg-white/60 rounded-xl p-3">
-                          <span className="text-sky-500 font-bold">{i + 1}.</span>
-                          <p className="text-sm text-gray-700 flex-1" dangerouslySetInnerHTML={{ 
-                            __html: suggestion.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                      {(reportData.advice?.protections || []).map((item: string, i: number) => (
+                        <div key={i} className="bg-white/60 rounded-xl p-3">
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: item.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
                           }} />
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* 时间分布调整建议 */}
+                  <div>
+                    <h5 className="font-bold text-gray-700 mb-2">3. 时间分布调整建议 (Adjustment)</h5>
+                    <div className="bg-white/60 rounded-xl p-3">
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                      }} />
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="text-center py-8">
-                <div className="w-20 h-20 bg-sky-100 rounded-[2rem] mx-auto mb-4 flex items-center justify-center">
-                  <Brain size={40} className="text-sky-400" />
-                </div>
                 <p className="text-gray-500 text-sm mb-6">点击下方按钮生成{aiPeriods.find(p => p.id === aiPeriod)?.label}的AI复盘报告</p>
-                <Button onClick={generateReport} style={{ backgroundColor: '#7dd3fc' }}>
-                  <Brain size={20} />
+                <Button 
+                  onClick={generateReport} 
+                  style={{ 
+                    background: 'linear-gradient(90deg, #89CFF0 0%, #FFB6C1 100%)',
+                    boxShadow: '0 8px 25px rgba(137, 207, 240, 0.4), 0 8px 25px rgba(255, 182, 193, 0.3)',
+                    color: '#FFFFFF'
+                  }}
+                >
+                  <Sparkles size={20} />
                   生成 AI 复盘报告
                 </Button>
               </div>
@@ -2834,42 +3750,323 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           </div>
         )}
 
-        {/* 习惯打卡 */}
+        {/* 习惯追踪 */}
         {activeTab === 'habits' && (
-          <div className="pt-4 space-y-3">
-            {habits.map(habit => (
-              <div 
-                key={habit.id}
-                className={`bg-white rounded-2xl p-4 shadow-sm border-2 transition-all ${
-                  habit.completed ? 'border-green-200 bg-green-50/50' : 'border-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl">
-                    {habit.icon}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-gray-700">{habit.name}</h4>
-                    <p className="text-xs text-gray-400">已连续 {habit.streak} 天</p>
-                  </div>
-                  <button 
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                      habit.completed 
-                        ? 'bg-green-500 text-white' 
-                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                    }`}
-                  >
-                    <CheckCircle size={20} />
-                  </button>
+          <div className="pt-4 space-y-4">
+            {trackedHabits.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gray-100 rounded-[2rem] mx-auto mb-4 flex items-center justify-center">
+                  <Target size={40} className="text-gray-300" />
                 </div>
+                <p className="text-gray-400 text-sm mb-2">暂无追踪的习惯</p>
+                <p className="text-gray-300 text-xs">添加习惯并关联数据源开始追踪</p>
               </div>
-            ))}
+            ) : (
+              trackedHabits.map(habit => {
+                const currentMonth = getHabitMonth(habit.id);
+                const monthDays = getMonthDays(currentMonth.year, currentMonth.month);
+                const completedDays = monthDays.filter(d => isHabitCompletedOnDate(habit.linkedEventNames, d)).length;
+                const totalDays = monthDays.length;
+                const now = new Date();
+                const isCurrentMonth = currentMonth.year === now.getFullYear() && currentMonth.month === now.getMonth() + 1;
+                const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+                
+                // 获取该月第一天是星期几 (0=周日, 1=周一, ...)
+                const firstDayOfWeek = new Date(currentMonth.year, currentMonth.month - 1, 1).getDay();
+                // 转换为周一开始 (0=周一, 6=周日)
+                const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+                
+                return (
+                  <div key={habit.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    {/* 习惯头部 */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center text-xl">
+                          {habit.icon}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-700">{habit.name}</h4>
+                          <p className="text-xs text-gray-400 truncate max-w-[150px]">
+                            关联: {habit.linkedEventNames.length > 0 ? habit.linkedEventNames.join('、') : '未关联'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditingHabit(habit);
+                            setNewHabitName(habit.name);
+                            setNewHabitIcon(habit.icon);
+                            setNewHabitLinkedEvents(habit.linkedEventNames);
+                            setShowAddHabitModal(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('确定删除这个习惯吗？')) {
+                              setTrackedHabits(prev => prev.filter(h => h.id !== habit.id));
+                            }
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* 月份导航 */}
+                    <div className="flex items-center justify-between mb-3">
+                      <button
+                        onClick={() => changeHabitMonth(habit.id, -1)}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <div className="text-center">
+                        <span className="text-sm font-bold text-gray-700">
+                          {currentMonth.year}年{monthNames[currentMonth.month - 1]}
+                        </span>
+                        <span className="text-xs text-sky-500 ml-2">
+                          {completedDays}/{totalDays}天
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => changeHabitMonth(habit.id, 1)}
+                        className={`p-1.5 rounded-lg hover:bg-gray-100 ${isCurrentMonth ? 'text-gray-200 cursor-not-allowed' : 'text-gray-400'}`}
+                        disabled={isCurrentMonth}
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                    
+                    {/* 星期标题 */}
+                    <div className="grid grid-cols-7 gap-1 mb-1">
+                      {['一', '二', '三', '四', '五', '六', '日'].map(day => (
+                        <div key={day} className="text-center text-[10px] text-gray-400 font-medium">
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* 日历网格 */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {/* 空白占位 */}
+                      {Array.from({ length: startOffset }).map((_, idx) => (
+                        <div key={`empty-${idx}`} className="aspect-square" />
+                      ))}
+                      
+                      {/* 日期格子 */}
+                      {monthDays.map((dateStr, idx) => {
+                        const completed = isHabitCompletedOnDate(habit.linkedEventNames, dateStr);
+                        const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+                        const isToday = dateStr === todayStr;
+                        const isFuture = new Date(dateStr) > now;
+                        const day = parseInt(dateStr.split('-')[2]);
+                        
+                        return (
+                          <div
+                            key={idx}
+                            className={`aspect-square rounded-lg flex items-center justify-center text-[10px] relative ${
+                              isFuture 
+                                ? 'bg-gray-50/50 text-gray-200'
+                                : completed 
+                                  ? 'bg-green-100 text-green-600' 
+                                  : 'bg-gray-50 text-gray-400'
+                            } ${isToday ? 'ring-2 ring-sky-300' : ''}`}
+                            title={dateStr}
+                          >
+                            {completed && !isFuture ? (
+                              <Check size={12} className="text-green-500" />
+                            ) : (
+                              <span>{day}</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* 日历图例 */}
+                    <div className="flex items-center justify-end gap-3 mt-2 text-[10px] text-gray-400">
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 rounded bg-green-100 flex items-center justify-center">
+                          <Check size={8} className="text-green-500" />
+                        </div>
+                        <span>已完成</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 rounded bg-gray-50"></div>
+                        <span>未完成</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
             
             {/* 添加习惯按钮 */}
-            <button className="w-full py-4 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-bold flex items-center justify-center gap-2 hover:border-gray-400 hover:text-gray-500 transition-all">
+            <button 
+              onClick={() => {
+                setEditingHabit(null);
+                setNewHabitName('');
+                setNewHabitIcon('✨');
+                setNewHabitLinkedEvents([]);
+                setShowAddHabitModal(true);
+              }}
+              className="w-full py-4 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-bold flex items-center justify-center gap-2 hover:border-sky-300 hover:text-sky-400 transition-all"
+            >
               <Plus size={20} />
               添加新习惯
             </button>
+          </div>
+        )}
+
+        {/* 添加/编辑习惯弹窗 */}
+        {showAddHabitModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-black text-gray-800 mb-4">
+                {editingHabit ? '编辑习惯' : '添加新习惯'}
+              </h3>
+              
+              {/* 图标选择 */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">选择图标</label>
+                <div className="flex flex-wrap gap-2">
+                  {['✨', '🏃', '📚', '🧘', '💪', '🎯', '🌅', '💤', '🥗', '💧', '🎨', '🎵', '✍️', '🧠', '❤️', '🌟'].map(icon => (
+                    <button
+                      key={icon}
+                      onClick={() => setNewHabitIcon(icon)}
+                      className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
+                        newHabitIcon === icon 
+                          ? 'bg-sky-100 ring-2 ring-sky-400' 
+                          : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* 习惯名称 */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">习惯名称</label>
+                <input
+                  type="text"
+                  value={newHabitName}
+                  onChange={(e) => setNewHabitName(e.target.value)}
+                  placeholder="例如：每日运动"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-sky-400 focus:outline-none"
+                />
+              </div>
+              
+              {/* 关联事件（多选） */}
+              <div className="mb-6">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">
+                  关联数据源事件 
+                  <span className="text-xs text-gray-400 font-normal ml-1">（可多选）</span>
+                </label>
+                
+                {/* 已选择的事件 */}
+                {newHabitLinkedEvents.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {newHabitLinkedEvents.map(eventName => (
+                      <span 
+                        key={eventName}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-sky-100 text-sky-700 rounded-lg text-xs"
+                      >
+                        {eventName}
+                        <button
+                          onClick={() => setNewHabitLinkedEvents(prev => prev.filter(e => e !== eventName))}
+                          className="hover:text-sky-900"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                {/* 事件选择列表 */}
+                <div className="border border-gray-200 rounded-xl max-h-32 overflow-y-auto">
+                  {uniqueEventNames.length === 0 ? (
+                    <p className="text-xs text-gray-400 p-3 text-center">暂无可关联的事件</p>
+                  ) : (
+                    uniqueEventNames.map(name => (
+                      <button
+                        key={name}
+                        onClick={() => {
+                          if (newHabitLinkedEvents.includes(name)) {
+                            setNewHabitLinkedEvents(prev => prev.filter(e => e !== name));
+                          } else {
+                            setNewHabitLinkedEvents(prev => [...prev, name]);
+                          }
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover:bg-gray-50 ${
+                          newHabitLinkedEvents.includes(name) ? 'bg-sky-50' : ''
+                        }`}
+                      >
+                        <span>{name}</span>
+                        {newHabitLinkedEvents.includes(name) && (
+                          <Check size={14} className="text-sky-500" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">任一关联事件有记录时，习惯自动标记为完成</p>
+              </div>
+              
+              {/* 按钮 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddHabitModal(false);
+                    setEditingHabit(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    if (!newHabitName.trim()) {
+                      alert('请输入习惯名称');
+                      return;
+                    }
+                    if (newHabitLinkedEvents.length === 0) {
+                      alert('请至少选择一个关联事件');
+                      return;
+                    }
+                    
+                    if (editingHabit) {
+                      setTrackedHabits(prev => prev.map(h => 
+                        h.id === editingHabit.id 
+                          ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents }
+                          : h
+                      ));
+                    } else {
+                      setTrackedHabits(prev => [...prev, {
+                        id: Date.now().toString(),
+                        name: newHabitName,
+                        icon: newHabitIcon,
+                        linkedEventNames: newHabitLinkedEvents
+                      }]);
+                    }
+                    
+                    setShowAddHabitModal(false);
+                    setEditingHabit(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl text-white font-bold"
+                  style={{ backgroundColor: '#89CFF0' }}
+                >
+                  {editingHabit ? '保存' : '添加'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -2897,7 +4094,11 @@ const PlanView = ({
   newTaskName,
   setNewTaskName,
   newTaskDuration,
-  setNewTaskDuration
+  setNewTaskDuration,
+  timeRecords,
+  setTimeRecords,
+  globalTimers,
+  setGlobalTimers
 }: { 
   pomodoroSettings: PomodoroSettings;
   step: 'setup' | 'generating' | 'schedule';
@@ -2930,6 +4131,10 @@ const PlanView = ({
   setNewTaskName: (name: string) => void;
   newTaskDuration: number;
   setNewTaskDuration: (duration: number) => void;
+  timeRecords: TimeRecord[];
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
+  globalTimers: Timer[];
+  setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
@@ -2940,6 +4145,9 @@ const PlanView = ({
   const [elapsedTime, setElapsedTime] = useState<number>(0); // 正计时用
   const [timerStatus, setTimerStatus] = useState<'idle' | 'running' | 'paused'>('idle');
   const [timerMode, setTimerMode] = useState<'countdown' | 'countup' | 'pomodoro'>('countdown');
+  const [timerStartTime, setTimerStartTime] = useState<Date | null>(null); // 记录计时开始时间
+  const [timerStartTimestamp, setTimerStartTimestamp] = useState<number | null>(null); // 持久化用时间戳
+  const [currentTaskName, setCurrentTaskName] = useState<string>(''); // 当前任务名称
   
   // 番茄钟状态
   const [pomodoroConfig, setPomodoroConfig] = useState({
@@ -2951,12 +4159,126 @@ const PlanView = ({
   const [currentPomodoroRound, setCurrentPomodoroRound] = useState(1);
   const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break' | 'longBreak'>('work');
   
+  // 铃声播放状态
+  const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
+  
   // 计时模式选择弹窗
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
-  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number} | null>(null);
+  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string} | null>(null);
+  const [showPomodoroSettings, setShowPomodoroSettings] = useState(false);
+  const [showCountdownSettings, setShowCountdownSettings] = useState(false);
+  const [countdownDuration, setCountdownDuration] = useState(25);
+  
+  // 切换计时确认弹窗
+  const [showSwitchTimerConfirm, setShowSwitchTimerConfirm] = useState(false);
+  const [pendingSwitchTask, setPendingSwitchTask] = useState<{id: string, duration: number, name: string, pomodoroSlots?: any[]} | null>(null);
   
   // 编辑模式状态
   const [isEditMode, setIsEditMode] = useState(false);
+  
+  // 编辑任务状态
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskName, setEditTaskName] = useState('');
+  const [editTaskDuration, setEditTaskDuration] = useState(25);
+  
+  // 状态区块折叠状态
+  // 折叠状态管理 - 统一控制四个状态区块
+  const [isStatusSectionExpanded, setIsStatusSectionExpanded] = useState(false);
+
+  // 精神状态子选项
+  const [mentalSubOption, setMentalSubOption] = useState<string>('');
+  
+  // 精神状态子选项配置
+  const mentalSubOptions: Record<string, string[]> = {
+    tired: ['没睡好', '工作了太久'],
+    nervous: ['工作压力大', '金钱压力大'],
+    sad: ['跟伴侣吵架', '跟家人吵架'],
+    angry: ['讨厌原生家庭', '讨厌自己', '讨厌老板同事']
+  };
+
+  // 从localStorage恢复计时器状态
+  useEffect(() => {
+    const persistentState = loadPersistentTimerState();
+    if (persistentState?.planTimer && persistentState.planTimer.status !== 'idle') {
+      const { planTimer } = persistentState;
+      
+      if (planTimer.startTimestamp) {
+        // 恢复计时器模式和配置
+        setTimerMode(planTimer.timerMode);
+        setPomodoroConfig(planTimer.pomodoroConfig);
+        setCurrentPomodoroRound(planTimer.currentPomodoroRound);
+        setPomodoroPhase(planTimer.pomodoroPhase);
+        setActiveTimerId(planTimer.activeTimerId);
+        setCurrentTaskName(planTimer.taskName);
+        
+        if (planTimer.status === 'running') {
+          // 计算当前时间
+          const { remainingTime: calcRemaining, elapsedTime: elapsed, isCompleted } = calculateCurrentTime(
+            planTimer.startTimestamp,
+            planTimer.totalDuration,
+            planTimer.timerMode
+          );
+          
+          if (isCompleted) {
+            // 计时已完成，播放铃声
+            alarmPlayer.play(10000);
+            setIsAlarmPlaying(true);
+            setTimeout(() => setIsAlarmPlaying(false), 10000);
+            
+            setTimerStatus('idle');
+            setActiveTimerId(null);
+            
+            // 清除持久化状态
+            savePersistentTimerState({ ...persistentState, planTimer: null });
+          } else {
+            // 恢复运行状态
+            setTimerStartTimestamp(planTimer.startTimestamp);
+            setElapsedTime(elapsed);
+            setRemainingTime(calcRemaining);
+            setTimerStatus('running');
+          }
+        } else if (planTimer.status === 'paused' && planTimer.pausedAt !== null) {
+          // 恢复暂停状态
+          if (planTimer.timerMode === 'countup') {
+            setElapsedTime(planTimer.pausedAt);
+          } else {
+            setRemainingTime(planTimer.pausedAt);
+          }
+          setTimerStatus('paused');
+        }
+      }
+    }
+  }, []);
+
+  // 保存计时器状态到localStorage
+  useEffect(() => {
+    if (timerStatus === 'running' || timerStatus === 'paused') {
+      const persistentState = loadPersistentTimerState() || { focusTimer: null, planTimer: null };
+      
+      const planTimerState = {
+        activeTimerId,
+        timerMode,
+        startTimestamp: timerStartTimestamp,
+        pausedAt: timerStatus === 'paused' 
+          ? (timerMode === 'countup' ? elapsedTime : remainingTime)
+          : null,
+        totalDuration: timerMode === 'countup' ? 0 : countdownDuration * 60,
+        pomodoroConfig,
+        currentPomodoroRound,
+        pomodoroPhase,
+        status: timerStatus as 'running' | 'paused',
+        taskName: currentTaskName
+      };
+      
+      savePersistentTimerState({ ...persistentState, planTimer: planTimerState });
+    } else if (timerStatus === 'idle') {
+      // 清除持久化状态
+      const persistentState = loadPersistentTimerState();
+      if (persistentState) {
+        savePersistentTimerState({ ...persistentState, planTimer: null });
+      }
+    }
+  }, [timerStatus, activeTimerId, timerStartTimestamp, elapsedTime, remainingTime, timerMode, pomodoroConfig, currentPomodoroRound, pomodoroPhase, currentTaskName, countdownDuration]);
 
   // 计时器逻辑
   useEffect(() => {
@@ -2973,6 +4295,10 @@ const PlanView = ({
             if (prev <= 1) {
               setTimerStatus('idle');
               setActiveTimerId(null);
+              // 倒计时结束，播放铃声
+              alarmPlayer.play(10000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000);
               return 0;
             }
             return prev - 1;
@@ -2981,21 +4307,32 @@ const PlanView = ({
           // 番茄钟模式
           setRemainingTime(prev => {
             if (prev <= 1) {
-              // 当前阶段结束，切换到下一阶段
+              // 当前阶段结束，播放铃声提醒
+              alarmPlayer.play(10000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000);
+              
+              // 切换到下一阶段
               if (pomodoroPhase === 'work') {
                 // 工作结束，判断是否需要长休息
                 if (currentPomodoroRound >= pomodoroConfig.rounds) {
                   setPomodoroPhase('longBreak');
                   setCurrentPomodoroRound(1);
+                  // 更新时间戳
+                  setTimerStartTimestamp(Date.now());
                   return pomodoroConfig.longBreakDuration * 60;
                 } else {
                   setPomodoroPhase('break');
+                  // 更新时间戳
+                  setTimerStartTimestamp(Date.now());
                   return pomodoroConfig.breakDuration * 60;
                 }
               } else if (pomodoroPhase === 'break') {
                 // 短休息结束，开始下一轮工作
                 setPomodoroPhase('work');
                 setCurrentPomodoroRound(prev => prev + 1);
+                // 更新时间戳
+                setTimerStartTimestamp(Date.now());
                 return pomodoroConfig.workDuration * 60;
               } else {
                 // 长休息结束，完成整个番茄钟周期
@@ -3016,16 +4353,78 @@ const PlanView = ({
     };
   }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig]);
 
+  // 监听计时器完成，保存记录
+  useEffect(() => {
+    if (timerStatus === 'idle' && timerStartTime && currentTaskName) {
+      // 计时器完成时保存记录
+      const endTime = new Date();
+      const formatTimeStr = (date: Date) => {
+        return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      };
+      const formatDateStr = (date: Date) => {
+        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+      };
+      
+      const newRecord: TimeRecord = {
+        id: `plan_timer_${Date.now()}`,
+        name: currentTaskName,
+        date: formatDateStr(timerStartTime),
+        startTime: formatTimeStr(timerStartTime),
+        endTime: formatTimeStr(endTime),
+        source: 'timer',
+        categoryId: 'uncategorized',
+        createdAt: Date.now()
+      };
+      
+      setTimeRecords([...timeRecords, newRecord]);
+      setTimerStartTime(null);
+      setCurrentTaskName('');
+    }
+  }, [timerStatus]);
+
   // 打开计时模式选择弹窗
-  const openTimerModeModal = (taskId: string, duration: number) => {
-    setPendingTimerTask({ id: taskId, duration });
-    // 设置番茄钟默认参数与全局番茄钟设置一致
-    setPomodoroConfig({
-      workDuration: pomodoroSettings.workDuration,
-      breakDuration: pomodoroSettings.breakDuration,
-      rounds: pomodoroSettings.rounds,
-      longBreakDuration: pomodoroSettings.longBreakDuration
-    });
+  const openTimerModeModal = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+    // 检查是否有正在进行的计时
+    if (timerStatus === 'running' || timerStatus === 'paused') {
+      // 如果点击的是当前正在计时的任务，不做任何操作
+      if (activeTimerId === taskId) return;
+      
+      // 显示确认弹窗
+      setPendingSwitchTask({ id: taskId, duration, name: taskName, pomodoroSlots });
+      setShowSwitchTimerConfirm(true);
+      return;
+    }
+    
+    // 没有正在进行的计时，直接打开模式选择弹窗
+    openTimerModeModalDirect(taskId, duration, taskName, pomodoroSlots);
+  };
+  
+  // 直接打开计时模式选择弹窗（不检查当前计时状态）
+  const openTimerModeModalDirect = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+    setPendingTimerTask({ id: taskId, duration, name: taskName });
+    // 设置默认倒计时时长为AI计划的时长
+    setCountdownDuration(duration);
+    setShowCountdownSettings(false);
+    // 如果任务有番茄钟配置，使用任务的配置并默认展开番茄钟设置；否则使用全局设置
+    if (pomodoroSlots && pomodoroSlots.length > 0) {
+      // 从AI生成的番茄钟配置中推断参数
+      setPomodoroConfig({
+        workDuration: pomodoroSettings.workDuration,
+        breakDuration: pomodoroSettings.breakDuration,
+        rounds: pomodoroSlots.length,
+        longBreakDuration: pomodoroSettings.longBreakDuration
+      });
+      // 默认展开番茄钟设置
+      setShowPomodoroSettings(true);
+    } else {
+      setPomodoroConfig({
+        workDuration: pomodoroSettings.workDuration,
+        breakDuration: pomodoroSettings.breakDuration,
+        rounds: pomodoroSettings.rounds,
+        longBreakDuration: pomodoroSettings.longBreakDuration
+      });
+      setShowPomodoroSettings(false);
+    }
     setShowTimerModeModal(true);
   };
 
@@ -3036,10 +4435,31 @@ const PlanView = ({
     setTimerMode(mode);
     setActiveTimerId(pendingTimerTask.id);
     
+    // 记录开始时间和任务名称
+    setTimerStartTime(new Date());
+    setTimerStartTimestamp(Date.now()); // 持久化用时间戳
+    setCurrentTaskName(pendingTimerTask.name);
+    
+    // 添加计时器到全局计时器列表（待分类），按名称去重
+    const existingTimer = globalTimers.find(t => t.categoryId === 'uncategorized' && t.name === pendingTimerTask.name);
+    if (!existingTimer) {
+      const newTimer: Timer = {
+        id: `plan_${Date.now()}`,
+        name: pendingTimerTask.name,
+        icon: '📋',
+        categoryId: 'uncategorized',
+        duration: mode === 'countdown' ? countdownDuration : pendingTimerTask.duration,
+        remainingTime: (mode === 'countdown' ? countdownDuration : pendingTimerTask.duration) * 60,
+        status: 'running',
+        createdAt: Date.now()
+      };
+      setGlobalTimers([...globalTimers, newTimer]);
+    }
+    
     if (mode === 'countup') {
       setElapsedTime(0);
     } else if (mode === 'countdown') {
-      setRemainingTime(pendingTimerTask.duration * 60);
+      setRemainingTime(countdownDuration * 60);
     } else if (mode === 'pomodoro') {
       setRemainingTime(pomodoroConfig.workDuration * 60);
       setPomodoroPhase('work');
@@ -3051,9 +4471,69 @@ const PlanView = ({
     setPendingTimerTask(null);
   };
 
+  // 保存计时记录到timeRecords
+  const saveTimeRecord = () => {
+    if (!timerStartTime || !currentTaskName) return;
+    
+    const endTime = new Date();
+    const formatTimeStr = (date: Date) => {
+      return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    };
+    const formatDateStr = (date: Date) => {
+      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    };
+    
+    const newRecord: TimeRecord = {
+      id: `plan_timer_${Date.now()}`,
+      name: currentTaskName,
+      date: formatDateStr(timerStartTime),
+      startTime: formatTimeStr(timerStartTime),
+      endTime: formatTimeStr(endTime),
+      source: 'timer',
+      categoryId: 'uncategorized',
+      createdAt: Date.now()
+    };
+    
+    setTimeRecords([...timeRecords, newRecord]);
+  };
+
   // 开始计时（旧方法保留兼容）
-  const startTimer = (taskId: string, duration: number) => {
-    openTimerModeModal(taskId, duration);
+  const startTimer = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+    openTimerModeModal(taskId, duration, taskName, pomodoroSlots);
+  };
+  
+  // 确认切换计时（停止当前计时，开始新计时）
+  const confirmSwitchTimer = () => {
+    if (!pendingSwitchTask) return;
+    
+    // 保存当前计时记录
+    saveTimeRecord();
+    
+    // 停止当前计时
+    setTimerStatus('idle');
+    setActiveTimerId(null);
+    setRemainingTime(0);
+    setElapsedTime(0);
+    setPomodoroPhase('work');
+    setCurrentPomodoroRound(1);
+    
+    // 关闭确认弹窗
+    setShowSwitchTimerConfirm(false);
+    
+    // 打开新任务的计时模式选择弹窗
+    openTimerModeModalDirect(
+      pendingSwitchTask.id, 
+      pendingSwitchTask.duration, 
+      pendingSwitchTask.name, 
+      pendingSwitchTask.pomodoroSlots
+    );
+    setPendingSwitchTask(null);
+  };
+  
+  // 取消切换计时
+  const cancelSwitchTimer = () => {
+    setShowSwitchTimerConfirm(false);
+    setPendingSwitchTask(null);
   };
 
   // 暂停计时
@@ -3063,17 +4543,79 @@ const PlanView = ({
 
   // 继续计时
   const resumeTimer = () => {
+    // 继续计时时更新时间戳（基于当前剩余时间计算）
+    if (timerMode === 'countup') {
+      // 正计时：时间戳 = 当前时间 - 已过时间
+      setTimerStartTimestamp(Date.now() - elapsedTime * 1000);
+    } else {
+      // 倒计时/番茄钟：时间戳 = 当前时间 - (总时长 - 剩余时间)
+      const totalDuration = timerMode === 'pomodoro' 
+        ? (pomodoroPhase === 'work' ? pomodoroConfig.workDuration : 
+           pomodoroPhase === 'break' ? pomodoroConfig.breakDuration : pomodoroConfig.longBreakDuration) * 60
+        : countdownDuration * 60;
+      setTimerStartTimestamp(Date.now() - (totalDuration - remainingTime) * 1000);
+    }
     setTimerStatus('running');
   };
 
   // 停止计时
   const stopTimer = () => {
+    // 保存计时记录
+    if (timerStartTime && currentTaskName) {
+      saveTimeRecord();
+    }
+    
     setActiveTimerId(null);
     setRemainingTime(0);
     setElapsedTime(0);
     setTimerStatus('idle');
     setPomodoroPhase('work');
     setCurrentPomodoroRound(1);
+    setTimerStartTime(null);
+    setTimerStartTimestamp(null);
+    setCurrentTaskName('');
+  };
+
+  // 跳过当前番茄钟阶段（提前休息/提前结束休息）
+  const skipPomodoroPhase = () => {
+    if (timerMode !== 'pomodoro') return;
+    
+    if (pomodoroPhase === 'work') {
+      // 当前是专注阶段，跳到休息
+      if (currentPomodoroRound >= pomodoroConfig.rounds) {
+        // 已经是最后一轮，直接完成番茄钟
+        setTimerStatus('idle');
+        setActiveTimerId(null);
+        setRemainingTime(0);
+        setPomodoroPhase('work');
+        setCurrentPomodoroRound(1);
+        // 保存记录
+        saveTimeRecord();
+        setTimerStartTime(null);
+        setCurrentTaskName('');
+        return;
+      } else {
+        // 进入短休息
+        setPomodoroPhase('break');
+        setRemainingTime(pomodoroConfig.breakDuration * 60);
+      }
+    } else if (pomodoroPhase === 'break') {
+      // 当前是短休息，跳到下一轮专注
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(prev => prev + 1);
+      setRemainingTime(pomodoroConfig.workDuration * 60);
+    } else {
+      // 当前是长休息，完成番茄钟
+      setTimerStatus('idle');
+      setActiveTimerId(null);
+      setRemainingTime(0);
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(1);
+      // 保存记录
+      saveTimeRecord();
+      setTimerStartTime(null);
+      setCurrentTaskName('');
+    }
   };
 
   // 格式化剩余时间
@@ -3143,7 +4685,34 @@ const PlanView = ({
     setTasks(tasks.filter(t => t.id !== id));
   };
 
-  const callDeepSeekAPI = async (prompt: string) => {
+  const updateTask = (id: string, name: string, duration: number) => {
+    setTasks(tasks.map(t => 
+      t.id === id ? { ...t, name: name.trim(), duration } : t
+    ));
+  };
+
+  const startEditTask = (task: {id: string, name: string, duration: number}) => {
+    setEditingTaskId(task.id);
+    setEditTaskName(task.name);
+    setEditTaskDuration(task.duration);
+  };
+
+  const saveEditTask = () => {
+    if (editingTaskId && editTaskName.trim()) {
+      updateTask(editingTaskId, editTaskName, editTaskDuration);
+      setEditingTaskId(null);
+      setEditTaskName('');
+      setEditTaskDuration(25);
+    }
+  };
+
+  const cancelEditTask = () => {
+    setEditingTaskId(null);
+    setEditTaskName('');
+    setEditTaskDuration(25);
+  };
+
+  const callDeepSeekAPI = async (prompt: string, onProgress?: (text: string) => void) => {
     try {
       const response = await fetch('/api/deepseek', {
         method: 'POST',
@@ -3164,7 +4733,8 @@ const PlanView = ({
             }
           ],
           temperature: 0.7,
-          max_tokens: 2000
+          max_tokens: 2000,
+          stream: true
         })
       });
 
@@ -3172,8 +4742,42 @@ const PlanView = ({
         throw new Error(`API请求失败: ${response.status}`);
       }
 
-      const data = await response.json();
-      return data.choices[0].message.content;
+      // 处理流式响应
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+
+      if (!reader) {
+        throw new Error('无法读取响应流');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content || '';
+              if (content) {
+                fullContent += content;
+                onProgress?.(fullContent);
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+
+      return fullContent;
     } catch (error) {
       console.error('DeepSeek API调用失败:', error);
       throw error;
@@ -3227,6 +4831,15 @@ const PlanView = ({
       // 番茄钟设置说明
       const pomodoroInfo = `番茄钟设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟`;
 
+      // 精神状态详细描述（包含子选项）
+      let mentalDetailText = mentalStatusText;
+      if (mentalSubOption) {
+        mentalDetailText += `，原因是：${mentalSubOption}`;
+      }
+
+      // 需要安慰语句的精神状态
+      const needsComfort = ['tired', 'anxious', 'nervous', 'sad', 'angry'].includes(mentalStatus);
+
       const prompt = `请为我制定今日时间安排：
 
 当前时间：${currentHour}:${currentMinute.toString().padStart(2, '0')}
@@ -3234,21 +4847,43 @@ const PlanView = ({
 
 今日任务：${tasksText || '无特定任务'}
 需要安排的生活事项：${lifestyleText || '无'}
-当前精神状态：${mentalStatusText}
+当前精神状态：${mentalDetailText}
 当前身体状态：${bodyStatusText}
 ${pomodoroInfo}
 
 请根据以上信息，制定一个合理的时间安排。要求：
 1. 考虑当前时间，从现在开始安排
 2. 根据精神状态调整任务难度和休息时间
-3. 合理安排生活事项（用餐、洗漱等）
+3. 合理安排生活事项（用餐、洗漱等），注意：
+   - "晨间洗漱"只能安排在6:00-13:00之间，如果当前时间已过13:00则不要安排
+   - "晚间洗漱"只能安排在20:00到凌晨4:00之间
+   - "早餐"只能安排在6:00-12:00之间
+   - "午餐"只能安排在10:00-14:00之间
+   - "晚餐"只能安排在17:00-22:00之间
+   - 如果当前时间已经错过某个生活事项的合理时间段，则不要安排该事项
 4. 确保在睡觉时间前完成所有安排
 5. 任务之间留出适当的休息时间
 6. 每个任务都要给出一条简短的执行建议（advice字段）
 7. 对于需要久坐（持续时间超过40分钟）的任务，需要按照番茄钟设置拆分成多个番茄钟时间段（pomodoroSlots字段），每个时间段包含工作开始时间、工作结束时间、休息结束时间
+8. 任务名称必须保持用户输入的原始名称，不要添加"第x部分"、"Part x"等后缀
+${needsComfort ? `9. 由于用户当前精神状态不佳（${mentalDetailText}），请以专业心理医生的角色，在comfortSection字段中提供治愈内容。要求：
+   - words: 2-3句默读话语，必须使用第一人称"我"来写，让用户默读时产生沉浸感
+     例如："我允许自己感到疲惫"、"我值得被温柔对待"
+   - actionTip: 1条简短的行动建议，帮助用户通过具体行动改善状态
+     例如："起身倒杯温水，慢慢喝下"、"站起来伸展一下身体"
+   - breathingTip: 1条呼吸练习建议，帮助用户平复情绪
+     例如："深吸气4秒，屏住4秒，缓慢呼出6秒，重复3次"
+   - 基于认知行为疗法或正念疗法的原则
+   - 帮助用户接纳当前情绪，而不是否定它
+   - 语气温暖、专业、有力量` : ''}
 
 请以JSON格式返回，格式如下：
 {
+  ${needsComfort ? `"comfortSection": {
+    "words": ["我允许自己...", "我值得...", "我正在..."],
+    "actionTip": "起身倒杯温水，慢慢喝下",
+    "breathingTip": "深吸气4秒，屏住4秒，缓慢呼出6秒，重复3次"
+  },` : ''}
   "schedule": [
     {
       "id": "task1",
@@ -3274,21 +4909,51 @@ ${pomodoroInfo}
 注意：
 - advice字段必须为每个任务提供
 - pomodoroSlots字段只有当任务duration超过40分钟时才需要提供
-- 番茄钟时间段要严格按照设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟`;
+- 番茄钟时间段要严格按照设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟
+${needsComfort ? '- comfortSection字段必须提供，包含words（默读话语）、actionTip（行动建议）、breathingTip（呼吸建议）' : ''}`;
 
-      setGeneratingStatus('正在调用DeepSeek API...');
-      const aiResponse = await callDeepSeekAPI(prompt);
+      setGeneratingStatus('AI正在思考...');
+      const aiResponse = await callDeepSeekAPI(prompt, (content) => {
+        // 实时显示生成进度
+        const charCount = content.length;
+        if (charCount < 100) {
+          setGeneratingStatus('AI正在分析你的任务...');
+        } else if (charCount < 300) {
+          setGeneratingStatus('AI正在规划时间安排...');
+        } else if (charCount < 600) {
+          setGeneratingStatus('AI正在优化建议...');
+        } else {
+          setGeneratingStatus('即将完成...');
+        }
+      });
       
       setGeneratingStatus('正在解析AI响应...');
       // 解析AI返回的JSON
       let parsedSchedule;
       try {
         // 尝试提取JSON部分
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        let jsonStr = aiResponse;
+        
+        // 移除可能的markdown代码块标记
+        jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        
+        // 尝试匹配最外层的JSON对象
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          parsedSchedule = JSON.parse(jsonMatch[0]);
+          // 清理可能的控制字符
+          let cleanJson = jsonMatch[0]
+            .replace(/[\x00-\x1F\x7F]/g, ' ')  // 移除控制字符
+            .replace(/,\s*}/g, '}')  // 移除尾随逗号
+            .replace(/,\s*]/g, ']'); // 移除数组尾随逗号
+          
+          parsedSchedule = JSON.parse(cleanJson);
         } else {
           throw new Error('无法从AI响应中提取JSON');
+        }
+        
+        // 验证必要字段
+        if (!parsedSchedule.schedule || !Array.isArray(parsedSchedule.schedule)) {
+          throw new Error('AI响应缺少schedule字段');
         }
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError);
@@ -3319,7 +4984,8 @@ ${pomodoroInfo}
 
       const finalSchedule = {
         bedtimeMs: new Date().setHours(parseInt(bedtime.split(':')[0]), parseInt(bedtime.split(':')[1]), 0, 0),
-        schedule: scheduleWithTimestamps
+        schedule: scheduleWithTimestamps,
+        comfortSection: parsedSchedule.comfortSection || null
       };
       
       setScheduleData(finalSchedule);
@@ -3348,14 +5014,19 @@ ${pomodoroInfo}
 
   if (step === 'generating') {
     return (
-      <div className="flex flex-col h-full items-center justify-center p-6 relative overflow-hidden">
+      <div 
+        className="flex flex-col h-full items-center justify-center p-6 relative overflow-hidden"
+        style={{ background: 'linear-gradient(180deg, #F0F5FF 0%, #FFFFFF 100%)' }}
+      >
         {/* 背景装饰 */}
         <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-teal-100 blur-2xl opacity-50"></div>
         <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-orange-100 blur-xl opacity-40"></div>
         
         <div className="text-center z-10">
-          <div className="w-20 h-20 bg-gradient-to-br from-teal-400 to-emerald-400 rounded-[2rem] mx-auto mb-6 flex items-center justify-center animate-pulse shadow-lg shadow-teal-200">
-            <Brain size={40} className="text-white" />
+          {/* 呼吸光圈 */}
+          <div className="relative w-24 h-24 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full bg-[#81ECEC] opacity-30" style={{ animation: 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite' }}></div>
+            <div className="absolute inset-0 rounded-full bg-[#00D2D3]" style={{ animation: 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
           </div>
           <h3 className="text-xl font-black text-teal-700 mb-2">AI 正在规划中...</h3>
           <p className="text-gray-500 text-sm mb-8">DeepSeek正在为你制定最佳时间安排</p>
@@ -3396,7 +5067,7 @@ ${pomodoroInfo}
 
   if (step === 'schedule' && scheduleData) {
     return (
-      <div className="flex flex-col h-full bg-[#FFFDF7]">
+      <div className="flex flex-col h-full" style={{ background: 'linear-gradient(135deg, #F0FFF4 0%, #E6FFFA 100%)' }}>
         {/* 头部 */}
         <div className="px-6 pt-8 pb-4 flex justify-between items-center">
           <button 
@@ -3405,14 +5076,14 @@ ${pomodoroInfo}
           >
             <ChevronLeft size={24} />
           </button>
-          <span className="font-bold text-[#2D2D2D]">今日规划</span>
+          <span className="font-bold text-[#2D3436]">今日规划</span>
           <div className="flex items-center gap-2">
             {isEditMode ? (
               <button 
                 onClick={saveScheduleChanges}
                 className="text-green-500 font-bold p-2"
               >
-                <Save size={20} />
+                <Check size={20} />
               </button>
             ) : (
               <button 
@@ -3435,43 +5106,116 @@ ${pomodoroInfo}
         {isEditMode && (
           <div className="mx-6 mb-4 bg-blue-50 rounded-2xl p-3 border border-blue-100">
             <p className="text-sm text-blue-600 font-medium">
-              📝 编辑模式：拖动调整顺序，点击删除事项，保存后自动重排时间
+              📝 可通过点击上下箭头调整事项顺序、或者直接删除不想要的事项，保存后将自动重排时间
             </p>
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto px-6 pb-6">
-          {/* 睡觉时间提醒 */}
-          <div className="bg-gradient-to-r from-purple-500 to-blue-500 rounded-3xl p-5 text-white mb-6 relative overflow-hidden">
-            <div className="absolute top-4 right-4 opacity-20">
-              <Moon size={40} />
+          {/* 安慰语句卡片 */}
+          {scheduleData.comfortSection && (
+            <div className="rounded-3xl p-5 mb-6 relative overflow-hidden border border-white/50 shadow-sm" style={{ backgroundColor: '#FFF3E0' }}>
+              <div className="absolute top-3 right-3 opacity-30">
+                <Heart size={32} className="text-[#FFAB91]" />
+              </div>
+              <div className="relative z-10">
+                {/* 默读话语 */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">💝</span>
+                  <h3 className="text-sm font-black text-[#5D4037]">在开始之前，请默读以下话语</h3>
+                </div>
+                <div className="space-y-3 mb-4">
+                  {scheduleData.comfortSection.words?.map((word: string, index: number) => (
+                    <p key={index} className="text-sm leading-relaxed pl-4 border-l-2" style={{ color: '#5D4037', borderLeftColor: '#FFAB91' }}>
+                      {word}
+                    </p>
+                  ))}
+                </div>
+                
+                {/* 行动建议 */}
+                {scheduleData.comfortSection.actionTip && (
+                  <div className="flex items-start gap-2 mb-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,171,145,0.2)' }}>
+                    <span className="text-base">🚶</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">行动建议</h4>
+                      <p className="text-sm text-[#5D4037]">{scheduleData.comfortSection.actionTip}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* 呼吸建议 */}
+                {scheduleData.comfortSection.breathingTip && (
+                  <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,171,145,0.2)' }}>
+                    <span className="text-base">🌬️</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">呼吸练习</h4>
+                      <p className="text-sm text-[#5D4037]">{scheduleData.comfortSection.breathingTip}</p>
+                    </div>
+                  </div>
+                )}
+                
+                <p className="text-[10px] mt-4 text-center" style={{ color: '#5D4037', opacity: 0.7 }}>
+                  深呼吸，你已经做得很好了 ✨
+                </p>
+              </div>
             </div>
-            <div className="relative z-10">
-              <h3 className="text-lg font-black mb-1">建议睡觉时间</h3>
-              <p className="text-2xl font-black">{bedtime}</p>
-              <p className="text-sm opacity-90 mt-1">保证充足睡眠，明天更有活力</p>
-            </div>
-          </div>
+          )}
 
           {/* 时间安排列表 */}
-          <div className="space-y-3">
-            {scheduleData.schedule.map((item: any, index: number) => {
-              const typeColors = {
-                pomodoro: { bg: '#42D4A4', light: '#E0F9F1' },
-                life: { bg: '#FF9F1C', light: '#FFF2DB' },
-                rest: { bg: '#6CB6FF', light: '#EAF4FF' }
-              };
-              const colors = typeColors[item.type as keyof typeof typeColors] || typeColors.pomodoro;
-              const isActive = activeTimerId === (item.id || `task-${index}`);
-              const taskId = item.id || `task-${index}`;
+          <div className="relative">
+            {(() => {
+              const now = Date.now();
+              let timelineInserted = false;
+              const totalItems = scheduleData.schedule.length;
               
-              return (
-                <div 
-                  key={taskId} 
-                  className={`bg-white rounded-3xl p-4 shadow-sm border-2 transition-all ${
-                    isActive ? 'border-green-400 shadow-lg' : isEditMode ? 'border-blue-200' : 'border-gray-50'
-                  }`}
-                >
+              return scheduleData.schedule.map((item: any, index: number) => {
+                const isActive = activeTimerId === (item.id || `task-${index}`);
+                const taskId = item.id || `task-${index}`;
+                const isPast = item.end < now;
+                const isLast = index === totalItems - 1;
+                
+                // 判断是否需要在此任务前插入时间线
+                const prevItem = index > 0 ? scheduleData.schedule[index - 1] : null;
+                const shouldInsertTimeline = !timelineInserted && !isPast && (prevItem ? prevItem.end < now : true) && item.start > now;
+                if (shouldInsertTimeline) timelineInserted = true;
+                
+                return (
+                  <div key={taskId} className="relative">
+                    {/* 当前时间线 */}
+                    {shouldInsertTimeline && (
+                      <div className="flex items-center gap-3 py-2 mb-5">
+                        <div className="w-3 h-3 rounded-full bg-[#00B894] shadow-lg shadow-[#00B894]/50"></div>
+                        <div className="flex-1 h-[2px] bg-gradient-to-r from-[#00B894] to-transparent"></div>
+                        <span className="text-xs font-bold text-[#00B894] whitespace-nowrap">
+                          现在 {new Date().getHours().toString().padStart(2, '0')}:{new Date().getMinutes().toString().padStart(2, '0')}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <div 
+                      className={`rounded-3xl shadow-sm border-2 transition-all overflow-hidden ${
+                        isActive ? 'border-green-400 shadow-lg' : isEditMode ? 'border-blue-200' : 'border-gray-50'
+                      } ${isPast && !isEditMode ? 'opacity-50' : ''}`}
+                    >
+                  {/* 顶部时间横条 */}
+                  <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#E0F2F1' }}>
+                    <span className="text-sm font-bold" style={{ color: '#00695C' }}>
+                      🕒 {formatTime(item.start)} - {formatTime(item.end)}
+                    </span>
+                    {/* 编辑模式删除按钮 */}
+                    {isEditMode && (
+                      <button
+                        onClick={() => deleteScheduleItem(index)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center hover:opacity-70 transition-all"
+                        style={{ backgroundColor: '#F5F7FA', color: '#666666' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* 下半部分白色区域 */}
+                  <div className="bg-white p-4">
                   {/* 编辑模式控制按钮 */}
                   {isEditMode && (
                     <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100">
@@ -3492,12 +5236,6 @@ ${pomodoroInfo}
                         </button>
                         <span className="text-xs text-gray-400 ml-2">第 {index + 1} 项</span>
                       </div>
-                      <button
-                        onClick={() => deleteScheduleItem(index)}
-                        className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 hover:text-red-500"
-                      >
-                        <X size={16} />
-                      </button>
                     </div>
                   )}
 
@@ -3525,7 +5263,7 @@ ${pomodoroInfo}
                           </div>
                         )}
                         
-                        <div className="text-4xl font-black text-[#2D2D2D] font-mono mb-2">
+                        <div className="text-4xl font-black text-[#2D3436] font-mono mb-2">
                           {timerMode === 'countup' ? formatRemainingTime(elapsedTime) : formatRemainingTime(remainingTime)}
                         </div>
                         <p className="text-xs text-gray-500 mb-3">
@@ -3537,50 +5275,62 @@ ${pomodoroInfo}
                           {timerStatus === 'running' ? (
                             <button
                               onClick={pauseTimer}
-                              className="w-12 h-12 rounded-full bg-yellow-500 flex items-center justify-center text-white shadow-lg hover:bg-yellow-600 transition-all"
+                              className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-all"
                             >
-                              <div className="flex gap-1">
-                                <div className="w-1.5 h-5 bg-white rounded-sm"></div>
-                                <div className="w-1.5 h-5 bg-white rounded-sm"></div>
+                              <div className="flex gap-0.5">
+                                <div className="w-1 h-4 bg-gray-400 rounded-sm"></div>
+                                <div className="w-1 h-4 bg-gray-400 rounded-sm"></div>
                               </div>
                             </button>
                           ) : (
                             <button
                               onClick={resumeTimer}
-                              className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition-all"
+                              className="w-12 h-12 rounded-full bg-[#00B894] flex items-center justify-center text-white shadow-lg hover:bg-[#00a383] transition-all"
                             >
-                              <Play size={20} fill="white" />
+                              <Play size={20} />
+                            </button>
+                          )}
+                          {/* 番茄钟跳过按钮 */}
+                          {timerMode === 'pomodoro' && (
+                            <button
+                              onClick={skipPomodoroPhase}
+                              className="px-3 h-10 rounded-full border-2 border-orange-300 flex items-center justify-center text-orange-400 hover:border-orange-400 hover:text-orange-500 transition-all text-xs font-bold whitespace-nowrap"
+                            >
+                              {pomodoroPhase === 'work' ? '跳过' : '跳过休息'}
                             </button>
                           )}
                           <button
                             onClick={stopTimer}
-                            className="w-12 h-12 rounded-full bg-red-400 flex items-center justify-center text-white shadow-lg hover:bg-red-500 transition-all"
+                            className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-all"
                           >
-                            <X size={20} />
+                            <X size={18} />
                           </button>
+                          {/* 停止铃声按钮 */}
+                          {isAlarmPlaying && (
+                            <button
+                              onClick={() => {
+                                alarmPlayer.stop();
+                                setIsAlarmPlaying(false);
+                              }}
+                              className="w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg hover:bg-pink-600 transition-all animate-pulse"
+                            >
+                              🔔
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
 
                   <div className="flex items-center gap-4">
-                    <div 
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: colors.light }}
-                    >
-                      <span className="text-xl">{item.icon}</span>
-                    </div>
-                    
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-[#2D2D2D] text-sm mb-1">{item.name}</h4>
+                      <h4 className="mb-1" style={{ fontSize: '20px', fontWeight: 700, color: '#2D3436' }}>{item.name}</h4>
                       <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>{formatTime(item.start)} - {formatTime(item.end)}</span>
-                        <span>•</span>
                         <span>{item.duration}分钟</span>
                       </div>
                       {/* AI建议 */}
                       {item.advice && !isEditMode && (
-                        <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                        <p className="text-xs text-gray-400 mt-1" style={{ lineHeight: '1.5' }}>
                           💡 {item.advice}
                         </p>
                       )}
@@ -3588,14 +5338,11 @@ ${pomodoroInfo}
                     
                     {!isActive && !isEditMode && (
                       <button 
-                        onClick={() => startTimer(taskId, item.duration)}
-                        disabled={activeTimerId !== null}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white transition-all ${
-                          activeTimerId !== null ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'
-                        }`}
-                        style={{ backgroundColor: colors.bg }}
+                        onClick={() => startTimer(taskId, item.duration, item.name, item.pomodoroSlots)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
+                        style={{ backgroundColor: '#00B894' }}
                       >
-                        <Play size={16} fill="white" />
+                        <Play size={16} />
                       </button>
                     )}
                   </div>
@@ -3603,10 +5350,8 @@ ${pomodoroInfo}
                   {/* 番茄钟时间段 - 合并展示 */}
                   {item.pomodoroSlots && item.pomodoroSlots.length > 0 && !isEditMode && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl">
-                        <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
-                          <span className="text-lg">🍅</span>
-                        </div>
+                      <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: '#F7F9FC' }}>
+                        <span className="text-2xl">🍅</span>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
                             <span>番茄钟模式</span>
@@ -3621,183 +5366,319 @@ ${pomodoroInfo}
                       </div>
                     </div>
                   )}
+                  </div>
                 </div>
-              );
-            })}
+                
+                {/* 卡片之间的连接线 */}
+                {!isLast && (
+                  <div className="flex justify-center py-2">
+                    <div className="w-[2px] h-6 bg-gray-200"></div>
+                  </div>
+                )}
+              </div>
+            );
+          })})()}
           </div>
 
           {/* 底部按钮 */}
           <div className="mt-8">
             {isEditMode ? (
-              <div className="flex gap-3">
-                <Button 
+              <div className="flex items-center gap-3">
+                <button 
                   onClick={() => setIsEditMode(false)}
-                  variant="outline"
-                  className="flex-1"
+                  className="w-[30%] text-center font-bold hover:opacity-70 transition-all"
+                  style={{ color: '#999999' }}
                 >
                   取消
-                </Button>
+                </button>
                 <Button 
                   onClick={saveScheduleChanges}
-                  className="flex-1"
-                  style={{ backgroundColor: '#42D4A4' }}
+                  className="w-[70%] shadow-[0_8px_0_0_#008E72] hover:shadow-[0_6px_0_0_#008E72] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
+                  style={{ backgroundColor: '#00B894', color: '#FFFFFF' }}
                 >
-                  <Save size={18} />
-                  保存修改
+                  <Check size={18} />
+                  保存
                 </Button>
               </div>
             ) : (
               <Button 
-                onClick={() => setStep('setup')}
+                onClick={() => {
+                  // 用当前scheduleData中的任务更新tasks，保留用户的修改
+                  if (scheduleData?.schedule) {
+                    const updatedTasks = scheduleData.schedule
+                      .filter((item: any) => item.type === 'pomodoro') // 只保留任务类型，排除生活事项
+                      .map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        duration: item.duration
+                      }));
+                    if (updatedTasks.length > 0) {
+                      setTasks(updatedTasks);
+                    }
+                  }
+                  setStep('setup');
+                }}
                 variant="outline"
                 style={{ borderColor: '#42D4A4', color: '#42D4A4' }}
               >
                 <Edit3 size={20} />
-                重新规划
+                重新让AI规划今日安排
               </Button>
             )}
           </div>
         </div>
 
+        {/* 切换计时确认弹窗 */}
+        {showSwitchTimerConfirm && (
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={cancelSwitchTimer}
+          >
+            <div 
+              className="bg-white rounded-3xl p-6 w-full max-w-sm"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-black text-[#2D3436] mb-3 text-center">切换计时任务</h3>
+              <p className="text-sm text-gray-500 text-center mb-2">
+                当前正在进行「{currentTaskName}」的计时
+              </p>
+              <p className="text-sm text-gray-500 text-center mb-6">
+                是否停止当前计时，开始「{pendingSwitchTask?.name}」？
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelSwitchTimer}
+                  className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-all"
+                >
+                  继续当前
+                </button>
+                <button
+                  onClick={confirmSwitchTimer}
+                  className="flex-1 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                  style={{ backgroundColor: '#00B894' }}
+                >
+                  切换任务
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 计时模式选择弹窗 */}
         {showTimerModeModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
-              <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">选择计时模式</h3>
-              
-              {/* 模式选择 */}
-              <div className="space-y-3 mb-6">
-                <button
-                  onClick={() => confirmStartTimer('countup')}
-                  className="w-full p-4 rounded-2xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 transition-all flex items-center gap-4"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center text-white">
-                    <Timer size={24} />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-bold text-[#2D2D2D]">⏱️ 正计时</div>
-                    <div className="text-xs text-gray-500">从0开始计时，记录实际用时</div>
-                  </div>
-                </button>
-                
-                <button
-                  onClick={() => confirmStartTimer('countdown')}
-                  className="w-full p-4 rounded-2xl border-2 border-green-200 bg-green-50 hover:bg-green-100 transition-all flex items-center gap-4"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center text-white">
-                    <Clock size={24} />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-bold text-[#2D2D2D]">⏳ 倒计时</div>
-                    <div className="text-xs text-gray-500">按计划时长 {pendingTimerTask?.duration} 分钟倒计时</div>
-                  </div>
-                </button>
-                
-                <div className="p-4 rounded-2xl border-2 border-red-200 bg-red-50">
-                  <button
-                    onClick={() => confirmStartTimer('pomodoro')}
-                    className="w-full flex items-center gap-4 hover:opacity-80 transition-all"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center text-white">
-                      <Target size={24} />
-                    </div>
-                    <div className="text-left flex-1">
-                      <div className="font-bold text-[#2D2D2D]">🍅 番茄钟</div>
-                      <div className="text-xs text-gray-500">专注与休息交替进行</div>
-                    </div>
-                  </button>
-                  
-                  {/* 番茄钟参数设置 */}
-                  <div className="mt-4 pt-4 border-t border-red-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">专注时长</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          -
-                        </button>
-                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(180, prev.workDuration + 5) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">休息时长</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          -
-                        </button>
-                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">几轮后长休息</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.max(1, prev.rounds - 1) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          -
-                        </button>
-                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.rounds}轮</span>
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.min(10, prev.rounds + 1) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">长休息时长</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          -
-                        </button>
-                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
-                        <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
-                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* 取消按钮 */}
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setShowTimerModeModal(false);
+              setPendingTimerTask(null);
+              setShowPomodoroSettings(false);
+              setShowCountdownSettings(false);
+            }}
+          >
+            <div 
+              className="bg-white rounded-3xl p-6 w-full max-w-sm relative max-h-[85%] overflow-y-auto"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 60px rgba(0, 0, 0, 0.1)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 关闭按钮 */}
               <button
                 onClick={() => {
                   setShowTimerModeModal(false);
                   setPendingTimerTask(null);
+                  setShowPomodoroSettings(false);
+                  setShowCountdownSettings(false);
                 }}
-                className="w-full py-3 rounded-2xl border-2 border-gray-200 text-gray-500 font-bold hover:bg-gray-50 transition-all"
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-all"
               >
-                取消
+                <X size={20} />
               </button>
+              
+              <h3 className="text-xl font-black text-[#2D3436] mb-4 text-center">选择计时模式</h3>
+              
+              {/* 顶部Tab切换 */}
+              <div className="flex rounded-2xl bg-gray-100 p-1 mb-4">
+                <button
+                  onClick={() => setTimerMode('countup')}
+                  className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                    timerMode === 'countup' ? 'bg-white text-[#5C7CFA] shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  ⏱️ 正计时
+                </button>
+                <button
+                  onClick={() => setTimerMode('countdown')}
+                  className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                    timerMode === 'countdown' ? 'bg-white text-[#009688] shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  ⏳ 倒计时
+                </button>
+                <button
+                  onClick={() => setTimerMode('pomodoro')}
+                  className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
+                    timerMode === 'pomodoro' ? 'bg-white text-[#FF7675] shadow-sm' : 'text-gray-500'
+                  }`}
+                >
+                  🍅 番茄钟
+                </button>
+              </div>
+              
+              {/* 内容区域 */}
+              <div className="min-h-[200px]">
+                {/* 正计时内容 */}
+                {timerMode === 'countup' && (
+                  <div className="p-4 rounded-2xl" style={{ backgroundColor: '#EEF2FF' }}>
+                    <div className="text-center mb-4">
+                      <div className="text-4xl mb-2">⏱️</div>
+                      <div className="font-bold text-lg" style={{ color: '#5C7CFA' }}>正计时模式</div>
+                      <div className="text-sm text-gray-500 mt-2">从0开始计时，记录实际用时</div>
+                    </div>
+                    <button
+                      onClick={() => confirmStartTimer('countup')}
+                      className="w-full py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                      style={{ backgroundColor: '#5C7CFA' }}
+                    >
+                      开始计时
+                    </button>
+                  </div>
+                )}
+                
+                {/* 倒计时内容 */}
+                {timerMode === 'countdown' && (
+                  <div className="p-4 rounded-2xl" style={{ backgroundColor: '#E0F2F1' }}>
+                    <div className="text-center mb-4">
+                      <div className="text-4xl mb-2">⏳</div>
+                      <div className="font-bold text-lg" style={{ color: '#009688' }}>倒计时模式</div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">倒计时时长</span>
+                        <span className="text-lg font-bold text-[#009688]">{countdownDuration} 分钟</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="180"
+                        value={countdownDuration}
+                        onChange={(e) => setCountdownDuration(Number(e.target.value))}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full h-2 bg-[#B2DFDB] rounded-full appearance-none cursor-pointer accent-[#009688]"
+                        style={{
+                          background: `linear-gradient(to right, #009688 0%, #009688 ${(countdownDuration / 180) * 100}%, #B2DFDB ${(countdownDuration / 180) * 100}%, #B2DFDB 100%)`
+                        }}
+                      />
+                      <div className="flex justify-between text-xs text-gray-400">
+                        <span>1分</span>
+                        <span>180分</span>
+                      </div>
+                      <button
+                        onClick={() => confirmStartTimer('countdown')}
+                        className="w-full mt-2 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                        style={{ backgroundColor: '#009688' }}
+                      >
+                        开始计时
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* 番茄钟内容 */}
+                {timerMode === 'pomodoro' && (
+                  <div className="p-4 rounded-2xl" style={{ backgroundColor: '#FFF0F0' }}>
+                    <div className="text-center mb-4">
+                      <div className="text-4xl mb-2">🍅</div>
+                      <div className="font-bold text-lg" style={{ color: '#FF7675' }}>番茄钟模式</div>
+                      <div className="text-xs text-gray-500 mt-1">专注与休息交替进行</div>
+                    </div>
+                    <div className="space-y-3">
+                      {/* 专注时长 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">专注时长</span>
+                          <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.workDuration} 分钟</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="90"
+                          value={pomodoroConfig.workDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
+                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                      </div>
+                      
+                      {/* 休息时长 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">休息时长</span>
+                          <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.breakDuration} 分钟</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="30"
+                          value={pomodoroConfig.breakDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
+                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                      </div>
+                      
+                      {/* 轮数 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">几轮后长休息</span>
+                          <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.rounds} 轮</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="1"
+                          max="10"
+                          value={pomodoroConfig.rounds}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, rounds: Number(e.target.value) }))}
+                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.rounds - 1) / 9) * 100}%, #FFCDD2 ${((pomodoroConfig.rounds - 1) / 9) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                      </div>
+                      
+                      {/* 长休息时长 */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">长休息时长</span>
+                          <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.longBreakDuration} 分钟</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="60"
+                          value={pomodoroConfig.longBreakDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
+                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={() => confirmStartTimer('pomodoro')}
+                        className="w-full mt-2 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
+                        style={{ backgroundColor: '#FF7675' }}
+                      >
+                        开始专注
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -3806,64 +5687,151 @@ ${pomodoroInfo}
   }
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #F0FFF4 0%, #E6FFFA 100%)' }}>
       {/* 背景装饰 */}
       <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-teal-100 blur-2xl opacity-50"></div>
       <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-orange-100 blur-xl opacity-40"></div>
-      
-      {/* 头部 */}
-      <div className="px-6 pt-8 pb-4 flex justify-between items-end z-10">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-teal-700 mb-2">智能规划</h2>
-            <div className="w-2 h-2 rounded-full bg-orange-200 ring-2 ring-teal-200"></div>
-          </div>
-          <p className="text-[10px] font-bold text-teal-500 uppercase tracking-wider">
-            AI PLANNING
-          </p>
-        </div>
-      </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
+        {/* 头部 - 随页面滚动 */}
+        <div className="pt-8 pb-4 flex justify-between items-end">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-black text-[#2D3436] mb-2">
+                {(() => {
+                  const now = new Date();
+                  const month = now.getMonth() + 1;
+                  const date = now.getDate();
+                  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                  const weekday = weekdays[now.getDay()];
+                  return `${month}月${date}日 · ${weekday}`;
+                })()}
+              </h2>
+              <div className="w-2 h-2 rounded-full bg-orange-200 ring-2 ring-teal-200"></div>
+            </div>
+            <p className="text-sm text-gray-500 font-medium">
+              {(() => {
+                const hour = new Date().getHours();
+                if (hour >= 5 && hour < 12) {
+                  return '早上好，今天也是充满活力的一天';
+                } else if (hour >= 12 && hour < 18) {
+                  return '下午好，现在开始新的一天也不晚';
+                } else {
+                  return '晚上好，晚上有什么想做的事情吗？';
+                }
+              })()}
+            </p>
+          </div>
+        </div>
         {/* 添加任务 */}
         <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-teal-100">
-          <h3 className="font-black text-teal-700 mb-4 flex items-center gap-2">
-            <ListTodo size={20} className="text-teal-500" />
-            今日任务
-          </h3>
-          
           <div className="space-y-3 mb-4">
             {tasks.map(task => (
-              <div key={task.id} className="flex items-center gap-3 p-3 bg-teal-50 rounded-2xl border border-teal-100">
-                <div className="flex-1">
-                  <span className="font-bold text-sm text-teal-700">{task.name}</span>
-                  <span className="text-xs text-teal-500 ml-2">
-                    {task.duration >= 60 
-                      ? `${Math.floor(task.duration / 60)}小时${task.duration % 60 > 0 ? task.duration % 60 + '分钟' : ''}`
-                      : `${task.duration}分钟`
-                    }
-                  </span>
-                </div>
-                <button 
-                  onClick={() => removeTask(task.id)}
-                  className="text-teal-300 hover:text-red-400 p-1 transition-colors"
-                >
-                  <X size={16} />
-                </button>
+              <div key={task.id} className="flex items-center gap-3 p-3 rounded-2xl border border-teal-100 border-l-4" style={{ backgroundColor: '#FDFFFC', borderLeftColor: '#55EFC4' }}>
+                {editingTaskId === task.id ? (
+                  // 编辑模式
+                  <>
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="text"
+                        value={editTaskName}
+                        onChange={(e) => setEditTaskName(e.target.value)}
+                        className="w-full bg-white rounded-lg px-3 py-2 text-sm outline-none border-2 border-teal-200 focus:ring-2 focus:ring-teal-300"
+                        placeholder="任务名称"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            saveEditTask();
+                          } else if (e.key === 'Escape') {
+                            cancelEditTask();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-teal-600 whitespace-nowrap">时长</span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="360"
+                          value={editTaskDuration}
+                          onChange={(e) => setEditTaskDuration(Number(e.target.value))}
+                          className="flex-1 h-1 rounded-lg appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #A8E6CF 0%, #42E2B8 100%)`,
+                            outline: 'none'
+                          }}
+                        />
+                        <span className="text-xs font-bold text-teal-700 w-16 text-right">
+                          {editTaskDuration >= 60 
+                            ? `${Math.floor(editTaskDuration / 60)}h${editTaskDuration % 60 > 0 ? editTaskDuration % 60 + 'm' : ''}`
+                            : `${editTaskDuration}min`
+                          }
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={saveEditTask}
+                        className="text-teal-500 hover:text-teal-700 p-1 transition-colors"
+                        title="保存"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button 
+                        onClick={cancelEditTask}
+                        className="text-gray-400 hover:text-gray-600 p-1 transition-colors"
+                        title="取消"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  // 显示模式
+                  <>
+                    <div className="flex-1 flex items-center gap-3">
+                      <span className="text-lg font-semibold text-[#2D3436]">{task.name}</span>
+                      <span className="px-2 py-1 bg-[#CFF5E7] text-[#009688] text-xs font-medium rounded-full">
+                        {task.duration >= 60 
+                          ? `${Math.floor(task.duration / 60)}h${task.duration % 60 > 0 ? task.duration % 60 + 'm' : ''}`
+                          : `${task.duration}min`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => startEditTask(task)}
+                        className="text-teal-400 hover:text-teal-600 p-1 transition-colors"
+                        title="编辑"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => removeTask(task.id)}
+                        className="text-teal-300 hover:text-red-400 p-1 transition-colors"
+                        title="删除"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
 
           {/* 任务名称输入 */}
           <div className="space-y-3">
-            <input
-              type="text"
+            <textarea
               value={newTaskName}
               onChange={(e) => setNewTaskName(e.target.value)}
-              placeholder="输入任务名称..."
-              className="w-full bg-white rounded-xl px-4 py-3 text-base outline-none focus:ring-2 focus:ring-teal-200 shadow-sm"
+              placeholder="输入今天想做的事，AI 帮你规划行程～"
+              className="w-full rounded-xl px-4 py-3 text-base outline-none border-2 border-teal-200 focus:ring-2 focus:ring-teal-300 shadow-sm resize-none"
+              style={{ background: 'rgba(255, 255, 255, 0.6)' }}
+              rows={2}
               onKeyPress={(e) => {
-                if (e.key === 'Enter' && newTaskName.trim()) {
+                if (e.key === 'Enter' && !e.shiftKey && newTaskName.trim()) {
+                  e.preventDefault();
                   addTask(newTaskName, newTaskDuration);
                 }
               }}
@@ -3879,7 +5847,11 @@ ${pomodoroInfo}
                   max="360"
                   value={newTaskDuration}
                   onChange={(e) => setNewTaskDuration(Number(e.target.value))}
-                  className="flex-1 h-2 bg-teal-100 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                  className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #A8E6CF 0%, #42E2B8 100%)`,
+                    outline: 'none'
+                  }}
                 />
                 <span className="text-sm font-black text-teal-700 w-20 text-right">
                   {newTaskDuration >= 60 
@@ -3915,8 +5887,8 @@ ${pomodoroInfo}
                 }
               }}
               disabled={!newTaskName.trim()}
-              className="w-full h-12 rounded-xl flex items-center justify-center text-white font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#80E862' }}
+              className="w-full h-12 rounded-xl flex items-center justify-center text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#55EFC4' }}
             >
               <Plus size={20} className="mr-2" />
               添加任务
@@ -3924,133 +5896,232 @@ ${pomodoroInfo}
           </div>
         </div>
 
-        {/* 生活状态 */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
-          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
-            <Utensils size={20} className="text-orange-500" />
-            生活状态
+        {/* 状态设置（折叠组） */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border-2 border-teal-100">
+          <h3 className="font-black text-[#2D3436] flex items-center gap-2">
+            <Brain size={20} className="text-teal-500" />
+            状态设置
           </h3>
-          <p className="text-xs text-gray-400 mb-4">点亮已经完成的事情，未完成的事情将自动纳入计划。</p>
           
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { key: 'morningWash', label: '晨间洗漱', icon: '🚿' },
-              { key: 'breakfast', label: '早餐', icon: '🍳' },
-              { key: 'lunch', label: '午餐', icon: '🍽️' },
-              { key: 'dinner', label: '晚餐', icon: '🍜' },
-              { key: 'nightWash', label: '晚间洗漱', icon: '🛁' }
-            ].map(item => (
-              <button
-                key={item.key}
-                onClick={() => setLifestyle({
-                  ...lifestyle,
-                  [item.key]: !lifestyle[item.key as keyof typeof lifestyle]
-                })}
-                className={`p-3 rounded-2xl border-2 transition-all ${
-                  lifestyle[item.key as keyof typeof lifestyle]
-                    ? 'bg-green-50 border-green-200 text-green-700'
-                    : 'bg-gray-50 border-gray-200 text-gray-500'
-                }`}
+          {!isStatusSectionExpanded ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-500 mb-3">
+                设置当下"身体/精神状态"，AI为你贴身打造今日计划
+              </p>
+              <button 
+                onClick={() => setIsStatusSectionExpanded(true)}
+                className="inline-flex items-center gap-1 text-xs text-teal-500 font-bold hover:text-teal-600 transition-colors"
               >
-                <div className="text-lg mb-1">{item.icon}</div>
-                <div className="text-xs font-bold">{item.label}</div>
+                展开设置
+                <ChevronRight size={14} className="rotate-90" />
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-5">
+              {/* 生活状态 */}
+              <div>
+                <h4 className="font-bold text-[#2D3436] flex items-center gap-2 mb-3">
+                  <Utensils size={16} className="text-orange-500" />
+                  生活状态
+                </h4>
+                <p className="text-xs text-gray-400 mb-3">点亮已经完成的事情，未完成的事情将自动纳入计划。</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { key: 'morningWash', label: '晨间洗漱', icon: '🚿' },
+                    { key: 'breakfast', label: '早餐', icon: '🍳' },
+                    { key: 'lunch', label: '午餐', icon: '🍽️' },
+                    { key: 'dinner', label: '晚餐', icon: '🍜' },
+                    { key: 'nightWash', label: '晚间洗漱', icon: '🛁' }
+                  ].map(item => (
+                    <button
+                      key={item.key}
+                      onClick={() => setLifestyle({
+                        ...lifestyle,
+                        [item.key]: !lifestyle[item.key as keyof typeof lifestyle]
+                      })}
+                      className={`p-3 rounded-2xl border-2 transition-all ${
+                        lifestyle[item.key as keyof typeof lifestyle]
+                          ? 'bg-green-50 border-green-200 text-green-700'
+                          : 'bg-gray-50 border-gray-200 text-gray-500'
+                      }`}
+                    >
+                      <div className="text-lg mb-1">{item.icon}</div>
+                      <div className="text-xs font-bold">{item.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-        {/* 精神状态 */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
-          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
-            <Zap size={20} className="text-yellow-500" />
-            精神状态
-          </h3>
-          
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { id: 'energetic', label: '充沛', emoji: '⚡', color: '#FFD23F' },
-              { id: 'normal', label: '正常', emoji: '😊', color: '#42D4A4' },
-              { id: 'tired', label: '疲惫', emoji: '😴', color: '#6CB6FF' },
-              { id: 'anxious', label: '焦虑', emoji: '😰', color: '#FF8CA1' },
-              { id: 'nervous', label: '紧张', emoji: '😬', color: '#B589F6' },
-              { id: 'sad', label: '伤心', emoji: '😢', color: '#7dd3fc' },
-              { id: 'angry', label: '生气', emoji: '😠', color: '#f87171' }
-            ].map(status => (
-              <button
-                key={status.id}
-                onClick={() => setMentalStatus(status.id as any)}
-                className={`p-2 rounded-2xl border-2 transition-all ${
-                  mentalStatus === status.id
-                    ? 'border-2 shadow-md'
-                    : 'border-gray-200 opacity-60'
-                }`}
-                style={{
-                  borderColor: mentalStatus === status.id ? status.color : undefined,
-                  backgroundColor: mentalStatus === status.id ? status.color + '20' : '#F9FAFB'
-                }}
-              >
-                <div className="text-xl mb-1">{status.emoji}</div>
-                <div className="text-[10px] font-bold text-gray-700">{status.label}</div>
-              </button>
-            ))}
-          </div>
-        </div>
+              {/* 分隔线 */}
+              <div className="border-t border-gray-100"></div>
 
-        {/* 身体状态 */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
-          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
-            <Heart size={20} className="text-red-400" />
-            身体状态
-          </h3>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'good', label: '良好', emoji: '💪', color: '#42D4A4' },
-              { id: 'backPain', label: '腰疼', emoji: '🦴', color: '#FF8CA1' },
-              { id: 'headache', label: '头疼', emoji: '🤕', color: '#FFD23F' },
-              { id: 'periodPain', label: '姨妈疼', emoji: '💔', color: '#f472b6' },
-              { id: 'wristPain', label: '手腕疼', emoji: '✋', color: '#B589F6' }
-            ].map(status => (
-              <button
-                key={status.id}
-                onClick={() => setBodyStatus(status.id as any)}
-                className={`p-2 rounded-2xl border-2 transition-all ${
-                  bodyStatus === status.id
-                    ? 'border-2 shadow-md'
-                    : 'border-gray-200 opacity-60'
-                }`}
-                style={{
-                  borderColor: bodyStatus === status.id ? status.color : undefined,
-                  backgroundColor: bodyStatus === status.id ? status.color + '20' : '#F9FAFB'
-                }}
-              >
-                <div className="text-xl mb-1">{status.emoji}</div>
-                <div className="text-[10px] font-bold text-gray-700">{status.label}</div>
-              </button>
-            ))}
-          </div>
-        </div>
+              {/* 精神状态 */}
+              <div>
+                <h4 className="font-bold text-[#2D3436] flex items-center gap-2 mb-3">
+                  <Zap size={16} className="text-yellow-500" />
+                  精神状态
+                </h4>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { id: 'energetic', label: '充沛', emoji: '⚡', color: '#FFD23F' },
+                    { id: 'normal', label: '正常', emoji: '😊', color: '#42D4A4' },
+                    { id: 'tired', label: '疲惫', emoji: '😴', color: '#6CB6FF' },
+                    { id: 'anxious', label: '焦虑', emoji: '😰', color: '#FF8CA1' },
+                    { id: 'nervous', label: '紧张', emoji: '😬', color: '#B589F6' },
+                    { id: 'sad', label: '伤心', emoji: '😢', color: '#7dd3fc' },
+                    { id: 'angry', label: '生气', emoji: '😠', color: '#f87171' }
+                  ].map(status => {
+                    const hasSubOptions = mentalSubOptions[status.id];
+                    const isSelected = mentalStatus === status.id;
+                    const hasSelectedSubOption = isSelected && hasSubOptions && mentalSubOption;
+                    const showBubble = isSelected && hasSubOptions && !mentalSubOption;
+                    
+                    return (
+                      <div key={status.id} className="relative">
+                        <button
+                          onClick={() => {
+                            setMentalStatus(status.id as any);
+                            if (!mentalSubOptions[status.id]) {
+                              setMentalSubOption('');
+                            }
+                            if (mentalStatus !== status.id) {
+                              setMentalSubOption('');
+                            }
+                          }}
+                          className={`w-full p-2 rounded-2xl border-2 transition-all ${
+                            isSelected
+                              ? 'border-2 shadow-md'
+                              : 'border-gray-200 opacity-60'
+                          }`}
+                          style={{
+                            borderColor: isSelected ? status.color : undefined,
+                            backgroundColor: isSelected ? status.color + '20' : '#F9FAFB'
+                          }}
+                        >
+                          <div className="text-xl mb-1">{status.emoji}</div>
+                          <div className="text-[10px] font-bold text-gray-700">{status.label}</div>
+                          {hasSelectedSubOption && (
+                            <div 
+                              className="text-[8px] font-bold mt-1 truncate"
+                              style={{ color: status.color }}
+                            >
+                              {mentalSubOption}
+                            </div>
+                          )}
+                        </button>
+                        
+                        {showBubble && (
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-20 animate-fade-in">
+                            <div 
+                              className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-r-[8px] border-b-[8px] border-transparent"
+                              style={{ borderBottomColor: '#FFFFFF' }}
+                            />
+                            <div 
+                              className="rounded-2xl p-3 min-w-[120px]"
+                              style={{ 
+                                backgroundColor: '#FFFFFF', 
+                                boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                                border: 'none'
+                              }}
+                            >
+                              <div className="space-y-2">
+                                {mentalSubOptions[status.id].map(option => (
+                                  <button
+                                    key={option}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMentalSubOption(option);
+                                    }}
+                                    className="w-full px-3 py-2 rounded-lg text-xs font-medium transition-all bg-gray-50 hover:bg-gray-100 border border-gray-200 whitespace-nowrap"
+                                    style={{ color: '#333333' }}
+                                  >
+                                    {option}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-        {/* 睡觉时间 */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
-          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
-            <Moon size={20} className="text-purple-500" />
-            睡觉时间
-          </h3>
-          
-          <input
-            type="time"
-            value={bedtime}
-            onChange={(e) => setBedtime(e.target.value)}
-            className="w-full bg-gray-50 rounded-xl px-4 py-3 text-lg font-bold text-center outline-none focus:bg-white focus:ring-2 focus:ring-purple-200"
-          />
+              {/* 分隔线 */}
+              <div className="border-t border-gray-100"></div>
+
+              {/* 身体状态 */}
+              <div>
+                <h4 className="font-bold text-[#2D3436] flex items-center gap-2 mb-3">
+                  <Heart size={16} className="text-red-400" />
+                  身体状态
+                </h4>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'good', label: '良好', emoji: '💪', color: '#42D4A4' },
+                    { id: 'backPain', label: '腰疼', emoji: '🦴', color: '#FF8CA1' },
+                    { id: 'headache', label: '头疼', emoji: '🤕', color: '#FFD23F' },
+                    { id: 'periodPain', label: '姨妈疼', emoji: '💔', color: '#f472b6' },
+                    { id: 'wristPain', label: '手腕疼', emoji: '✋', color: '#B589F6' }
+                  ].map(status => (
+                    <button
+                      key={status.id}
+                      onClick={() => setBodyStatus(status.id as any)}
+                      className={`p-2 rounded-2xl border-2 transition-all ${
+                        bodyStatus === status.id
+                          ? 'border-2 shadow-md'
+                          : 'border-gray-200 opacity-60'
+                      }`}
+                      style={{
+                        borderColor: bodyStatus === status.id ? status.color : undefined,
+                        backgroundColor: bodyStatus === status.id ? status.color + '20' : '#F9FAFB'
+                      }}
+                    >
+                      <div className="text-xl mb-1">{status.emoji}</div>
+                      <div className="text-[10px] font-bold text-gray-700">{status.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 分隔线 */}
+              <div className="border-t border-gray-100"></div>
+
+              {/* 睡觉时间 */}
+              <div>
+                <h4 className="font-bold text-[#2D3436] flex items-center gap-2 mb-3">
+                  <Moon size={16} className="text-purple-500" />
+                  睡觉时间
+                </h4>
+                <input
+                  type="time"
+                  value={bedtime}
+                  onChange={(e) => setBedtime(e.target.value)}
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-lg font-bold text-center outline-none focus:bg-white focus:ring-2 focus:ring-purple-200"
+                />
+              </div>
+
+              {/* 收起按钮 */}
+              <div className="text-center pt-2">
+                <button 
+                  onClick={() => setIsStatusSectionExpanded(false)}
+                  className="inline-flex items-center gap-1 text-xs text-gray-400 font-bold hover:text-gray-500 transition-colors"
+                >
+                  收起
+                  <ChevronRight size={14} className="-rotate-90" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 生成规划按钮 */}
         <Button 
           onClick={generateSchedule}
           disabled={tasks.length === 0 || isGenerating}
-          style={{ backgroundColor: '#42D4A4' }}
+          className="shadow-[0_8px_0_0_#008E72] hover:shadow-[0_6px_0_0_#008E72] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
+          style={{ backgroundColor: '#00B894' }}
         >
           {isGenerating ? (
             <>
@@ -4059,7 +6130,6 @@ ${pomodoroInfo}
             </>
           ) : (
             <>
-              <Brain size={20} />
               生成 AI 规划
             </>
           )}
@@ -4226,7 +6296,9 @@ const SettingsView = ({
   setTimeRecords,
   journals,
   idealTimeAllocation,
-  setIdealTimeAllocation
+  setIdealTimeAllocation,
+  globalTimers,
+  setGlobalTimers
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -4235,6 +6307,8 @@ const SettingsView = ({
   journals: Journal[];
   idealTimeAllocation: Record<string, number>;
   setIdealTimeAllocation: (allocation: Record<string, number>) => void;
+  globalTimers: Timer[];
+  setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
 }) => {
   const [user] = useState({
     name: '治愈体验官',
@@ -4248,6 +6322,7 @@ const SettingsView = ({
   const [showDataManageModal, setShowDataManageModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showIdealTimeModal, setShowIdealTimeModal] = useState(false);
+  const [showCategoryAssignModal, setShowCategoryAssignModal] = useState(false);
   const [exportType, setExportType] = useState<'journal' | 'calendar' | null>(null);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
@@ -4309,6 +6384,13 @@ const SettingsView = ({
   const [editDate, setEditDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
+  
+  // 新增数据相关状态
+  const [isAddingRecord, setIsAddingRecord] = useState(false);
+  const [newRecordName, setNewRecordName] = useState('');
+  const [newRecordDate, setNewRecordDate] = useState('');
+  const [newRecordStartTime, setNewRecordStartTime] = useState('');
+  const [newRecordEndTime, setNewRecordEndTime] = useState('');
 
   const showToastMessage = (msg: string) => {
     setToastMessage(msg);
@@ -4607,6 +6689,42 @@ END:VEVENT
     }
   };
 
+  // 新增数据记录
+  const handleAddRecord = () => {
+    if (!newRecordName.trim() || !newRecordDate || !newRecordStartTime || !newRecordEndTime) {
+      showToastMessage('请填写完整信息');
+      return;
+    }
+    
+    const newRecord: TimeRecord = {
+      id: Date.now().toString(),
+      name: newRecordName.trim(),
+      date: newRecordDate,
+      startTime: newRecordStartTime,
+      endTime: newRecordEndTime,
+      source: 'import',
+      createdAt: Date.now()
+    };
+    
+    setTimeRecords([newRecord, ...timeRecords]);
+    setIsAddingRecord(false);
+    setNewRecordName('');
+    setNewRecordDate('');
+    setNewRecordStartTime('');
+    setNewRecordEndTime('');
+    showToastMessage('添加成功');
+  };
+
+  // 开始新增记录
+  const startAddRecord = () => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    setNewRecordDate(todayStr);
+    setNewRecordStartTime('09:00');
+    setNewRecordEndTime('10:00');
+    setIsAddingRecord(true);
+  };
+
   // 格式化日期显示
   const formatDateDisplay = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -4621,10 +6739,6 @@ END:VEVENT
       
       {/* 头部 */}
       <div className="px-6 pt-8 pb-4 z-10">
-        <div className="flex items-center gap-2">
-          <h2 className="text-2xl font-black text-yellow-700 mb-2">个人设置</h2>
-          <div className="w-2 h-2 rounded-full bg-blue-200 ring-2 ring-yellow-200"></div>
-        </div>
         <p className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">
           PREFERENCES
         </p>
@@ -4718,6 +6832,20 @@ END:VEVENT
                 <div>
                   <span className="text-sm font-bold text-gray-700">管理数据</span>
                   <span className="text-xs text-gray-400 ml-2">共 {timeRecords.length} 条</span>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-gray-400" />
+            </button>
+            
+            <button 
+              onClick={() => setShowCategoryAssignModal(true)}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <ListTodo size={18} className="text-purple-500" />
+                <div>
+                  <span className="text-sm font-bold text-gray-700">分类归属</span>
+                  <span className="text-xs text-gray-400 ml-2">管理事件分类</span>
                 </div>
               </div>
               <ChevronRight size={16} className="text-gray-400" />
@@ -4995,27 +7123,174 @@ END:VEVENT
           <div className="bg-white w-[95%] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-black text-[#2D2D2D]">管理数据</h3>
-              <button 
-                onClick={() => {
-                  setShowDataManageModal(false);
-                  setEditingRecord(null);
-                }}
-                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={startAddRecord}
+                  className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200"
+                >
+                  <Plus size={18} />
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowDataManageModal(false);
+                    setEditingRecord(null);
+                    setIsAddingRecord(false);
+                  }}
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            {timeRecords.length === 0 ? (
+            {/* 新增数据表单 */}
+            {isAddingRecord && (
+              <div className="bg-green-50 rounded-2xl p-4 border-2 border-green-200 mb-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 w-12">名称</label>
+                    <input
+                      type="text"
+                      value={newRecordName}
+                      onChange={(e) => setNewRecordName(e.target.value)}
+                      placeholder="输入事项名称..."
+                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 w-12">日期</label>
+                    <input
+                      type="date"
+                      value={newRecordDate}
+                      onChange={(e) => setNewRecordDate(e.target.value)}
+                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 w-12">开始</label>
+                    <input
+                      type="time"
+                      value={newRecordStartTime}
+                      onChange={(e) => setNewRecordStartTime(e.target.value)}
+                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 w-12">结束</label>
+                    <input
+                      type="time"
+                      value={newRecordEndTime}
+                      onChange={(e) => setNewRecordEndTime(e.target.value)}
+                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => setIsAddingRecord(false)}
+                      className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleAddRecord}
+                      className="flex-1 py-2 text-sm font-bold text-white bg-green-500 rounded-xl hover:bg-green-600"
+                    >
+                      添加
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {timeRecords.length === 0 && !isAddingRecord ? (
               <div className="flex-1 flex flex-col items-center justify-center py-10">
                 <Database size={48} className="text-gray-300 mb-4" />
                 <p className="text-gray-400 text-sm">暂无数据记录</p>
-                <p className="text-gray-300 text-xs mt-1">计时器完成或导入数据后会显示在这里</p>
+                <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto space-y-3">
-                {timeRecords.map(record => (
-                  <div key={record.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+              <div 
+                className="flex-1 overflow-y-auto"
+                ref={(el) => {
+                  if (el && timeRecords.length > 0) {
+                    // 找到距离当前时间最近的记录
+                    const now = new Date();
+                    
+                    const sortedRecords = [...timeRecords].sort((a, b) => {
+                      const aDateTime = `${a.date} ${a.startTime}`;
+                      const bDateTime = `${b.date} ${b.startTime}`;
+                      return aDateTime.localeCompare(bDateTime);
+                    });
+                    
+                    let closestIndex = 0;
+                    let minDiff = Infinity;
+                    sortedRecords.forEach((record, index) => {
+                      const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
+                      const diff = Math.abs(recordDateTime - now.getTime());
+                      if (diff < minDiff) {
+                        minDiff = diff;
+                        closestIndex = index;
+                      }
+                    });
+                    
+                    // 计算需要滚动的位置（考虑日期标题）
+                    const closestDate = sortedRecords[closestIndex]?.date;
+                    const dateElement = el.querySelector(`[data-date="${closestDate}"]`);
+                    if (dateElement) {
+                      setTimeout(() => {
+                        dateElement.scrollIntoView({ block: 'start' });
+                      }, 100);
+                    }
+                  }
+                }}
+              >
+                {(() => {
+                  // 按日期分组
+                  const sortedRecords = [...timeRecords].sort((a, b) => {
+                    const aDateTime = `${a.date} ${a.startTime}`;
+                    const bDateTime = `${b.date} ${b.startTime}`;
+                    return aDateTime.localeCompare(bDateTime);
+                  });
+                  
+                  const groupedByDate: Record<string, TimeRecord[]> = {};
+                  sortedRecords.forEach(record => {
+                    if (!groupedByDate[record.date]) {
+                      groupedByDate[record.date] = [];
+                    }
+                    groupedByDate[record.date].push(record);
+                  });
+                  
+                  const dates = Object.keys(groupedByDate).sort();
+                  
+                  return dates.map(date => (
+                    <div key={date} data-date={date} className="mb-4">
+                      {/* 日期标题 */}
+                      <div className="sticky top-0 bg-white/95 backdrop-blur-sm py-2 px-1 z-10">
+                        <span className="text-sm font-bold text-gray-600">
+                          {(() => {
+                            const d = new Date(date);
+                            const today = new Date();
+                            const yesterday = new Date(today);
+                            yesterday.setDate(yesterday.getDate() - 1);
+                            
+                            const isToday = date === `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                            const isYesterday = date === `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+                            
+                            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                            const weekday = weekdays[d.getDay()];
+                            
+                            if (isToday) return `今天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                            if (isYesterday) return `昨天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                            return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                          })()}
+                        </span>
+                      </div>
+                      
+                      {/* 该日期下的记录 */}
+                      <div className="space-y-2">
+                        {groupedByDate[date].map(record => (
+                          <div key={record.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                     {editingRecord?.id === record.id ? (
                       // 编辑模式
                       <div className="space-y-3">
@@ -5077,7 +7352,7 @@ END:VEVENT
                             </span>
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            {formatDateDisplay(record.date)} · {record.startTime} - {record.endTime}
+                            {record.startTime} - {record.endTime}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -5097,9 +7372,108 @@ END:VEVENT
                       </div>
                     )}
                   </div>
-                ))}
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 分类归属弹窗 */}
+      {showCategoryAssignModal && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[95%] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-black text-[#2D2D2D]">分类归属</h3>
+              <button 
+                onClick={() => setShowCategoryAssignModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-400 mb-4">修改事件分类后，将同步更新复盘数据和专注页面</p>
+
+            {(() => {
+              // 按名称去重获取唯一事件
+              const uniqueEvents = Array.from(
+                new Map(
+                  [...timeRecords, ...globalTimers.map(t => ({ 
+                    id: t.id, 
+                    name: t.name, 
+                    categoryId: t.categoryId 
+                  }))]
+                  .map(item => [item.name, item])
+                ).values()
+              ).sort((a: any, b: any) => {
+                // 待分类的排在前面
+                const aUncategorized = !a.categoryId || a.categoryId === 'uncategorized';
+                const bUncategorized = !b.categoryId || b.categoryId === 'uncategorized';
+                if (aUncategorized && !bUncategorized) return -1;
+                if (!aUncategorized && bUncategorized) return 1;
+                return a.name.localeCompare(b.name);
+              });
+              
+              if (uniqueEvents.length === 0) {
+                return (
+                  <div className="flex-1 flex flex-col items-center justify-center py-10">
+                    <ListTodo size={48} className="text-gray-300 mb-4" />
+                    <p className="text-gray-400 text-sm">暂无事件</p>
+                    <p className="text-gray-300 text-xs mt-1">使用计时器后会显示在这里</p>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="flex-1 overflow-y-auto space-y-3">
+                  {uniqueEvents.map((event: any) => {
+                    const currentCategory = timeCategories.find(c => c.id === event.categoryId) || 
+                      { id: 'uncategorized', label: '待分类', color: '#9ca3af', icon: '📁' };
+                    
+                    return (
+                      <div key={event.name} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">{currentCategory.icon}</span>
+                            <span className="font-bold text-gray-700">{event.name}</span>
+                          </div>
+                          <select
+                            value={event.categoryId || 'uncategorized'}
+                            onChange={(e) => {
+                              const newCategoryId = e.target.value as CategoryId;
+                              const eventName = event.name;
+                              
+                              // 更新所有同名的timeRecords
+                              setTimeRecords(timeRecords.map(r => 
+                                r.name === eventName ? { ...r, categoryId: newCategoryId } : r
+                              ));
+                              
+                              // 更新所有同名的globalTimers
+                              setGlobalTimers(prev => prev.map(t => 
+                                t.name === eventName ? { ...t, categoryId: newCategoryId } : t
+                              ));
+                            }}
+                            className="bg-white border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:border-purple-300"
+                          >
+                            <option value="uncategorized">📁 待分类</option>
+                            {timeCategories.map(cat => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.icon} {cat.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -5416,8 +7790,27 @@ export default function App() {
     longBreakDuration: 15
   });
 
-  // 全局时间记录数据
-  const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
+  // 全局时间记录数据 - 持久化到localStorage
+  const [timeRecords, setTimeRecords] = useState<TimeRecord[]>(() => {
+    const saved = localStorage.getItem('timeRecords');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // 全局计时器数据（专注页面使用）- 持久化到localStorage
+  const [globalTimers, setGlobalTimers] = useState<Timer[]>(() => {
+    const saved = localStorage.getItem('globalTimers');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // 持久化timeRecords到localStorage
+  useEffect(() => {
+    localStorage.setItem('timeRecords', JSON.stringify(timeRecords));
+  }, [timeRecords]);
+
+  // 持久化globalTimers到localStorage
+  useEffect(() => {
+    localStorage.setItem('globalTimers', JSON.stringify(globalTimers));
+  }, [globalTimers]);
 
   // 全局日记数据
   const [journals, setJournals] = useState<Journal[]>([
@@ -5430,22 +7823,74 @@ export default function App() {
     }
   ]);
 
-  // PlanView 持久化状态 - 切换tab时保留
-  const [planStep, setPlanStep] = useState<'setup' | 'generating' | 'schedule'>('setup');
-  const [planScheduleData, setPlanScheduleData] = useState<any>(null);
-  const [planTasks, setPlanTasks] = useState<Array<{id: string, name: string, duration: number}>>([]);
-  const [planBedtime, setPlanBedtime] = useState('00:00');
-  const [planLifestyle, setPlanLifestyle] = useState({
-    morningWash: true,
-    breakfast: true,
-    lunch: false,
-    dinner: false,
-    nightWash: false
+  // PlanView 持久化状态 - 切换tab时保留，并持久化到localStorage
+  const [planStep, setPlanStep] = useState<'setup' | 'generating' | 'schedule'>(() => {
+    const saved = localStorage.getItem('planStep');
+    // 如果之前是generating状态，恢复为setup（因为生成过程不能恢复）
+    if (saved === 'generating') return 'setup';
+    return (saved as 'setup' | 'schedule') || 'setup';
   });
+  const [planScheduleData, setPlanScheduleData] = useState<any>(() => {
+    const saved = localStorage.getItem('planScheduleData');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [planTasks, setPlanTasks] = useState<Array<{id: string, name: string, duration: number}>>(() => {
+    const saved = localStorage.getItem('planTasks');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [planBedtime, setPlanBedtime] = useState('00:00');
+  
+  // 根据当前时间计算智能默认生活状态
+  const getDefaultLifestyle = () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    return {
+      morningWash: currentHour >= 7,
+      breakfast: currentHour >= 9,
+      lunch: currentHour >= 14,
+      dinner: currentHour >= 19,
+      nightWash: false
+    };
+  };
+  
+  const [planLifestyle, setPlanLifestyle] = useState(getDefaultLifestyle);
   const [planMentalStatus, setPlanMentalStatus] = useState<'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry'>('normal');
   const [planBodyStatus, setPlanBodyStatus] = useState<'good' | 'backPain' | 'headache' | 'periodPain' | 'wristPain'>('good');
   const [planNewTaskName, setPlanNewTaskName] = useState('');
   const [planNewTaskDuration, setPlanNewTaskDuration] = useState(25);
+
+  // 持久化planStep和planScheduleData到localStorage
+  useEffect(() => {
+    localStorage.setItem('planStep', planStep);
+  }, [planStep]);
+
+  useEffect(() => {
+    if (planScheduleData) {
+      localStorage.setItem('planScheduleData', JSON.stringify(planScheduleData));
+    } else {
+      localStorage.removeItem('planScheduleData');
+    }
+  }, [planScheduleData]);
+
+  useEffect(() => {
+    localStorage.setItem('planTasks', JSON.stringify(planTasks));
+  }, [planTasks]);
+
+  useEffect(() => {
+    localStorage.setItem('planBedtime', planBedtime);
+  }, [planBedtime]);
+
+  useEffect(() => {
+    localStorage.setItem('planLifestyle', JSON.stringify(planLifestyle));
+  }, [planLifestyle]);
+
+  useEffect(() => {
+    localStorage.setItem('planMentalStatus', planMentalStatus);
+  }, [planMentalStatus]);
+
+  useEffect(() => {
+    localStorage.setItem('planBodyStatus', planBodyStatus);
+  }, [planBodyStatus]);
 
   // 全局理想时间配比状态
   const [idealTimeAllocation, setIdealTimeAllocation] = useState<Record<string, number>>({
@@ -5473,7 +7918,7 @@ export default function App() {
 
   const renderView = () => {
     switch (activeTab) {
-      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />;
+      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
       case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} idealTimeAllocation={idealTimeAllocation} />;
       case 'plan': return <PlanView 
@@ -5496,9 +7941,13 @@ export default function App() {
         setNewTaskName={setPlanNewTaskName}
         newTaskDuration={planNewTaskDuration}
         setNewTaskDuration={setPlanNewTaskDuration}
+        timeRecords={timeRecords}
+        setTimeRecords={setTimeRecords}
+        globalTimers={globalTimers}
+        setGlobalTimers={setGlobalTimers}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
-      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
+      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
     }
   };
 
@@ -5540,8 +7989,8 @@ export default function App() {
           {renderView()}
         </div>
         
-        {/* 底部导航栏 - 玻璃拟态升级版 */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-white/80 backdrop-blur-xl rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.03)] border-t border-white/60 pb-2">
+        {/* 底部导航栏 */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-t border-gray-100 pb-2">
           <div className="flex h-full items-center justify-around px-4">
             {tabs.map(tab => {
               const Icon = tab.icon;
