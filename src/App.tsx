@@ -3,8 +3,8 @@ import {
   Timer, BookHeart, PieChart, Calendar, Settings2, 
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
-  Edit3, Save, X, Camera, ChevronLeft, Check,
-  Award, CheckCircle, RefreshCw, Brain, Lightbulb,
+  Edit3, X, Camera, ChevronLeft, Check,
+  RefreshCw, Brain, Lightbulb,
   ListTodo, Moon, Utensils,
   Shield, LogOut, Download, Upload, Trash2, Database
 } from 'lucide-react';
@@ -662,8 +662,8 @@ const TimerView = ({
   const [timerMode, setTimerMode] = useState<'countdown' | 'countup' | 'pomodoro'>('countdown');
   const [timerDuration, setTimerDuration] = useState(25);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [showCountdownSettings, setShowCountdownSettings] = useState(false);
-  const [showPomodoroSettingsTimer, setShowPomodoroSettingsTimer] = useState(false);
+  const [_showCountdownSettings, setShowCountdownSettings] = useState(false);
+  const [_showPomodoroSettingsTimer, setShowPomodoroSettingsTimer] = useState(false);
   
   // 番茄钟配置
   const [pomodoroConfig, setPomodoroConfig] = useState({
@@ -4165,8 +4165,8 @@ const PlanView = ({
   // 计时模式选择弹窗
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
   const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string} | null>(null);
-  const [showPomodoroSettings, setShowPomodoroSettings] = useState(false);
-  const [showCountdownSettings, setShowCountdownSettings] = useState(false);
+  const [_showPomodoroSettings, setShowPomodoroSettings] = useState(false);
+  const [_showCountdownSettings, setShowCountdownSettings] = useState(false);
   const [countdownDuration, setCountdownDuration] = useState(25);
   
   // 切换计时确认弹窗
@@ -6723,12 +6723,6 @@ END:VEVENT
     setNewRecordStartTime('09:00');
     setNewRecordEndTime('10:00');
     setIsAddingRecord(true);
-  };
-
-  // 格式化日期显示
-  const formatDateDisplay = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return `${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
   return (
