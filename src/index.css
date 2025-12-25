@@ -110,6 +110,25 @@ input, textarea {
   padding-right: env(safe-area-inset-right);
 }
 
+/* 全屏背景层 - 忽略安全区域，覆盖整个屏幕包括灵动岛/刘海区域 */
+.full-screen-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* 使用负的安全区域值来扩展到安全区域之外 */
+  margin-top: calc(-1 * env(safe-area-inset-top, 0px));
+  margin-bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  margin-left: calc(-1 * env(safe-area-inset-left, 0px));
+  margin-right: calc(-1 * env(safe-area-inset-right, 0px));
+  /* 确保高度覆盖整个屏幕 */
+  min-height: calc(100vh + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px));
+  z-index: 0;
+  pointer-events: none;
+}
+
 /* 隐藏滚动条 */
 .scrollbar-hide {
   -ms-overflow-style: none;

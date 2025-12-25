@@ -7973,11 +7973,29 @@ export default function App() {
     );
   }
 
+  // 获取当前页面的背景色
+  const getBackgroundColor = () => {
+    switch (activeTab) {
+      case 'plan': return '#F0FFF4';
+      case 'review': return '#F0F8FF';
+      case 'journal': return '#FFF0F5';
+      case 'settings': return '#FFFEF0';
+      case 'timer': return '#FFF8F8';
+      default: return '#FFFFFF';
+    }
+  };
+
   // 获取当前页面的渐变背景
-  const currentGradient = MACARON_COLORS.gradients[activeTab] || MACARON_COLORS.gradients.timer;
+  const currentGradient = MACARON_COLORS.gradients[activeTab as keyof typeof MACARON_COLORS.gradients] || MACARON_COLORS.gradients.plan;
 
   return (
-    <div className={`iphone-container overflow-hidden mx-auto bg-gradient-to-br ${currentGradient} transition-all duration-700`}>
+    <>
+      {/* 全屏背景层 - 忽略安全区域，覆盖整个屏幕包括灵动岛区域 */}
+      <div 
+        className="full-screen-bg transition-colors duration-500"
+        style={{ backgroundColor: getBackgroundColor() }}
+      />
+      <div className={`iphone-container overflow-hidden mx-auto bg-gradient-to-br ${currentGradient} transition-all duration-700 relative z-10`}>
       <div className="flex-1 h-full relative">
         <div className="h-[calc(100%-96px)]">
           {renderView()}
@@ -8031,5 +8049,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </>
   );
 }
