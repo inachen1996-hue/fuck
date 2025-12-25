@@ -7977,15 +7977,18 @@ export default function App() {
   const currentGradient = MACARON_COLORS.gradients[activeTab as keyof typeof MACARON_COLORS.gradients] || MACARON_COLORS.gradients.plan;
 
   return (
-    <div className={`iphone-container overflow-hidden mx-auto bg-gradient-to-br ${currentGradient} transition-all duration-700`}>
-      <div className="flex-1 h-full relative">
-        <div className="h-[calc(100%-96px)]">
-          {renderView()}
-        </div>
-        
-        {/* 底部导航栏 */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-t border-gray-100 pb-2">
-          <div className="flex h-full items-center justify-around px-4">
+    <div className={`iphone-container mx-auto bg-gradient-to-br ${currentGradient} transition-all duration-700`}>
+      {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
+      <div className="flex-1 overflow-y-auto pb-24">
+        {renderView()}
+      </div>
+      
+      {/* 底部导航栏 - 固定在屏幕底部 */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-t border-gray-100 z-50"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex h-full items-center justify-around px-4">
             {tabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -8029,7 +8032,6 @@ export default function App() {
             })}
           </div>
         </div>
-      </div>
     </div>
   );
 }
