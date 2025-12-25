@@ -1136,7 +1136,7 @@ const TimerView = ({
   const categoryBgColor = hexToRgba(currentCategoryTheme.primary, 0.04);
 
   return (
-    <div className="flex h-full relative overflow-hidden">
+    <div className="flex h-full relative overflow-hidden" style={{ backgroundColor: categoryBgColor }}>
       {/* 背景装饰 */}
       <div className="absolute bottom-10 left-10 w-24 h-24 rounded-full bg-cyan-100 blur-xl opacity-40 animate-pulse"></div>
       <div className="absolute top-10 right-10 w-32 h-32 rounded-full bg-purple-100 blur-xl opacity-50"></div>
@@ -2200,7 +2200,7 @@ const JournalView = ({
 
   if (view === 'editor') {
     return (
-      <div className="flex flex-col h-full relative overflow-hidden">
+      <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFF0F5, #F0FFF0)' }}>
         {/* 背景装饰 */}
         <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-pink-100 blur-2xl opacity-50"></div>
         <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-lime-100 blur-xl opacity-40"></div>
@@ -2367,7 +2367,7 @@ const JournalView = ({
   }
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFF0F5, #F0FFF0)' }}>
       {/* 背景装饰 */}
       <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-pink-100 blur-2xl opacity-50"></div>
       <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-lime-100 blur-xl opacity-40"></div>
@@ -6726,7 +6726,7 @@ END:VEVENT
   };
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden">
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFFEF0, #F0F8FF)' }}>
       {/* 背景装饰 */}
       <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-yellow-100 blur-2xl opacity-50"></div>
       <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-blue-100 blur-xl opacity-40"></div>
