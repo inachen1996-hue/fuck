@@ -26,6 +26,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+  /* 默认背景色，会被 JS 动态覆盖 */
+  background: linear-gradient(to bottom right, #E8F5E9, #E8F5E9);
+  transition: background 0.5s ease;
 }
 
 code {
