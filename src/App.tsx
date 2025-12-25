@@ -7973,20 +7973,26 @@ export default function App() {
     );
   }
 
-  // 动态设置 body 背景色
-  useEffect(() => {
-    const gradientMap: Record<string, string> = {
-      plan: 'linear-gradient(to bottom right, #E8F5E9, #E8F5E9)',
-      timer: 'linear-gradient(to bottom right, #faf5ff, #ffffff, #ecfeff)',
-      journal: 'linear-gradient(to bottom right, #fdf2f8, #ffffff, #f7fee7)',
-      review: 'linear-gradient(to bottom right, #f0f9ff, #ffffff, #fff1f2)',
-      settings: 'linear-gradient(to bottom right, #fefce8, #ffffff, #eff6ff)',
-    };
-    document.body.style.background = gradientMap[activeTab] || gradientMap.plan;
-  }, [activeTab]);
+  // 动态渐变背景
+  const gradientMap: Record<string, string> = {
+    plan: 'linear-gradient(to bottom right, #E8F5E9, #E8F5E9)',
+    timer: 'linear-gradient(to bottom right, #faf5ff, #ffffff, #ecfeff)',
+    journal: 'linear-gradient(to bottom right, #fdf2f8, #ffffff, #f7fee7)',
+    review: 'linear-gradient(to bottom right, #f0f9ff, #ffffff, #fff1f2)',
+    settings: 'linear-gradient(to bottom right, #fefce8, #ffffff, #eff6ff)',
+  };
+  const currentGradient = gradientMap[activeTab] || gradientMap.plan;
 
   return (
-    <div className="iphone-container mx-auto transition-all duration-700">
+    <>
+      {/* 第一步：独立背景层 - fixed inset-0 z-0 无脑铺满整个物理屏幕 */}
+      <div 
+        className="fixed inset-0 z-0 transition-all duration-700"
+        style={{ background: currentGradient }}
+      />
+      
+      {/* 第二步：内容层悬浮在背景层之上 */}
+      <div className="iphone-container relative z-10 bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
       <div className="flex-1 overflow-y-auto pb-24">
         {renderView()}
@@ -8041,6 +8047,7 @@ export default function App() {
             })}
           </div>
         </div>
-    </div>
+      </div>
+    </>
   );
 }
