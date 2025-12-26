@@ -149,9 +149,8 @@ const calculateCurrentTime = (
   }
 };
 
-// 计时器铃声 Base64 编码（默认使用简单的提示音，可通过 /upload-sound.html 页面上传自定义铃声）
-// 这是一个简单的提示音 Base64（空音频占位，用户需要上传自己的铃声）
-const ALARM_SOUND_BASE64 = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+// 默认铃声文件路径
+const DEFAULT_ALARM_SOUND = '/滴滴闹钟.mp3';
 
 // Toast 组件
 const Toast = ({ message, visible, onClose }: { message: string; visible: boolean; onClose: () => void }) => {
@@ -181,9 +180,9 @@ class AlarmPlayer {
   play(duration: number = 10000) {
     this.stop(); // 先停止之前的播放
     
-    // 从 localStorage 获取自定义铃声，如果没有则使用默认铃声
+    // 从 localStorage 获取自定义铃声，如果没有则使用默认铃声文件
     const customSound = localStorage.getItem('alarmSound');
-    const soundSrc = customSound || ALARM_SOUND_BASE64;
+    const soundSrc = customSound || DEFAULT_ALARM_SOUND;
     
     this.audio = new Audio(soundSrc);
     this.audio.loop = true;
@@ -717,9 +716,14 @@ const TimerView = ({
             setIsAlarmPlaying(true);
             setTimeout(() => setIsAlarmPlaying(false), 10000);
             
-            const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+            // 自动重置计时器
+            const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
             setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
-            setActiveTimer(updatedTimer);
+            setActiveTimer(null);
+            setTimerStartTime(null);
+            setElapsedTime(0);
+            setPomodoroPhase('work');
+            setCurrentPomodoroRound(1);
             
             // 清除持久化状态
             savePersistentTimerState({ ...persistentState, focusTimer: null });
@@ -796,18 +800,21 @@ const TimerView = ({
           // 倒计时模式
           setActiveTimer(prev => {
             if (!prev || prev.remainingTime <= 0) {
+              // 倒计时结束，自动重置计时器
               setTimers(timers => timers.map(t => 
-                t.id === prev?.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+                t.id === prev?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
               ));
               // 倒计时结束，播放铃声
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
               setTimeout(() => setIsAlarmPlaying(false), 10000);
-              return prev ? { ...prev, status: 'completed', remainingTime: 0 } : null;
+              setTimerStartTime(null);
+              setElapsedTime(0);
+              return null;
             }
             
             const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
-            setTimers(timers => timers.map(t => 
+            setTimers(timers => timers.map(t =>
               t.id === prev.id ? updated : t
             ));
             return updated;
@@ -853,12 +860,15 @@ const TimerView = ({
                 setTimerStartTimestamp(Date.now());
                 return updated;
               } else {
-                // 长休息结束
+                // 长休息结束，自动重置计时器
                 setTimers(timers => timers.map(t => 
-                  t.id === prev.id ? { ...t, status: 'completed' as TimerStatus, remainingTime: 0 } : t
+                  t.id === prev.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
                 ));
                 setPomodoroPhase('work');
-                return { ...prev, status: 'completed', remainingTime: 0 };
+                setCurrentPomodoroRound(1);
+                setTimerStartTime(null);
+                setElapsedTime(0);
+                return null;
               }
             }
             
@@ -1048,10 +1058,12 @@ const TimerView = ({
     if (pomodoroPhase === 'work') {
       // 当前是专注阶段，跳到休息
       if (currentPomodoroRound >= pomodoroConfig.rounds) {
-        // 已经是最后一轮，直接完成番茄钟
-        const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+        // 已经是最后一轮，自动重置计时器
+        const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
         setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
-        setActiveTimer(updatedTimer);
+        setActiveTimer(null);
+        setTimerStartTime(null);
+        setElapsedTime(0);
         setPomodoroPhase('work');
         setCurrentPomodoroRound(1);
         return;
@@ -1066,10 +1078,12 @@ const TimerView = ({
       setCurrentPomodoroRound(prev => prev + 1);
       newRemainingTime = pomodoroConfig.workDuration * 60;
     } else {
-      // 当前是长休息，完成番茄钟
-      const updatedTimer = { ...timer, status: 'completed' as TimerStatus, remainingTime: 0 };
+      // 当前是长休息，自动重置计时器
+      const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
       setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
-      setActiveTimer(updatedTimer);
+      setActiveTimer(null);
+      setTimerStartTime(null);
+      setElapsedTime(0);
       setPomodoroPhase('work');
       setCurrentPomodoroRound(1);
       return;
@@ -1487,18 +1501,18 @@ const TimerView = ({
                           <Play size={12} fill={theme.primary} style={{ color: theme.primary, flexShrink: 0 }} />
                         </div>
                         
-                        {/* 状态按钮 - 仅完成状态显示重置 */}
-                        {timer.status === 'completed' && (
+                        {/* 停止铃声按钮 - 铃声响起时显示 */}
+                        {isAlarmPlaying && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              resetTimer(timer);
+                              alarmPlayer.stop();
+                              setIsAlarmPlaying(false);
                             }}
-                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all"
-                            style={{ backgroundColor: '#42D4A4' }}
+                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all animate-pulse"
+                            style={{ backgroundColor: '#FF6B6B' }}
                           >
-                            <RefreshCw size={14} className="mr-1" />
-                            重置
+                            🔔 停止响铃
                           </button>
                         )}
                       </div>
