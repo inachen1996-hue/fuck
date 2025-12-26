@@ -6,7 +6,7 @@ import {
   Edit3, X, Camera, ChevronLeft, Check,
   RefreshCw, Brain, Lightbulb,
   ListTodo, Moon, Utensils,
-  Download, Upload, Trash2, Database
+  Download, Upload, Trash2, Database, Search
 } from 'lucide-react';
 
 // 类型定义
@@ -67,7 +67,7 @@ interface TimeRecord {
   date: string;        // YYYY-MM-DD 格式
   startTime: string;   // HH:mm 格式
   endTime: string;     // HH:mm 格式
-  source: 'timer' | 'import';  // 数据来源
+  source: 'timer' | 'import' | 'manual';  // 数据来源
   categoryId?: CategoryId;
   createdAt: number;
 }
@@ -176,6 +176,24 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
 class AlarmPlayer {
   private audio: HTMLAudioElement | null = null;
   private timeoutId: number | null = null;
+  private preloadedAudio: HTMLAudioElement | null = null;
+  
+  // 预加载音频 - 必须在用户交互时调用
+  preload() {
+    const customSound = localStorage.getItem('alarmSound');
+    const soundSrc = customSound || DEFAULT_ALARM_SOUND;
+    
+    this.preloadedAudio = new Audio(soundSrc);
+    this.preloadedAudio.loop = true;
+    this.preloadedAudio.volume = 0.7;
+    // 播放一个极短的静音来解锁音频
+    this.preloadedAudio.play().then(() => {
+      this.preloadedAudio?.pause();
+      this.preloadedAudio!.currentTime = 0;
+    }).catch(() => {
+      // 忽略错误，可能用户还没交互
+    });
+  }
   
   play(duration: number = 10000) {
     this.stop(); // 先停止之前的播放
@@ -184,9 +202,17 @@ class AlarmPlayer {
     const customSound = localStorage.getItem('alarmSound');
     const soundSrc = customSound || DEFAULT_ALARM_SOUND;
     
-    this.audio = new Audio(soundSrc);
+    // 优先使用预加载的音频
+    if (this.preloadedAudio) {
+      this.audio = this.preloadedAudio;
+      this.preloadedAudio = null;
+    } else {
+      this.audio = new Audio(soundSrc);
+    }
+    
     this.audio.loop = true;
     this.audio.volume = 0.7;
+    this.audio.currentTime = 0;
     this.audio.play().catch(err => console.log('播放铃声失败:', err));
     
     // 设置自动停止
@@ -1018,6 +1044,8 @@ const TimerView = ({
   };
 
   const startTimer = (timer: Timer) => {
+    // 预加载铃声（移动端需要在用户交互时触发）
+    alarmPlayer.preload();
     // 打开计时模式选择弹窗
     openTimerModeModal(timer);
   };
@@ -4809,6 +4837,8 @@ const PlanView = ({
 
   // 开始计时（旧方法保留兼容）
   const startTimer = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+    // 预加载铃声（移动端需要在用户交互时触发）
+    alarmPlayer.preload();
     openTimerModeModal(taskId, duration, taskName, pomodoroSlots);
   };
   
@@ -6718,6 +6748,11 @@ const SettingsView = ({
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   
+  // 搜索数据源
+  const [dataSearchQuery, setDataSearchQuery] = useState('');
+  // 是否已经初始定位过
+  const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+  
   // 新增数据相关状态
   const [isAddingRecord, setIsAddingRecord] = useState(false);
   const [newRecordName, setNewRecordName] = useState('');
@@ -6867,7 +6902,7 @@ UID:${uid}
 DTSTART:${dateStr}T${startTimeStr}
 DTEND:${dateStr}T${endTimeStr}
 SUMMARY:${record.name}
-DESCRIPTION:来源: ${record.source === 'timer' ? '计时器' : '导入'}
+DESCRIPTION:来源: ${record.source === 'timer' ? '计时器' : record.source === 'manual' ? '手动' : '导入'}
 END:VEVENT
 `;
     });
@@ -7054,7 +7089,7 @@ END:VEVENT
     if (editingRecord) {
       setTimeRecords(timeRecords.map(r => 
         r.id === editingRecord.id 
-          ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime }
+          ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime, source: 'manual' as const }
           : r
       ));
       setEditingRecord(null);
@@ -7075,7 +7110,7 @@ END:VEVENT
       date: newRecordDate,
       startTime: newRecordStartTime,
       endTime: newRecordEndTime,
-      source: 'import',
+      source: 'manual',
       createdAt: Date.now()
     };
     
@@ -7504,7 +7539,7 @@ END:VEVENT
 
       {/* 数据管理弹窗 */}
       {showDataManageModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in">
           <div className="bg-white w-[95%] max-w-[430px] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-black text-[#2D2D2D]">查看数据源</h3>
@@ -7521,11 +7556,35 @@ END:VEVENT
                     setShowDataManageModal(false);
                     setEditingRecord(null);
                     setIsAddingRecord(false);
+                    setDataSearchQuery('');
+                    setHasInitialScrolled(false);
                   }}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
                 >
                   <X size={18} />
                 </button>
+              </div>
+            </div>
+
+            {/* 搜索框 */}
+            <div className="mb-4">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={dataSearchQuery}
+                  onChange={(e) => setDataSearchQuery(e.target.value)}
+                  placeholder="搜索事项名称..."
+                  className="w-full bg-gray-50 rounded-xl pl-9 pr-4 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-300 focus:bg-white"
+                />
+                {dataSearchQuery && (
+                  <button
+                    onClick={() => setDataSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -7598,7 +7657,10 @@ END:VEVENT
               <div 
                 className="flex-1 overflow-y-auto"
                 ref={(el) => {
-                  if (el && timeRecords.length > 0) {
+                  // 只在首次打开弹窗时定位，之后不再自动定位
+                  if (el && timeRecords.length > 0 && !hasInitialScrolled && !dataSearchQuery) {
+                    setHasInitialScrolled(true);
+                    
                     // 找到距离当前时间最近的记录
                     const now = new Date();
                     
@@ -7631,8 +7693,23 @@ END:VEVENT
                 }}
               >
                 {(() => {
+                  // 根据搜索词过滤记录
+                  const filteredRecords = dataSearchQuery 
+                    ? timeRecords.filter(r => r.name.toLowerCase().includes(dataSearchQuery.toLowerCase()))
+                    : timeRecords;
+                  
+                  if (filteredRecords.length === 0 && dataSearchQuery) {
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center py-10">
+                        <Search size={48} className="text-gray-300 mb-4" />
+                        <p className="text-gray-400 text-sm">未找到匹配的记录</p>
+                        <p className="text-gray-300 text-xs mt-1">尝试其他关键词</p>
+                      </div>
+                    );
+                  }
+                  
                   // 按日期分组
-                  const sortedRecords = [...timeRecords].sort((a, b) => {
+                  const sortedRecords = [...filteredRecords].sort((a, b) => {
                     const aDateTime = `${a.date} ${a.startTime}`;
                     const bDateTime = `${b.date} ${b.startTime}`;
                     return aDateTime.localeCompare(bDateTime);
@@ -7861,9 +7938,11 @@ END:VEVENT
                                           <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                                             record.source === 'timer' 
                                               ? 'bg-purple-100 text-purple-600' 
+                                              : record.source === 'manual'
+                                              ? 'bg-green-100 text-green-600'
                                               : 'bg-blue-100 text-blue-600'
                                           }`}>
-                                            {record.source === 'timer' ? '计时器' : '导入'}
+                                            {record.source === 'timer' ? '计时器' : record.source === 'manual' ? '手动' : '导入'}
                                           </span>
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1">
