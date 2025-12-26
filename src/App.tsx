@@ -152,7 +152,7 @@ const calculateCurrentTime = (
 };
 
 // 默认铃声文件路径
-const DEFAULT_ALARM_SOUND = '/滴滴闹钟.MP3';
+const DEFAULT_ALARM_SOUND = '/滴滴滴.MP3';
 
 // Toast 组件
 const Toast = ({ message, visible, onClose }: { message: string; visible: boolean; onClose: () => void }) => {
@@ -178,9 +178,6 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
 let audioElement: HTMLAudioElement | null = null;
 let audioUnlocked = false;
 let stopTimeoutId: number | null = null;
-let audioContext: AudioContext | null = null;
-let gainNode: GainNode | null = null;
-let sourceNode: MediaElementAudioSourceNode | null = null;
 
 // 铃声播放器 - 简化版，专注于移动端兼容性
 const alarmPlayer = {
@@ -199,24 +196,6 @@ const alarmPlayer = {
     return audioElement;
   },
   
-  // 设置音频增益（放大音量）
-  setupGain() {
-    if (!audioContext && audioElement) {
-      try {
-        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        sourceNode = audioContext.createMediaElementSource(audioElement);
-        gainNode = audioContext.createGain();
-        // 增益值：20分贝约等于10倍音量
-        gainNode.gain.value = 10;
-        sourceNode.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        console.log('音频增益已设置');
-      } catch (e) {
-        console.log('设置增益失败:', e);
-      }
-    }
-  },
-  
   // 解锁音频 - 必须在用户点击事件中直接调用（静默解锁，不播放声音）
   async unlock(): Promise<boolean> {
     const audio = this.getAudio();
@@ -232,9 +211,6 @@ const alarmPlayer = {
       // 立即停止
       audio.pause();
       audio.currentTime = 0;
-      
-      // 播放成功后再设置增益
-      this.setupGain();
       
       // 恢复音量设置
       audio.volume = 1.0;
@@ -254,7 +230,6 @@ const alarmPlayer = {
         await audio.play();
         audio.pause();
         audio.currentTime = 0;
-        this.setupGain();
         audio.muted = false;
         audio.volume = 1.0;
         audioUnlocked = true;
@@ -282,16 +257,6 @@ const alarmPlayer = {
     }
     
     const audio = this.getAudio();
-    
-    // 恢复 AudioContext（如果被暂停）- 必须先恢复再播放
-    if (audioContext && audioContext.state === 'suspended') {
-      try {
-        await audioContext.resume();
-        console.log('AudioContext 已恢复');
-      } catch (e) {
-        console.log('AudioContext 恢复失败:', e);
-      }
-    }
     
     // 重新设置音频属性
     audio.src = DEFAULT_ALARM_SOUND;
@@ -1030,7 +995,7 @@ const TimerView = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, timerDuration]);
+  }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, timerDuration, timerStartTime]);
 
   // 监听页面可见性变化，确保后台返回时检查计时器状态
   useEffect(() => {
@@ -1224,6 +1189,10 @@ const TimerView = ({
       setPomodoroWaitingNextPhase(false);
       
       if (nextPhaseInfo.phase === 'longBreak') {
+        // 工作阶段结束，进入长休息前保存记录
+        if (timerStartTime) {
+          saveTimeRecord(activeTimer, timerStartTime, new Date());
+        }
         setPomodoroPhase('longBreak');
         setCurrentPomodoroRound(1);
         const nextRemaining = pomodoroConfig.longBreakDuration * 60;
@@ -1232,6 +1201,10 @@ const TimerView = ({
         setActiveTimer(updated);
         setTimerStartTimestamp(Date.now());
       } else if (nextPhaseInfo.phase === 'break') {
+        // 工作阶段结束，进入短休息前保存记录
+        if (timerStartTime) {
+          saveTimeRecord(activeTimer, timerStartTime, new Date());
+        }
         setPomodoroPhase('break');
         const nextRemaining = pomodoroConfig.breakDuration * 60;
         const updated = { ...activeTimer, status: 'running' as TimerStatus, remainingTime: nextRemaining };
@@ -1239,20 +1212,19 @@ const TimerView = ({
         setActiveTimer(updated);
         setTimerStartTimestamp(Date.now());
       } else if (nextPhaseInfo.phase === 'work') {
+        // 休息阶段结束，进入工作阶段，重置开始时间
         setPomodoroPhase('work');
         setCurrentPomodoroRound(nextPhaseInfo.round);
         const nextRemaining = pomodoroConfig.workDuration * 60;
         const updated = { ...activeTimer, status: 'running' as TimerStatus, remainingTime: nextRemaining };
         setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
         setActiveTimer(updated);
+        setTimerStartTime(new Date());
         setTimerStartTimestamp(Date.now());
       }
       setNextPhaseInfo(null);
     } else if (pomodoroWaitingNextPhase && !nextPhaseInfo && activeTimer) {
-      // 长休息结束，整个番茄钟周期完成，保存记录
-      if (timerStartTime) {
-        saveTimeRecord(activeTimer, timerStartTime, new Date());
-      }
+      // 长休息结束，整个番茄钟周期完成（休息阶段不保存记录）
       setPomodoroWaitingNextPhase(false);
       setTimers(timers => timers.map(t => 
         t.id === activeTimer.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
@@ -1279,9 +1251,12 @@ const TimerView = ({
   };
 
   const resetTimer = (timer: Timer) => {
-    // 保存计时记录（如果有开始时间）
+    // 保存计时记录（如果有开始时间，且不是番茄钟休息阶段）
     if (timerStartTime && activeTimer?.id === timer.id) {
-      saveTimeRecord(timer, timerStartTime, new Date());
+      // 番茄钟休息阶段不保存记录
+      if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
+        saveTimeRecord(timer, timerStartTime, new Date());
+      }
     }
     
     const updatedTimer = { 
@@ -1307,6 +1282,11 @@ const TimerView = ({
     
     if (pomodoroPhase === 'work') {
       // 当前是专注阶段，跳到休息
+      // 保存工作阶段的记录
+      if (timerStartTime) {
+        saveTimeRecord(timer, timerStartTime, new Date());
+      }
+      
       if (currentPomodoroRound >= pomodoroConfig.rounds) {
         // 已经是最后一轮，自动重置计时器
         const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
@@ -1321,14 +1301,19 @@ const TimerView = ({
         // 进入短休息
         setPomodoroPhase('break');
         newRemainingTime = pomodoroConfig.breakDuration * 60;
+        // 重置开始时间（休息阶段不计入记录）
+        setTimerStartTimestamp(Date.now());
       }
     } else if (pomodoroPhase === 'break') {
       // 当前是短休息，跳到下一轮专注
       setPomodoroPhase('work');
       setCurrentPomodoroRound(prev => prev + 1);
       newRemainingTime = pomodoroConfig.workDuration * 60;
+      // 重置开始时间（新的工作阶段）
+      setTimerStartTime(new Date());
+      setTimerStartTimestamp(Date.now());
     } else {
-      // 当前是长休息，自动重置计时器
+      // 当前是长休息，自动重置计时器（休息阶段不保存记录）
       const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
       setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
       setActiveTimer(null);
@@ -4865,8 +4850,8 @@ const PlanView = ({
             const newRemaining = Math.max(0, countdownDuration * 60 - elapsed);
             
             if (newRemaining <= 0) {
-              // 倒计时结束，保存记录
-              saveTimeRecord();
+              // 倒计时结束，保存记录（传入当前值避免闭包问题）
+              saveTimeRecord(timerStartTime || undefined, currentTaskName || undefined);
               setTimerStatus('idle');
               setActiveTimerId(null);
               // 倒计时结束，播放铃声
@@ -4923,7 +4908,7 @@ const PlanView = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration, pomodoroWaitingNextPhase]);
+  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration, pomodoroWaitingNextPhase, timerStartTime, currentTaskName]);
 
   // 监听页面可见性变化，确保后台返回时检查计时器状态
   useEffect(() => {
@@ -5091,8 +5076,11 @@ const PlanView = ({
   };
 
   // 保存计时记录到timeRecords
-  const saveTimeRecord = () => {
-    if (!timerStartTime || !currentTaskName) return;
+  const saveTimeRecord = (startTimeOverride?: Date, taskNameOverride?: string) => {
+    const startTime = startTimeOverride || timerStartTime;
+    const taskName = taskNameOverride || currentTaskName;
+    
+    if (!startTime || !taskName) return;
     
     const endTime = new Date();
     const formatTimeStr = (date: Date) => {
@@ -5104,16 +5092,16 @@ const PlanView = ({
     
     const newRecord: TimeRecord = {
       id: `plan_timer_${Date.now()}`,
-      name: currentTaskName,
-      date: formatDateStr(timerStartTime),
-      startTime: formatTimeStr(timerStartTime),
+      name: taskName,
+      date: formatDateStr(startTime),
+      startTime: formatTimeStr(startTime),
       endTime: formatTimeStr(endTime),
       source: 'timer',
       categoryId: 'uncategorized',
       createdAt: Date.now()
     };
     
-    setTimeRecords([...timeRecords, newRecord]);
+    setTimeRecords(prev => [...prev, newRecord]);
   };
 
   // 开始计时（旧方法保留兼容）
@@ -5189,27 +5177,36 @@ const PlanView = ({
       setPomodoroWaitingNextPhase(false);
       
       if (nextPhaseInfo.phase === 'longBreak') {
+        // 工作阶段结束，进入长休息前保存记录
+        if (timerStartTime && currentTaskName) {
+          saveTimeRecord(timerStartTime, currentTaskName);
+        }
         setPomodoroPhase('longBreak');
         setCurrentPomodoroRound(1);
         setRemainingTime(pomodoroConfig.longBreakDuration * 60);
         setTimerStartTimestamp(Date.now());
         setTimerStatus('running');
       } else if (nextPhaseInfo.phase === 'break') {
+        // 工作阶段结束，进入短休息前保存记录
+        if (timerStartTime && currentTaskName) {
+          saveTimeRecord(timerStartTime, currentTaskName);
+        }
         setPomodoroPhase('break');
         setRemainingTime(pomodoroConfig.breakDuration * 60);
         setTimerStartTimestamp(Date.now());
         setTimerStatus('running');
       } else if (nextPhaseInfo.phase === 'work') {
+        // 休息阶段结束，进入工作阶段，重置开始时间
         setPomodoroPhase('work');
         setCurrentPomodoroRound(nextPhaseInfo.round);
         setRemainingTime(pomodoroConfig.workDuration * 60);
+        setTimerStartTime(new Date());
         setTimerStartTimestamp(Date.now());
         setTimerStatus('running');
       }
       setNextPhaseInfo(null);
     } else if (pomodoroWaitingNextPhase && !nextPhaseInfo) {
-      // 长休息结束，整个番茄钟周期完成，保存记录
-      saveTimeRecord();
+      // 长休息结束，整个番茄钟周期完成（休息阶段不保存记录）
       setPomodoroWaitingNextPhase(false);
       setTimerStatus('idle');
       setActiveTimerId(null);
@@ -5223,9 +5220,12 @@ const PlanView = ({
 
   // 停止计时
   const stopTimer = () => {
-    // 保存计时记录
+    // 保存计时记录（如果有开始时间，且不是番茄钟休息阶段）
     if (timerStartTime && currentTaskName) {
-      saveTimeRecord();
+      // 番茄钟休息阶段不保存记录
+      if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
+        saveTimeRecord();
+      }
     }
     
     setActiveTimerId(null);
@@ -5245,6 +5245,11 @@ const PlanView = ({
     
     if (pomodoroPhase === 'work') {
       // 当前是专注阶段，跳到休息
+      // 保存工作阶段的记录
+      if (timerStartTime && currentTaskName) {
+        saveTimeRecord();
+      }
+      
       if (currentPomodoroRound >= pomodoroConfig.rounds) {
         // 已经是最后一轮，直接完成番茄钟
         setTimerStatus('idle');
@@ -5252,8 +5257,6 @@ const PlanView = ({
         setRemainingTime(0);
         setPomodoroPhase('work');
         setCurrentPomodoroRound(1);
-        // 保存记录
-        saveTimeRecord();
         setTimerStartTime(null);
         setCurrentTaskName('');
         return;
@@ -5261,21 +5264,24 @@ const PlanView = ({
         // 进入短休息
         setPomodoroPhase('break');
         setRemainingTime(pomodoroConfig.breakDuration * 60);
+        // 重置开始时间（休息阶段不计入记录）
+        setTimerStartTimestamp(Date.now());
       }
     } else if (pomodoroPhase === 'break') {
       // 当前是短休息，跳到下一轮专注
       setPomodoroPhase('work');
       setCurrentPomodoroRound(prev => prev + 1);
       setRemainingTime(pomodoroConfig.workDuration * 60);
+      // 重置开始时间（新的工作阶段）
+      setTimerStartTime(new Date());
+      setTimerStartTimestamp(Date.now());
     } else {
-      // 当前是长休息，完成番茄钟
+      // 当前是长休息，完成番茄钟（休息阶段不保存记录）
       setTimerStatus('idle');
       setActiveTimerId(null);
       setRemainingTime(0);
       setPomodoroPhase('work');
       setCurrentPomodoroRound(1);
-      // 保存记录
-      saveTimeRecord();
       setTimerStartTime(null);
       setCurrentTaskName('');
     }
