@@ -1709,15 +1709,6 @@ const TimerView = ({
                           >
                             <X size={14} />
                           </button>
-                          {/* 停止铃声按钮 - 只在当前计时的卡片显示 */}
-                          {isAlarmPlaying && alarmTimerId === timer.id && (
-                            <button
-                              onClick={() => stopAlarmAndProceed()}
-                              className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg hover:bg-pink-600 transition-all animate-pulse text-sm"
-                            >
-                              🔔
-                            </button>
-                          )}
                         </div>
                       </>
                     ) : (
@@ -1732,20 +1723,6 @@ const TimerView = ({
                           <h4 className="text-sm font-bold text-[#2D2D2D] truncate">{timer.name}</h4>
                           <Play size={12} fill={theme.primary} style={{ color: theme.primary, flexShrink: 0 }} />
                         </div>
-                        
-                        {/* 停止铃声按钮 - 铃声响起时显示，只在当前计时的卡片显示 */}
-                        {isAlarmPlaying && alarmTimerId === timer.id && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              stopAlarmAndProceed();
-                            }}
-                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all animate-pulse"
-                            style={{ backgroundColor: '#FF6B6B' }}
-                          >
-                            🔔 停止响铃
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
@@ -2463,6 +2440,20 @@ const TimerView = ({
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
+      {isAlarmPlaying && (
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+          <button
+            onClick={() => stopAlarmAndProceed()}
+            className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
+            style={{ boxShadow: '0 10px 30px rgba(236, 72, 153, 0.4)' }}
+          >
+            <span className="text-xl">🔔</span>
+            <span>停止响铃</span>
+          </button>
         </div>
       )}
     </div>
