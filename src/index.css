@@ -2,9 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 强制伪装策略 - html 必须是实色，不能透明 */
+/* Body 统一样式方案 - html 透明，body 承担渐变背景 */
 html {
-  background-color: #E8F5E9 !important; /* 渐变起始实色，规划页的翡翠绿 */
+  background-color: transparent;
   height: 100%;
   margin: 0;
   padding: 0;
@@ -16,11 +16,11 @@ html {
 }
 
 body {
-  background-color: transparent; /* 只有 body 保持透明 */
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
+  /* 背景由 JS 动态设置 */
 }
 
 #root {

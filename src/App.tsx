@@ -7910,23 +7910,6 @@ export default function App() {
     setAppState('main');
   };
 
-  // 强制伪装策略：根据页面动态设置 html 背景色为渐变起始色
-  useEffect(() => {
-    let bgColor = '#E8F5E9'; // 默认规划页
-    
-    if (activeTab === 'timer') {
-      bgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#FFF0F3';
-    } else if (activeTab === 'journal') {
-      bgColor = '#fdf2f8';
-    } else if (activeTab === 'review') {
-      bgColor = '#f0f9ff';
-    } else if (activeTab === 'settings') {
-      bgColor = '#fefce8';
-    }
-    
-    document.documentElement.style.backgroundColor = bgColor;
-  }, [activeTab, selectedCategory]);
-
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
@@ -7990,7 +7973,7 @@ export default function App() {
     );
   }
 
-  // 动态渐变背景 - 使用纯垂直渐变，确保顶部颜色和 html 背景色一致
+  // 动态渐变背景
   const getTimerGradient = () => {
     const categoryLight = MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff';
     return `linear-gradient(to bottom, ${categoryLight}, #ffffff)`;
@@ -8005,33 +7988,30 @@ export default function App() {
   };
   const currentGradient = gradientMap[activeTab] || gradientMap.plan;
 
+  // Body 统一样式方案：让 body 直接承担渐变背景
+  useEffect(() => {
+    document.body.style.background = currentGradient;
+    document.body.style.backgroundAttachment = 'fixed';
+    document.body.style.backgroundSize = 'cover';
+    
+    return () => {
+      document.body.style.background = '';
+    };
+  }, [currentGradient]);
+
   return (
     <>
-      {/* 独立背景层 - fixed 铺满全屏，zIndex: -1 放在最底层 */}
-      <div 
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: -1,
-          background: currentGradient,
-          transition: 'background 0.5s ease',
-        }}
-      />
-      
-      {/* 内容层 - 背景透明，让底层渐变透出 */}
+      {/* 内容层 - 背景透明，让 body 渐变透出 */}
       <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
       <div className="flex-1 overflow-y-auto pb-24">
         {renderView()}
       </div>
       
-      {/* 底部导航栏 - 固定在屏幕底部 */}
+      {/* 底部导航栏 - 移除所有边框 */}
       <div 
-        className="fixed bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-t border-gray-100 z-50"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="fixed bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-none border-0 z-50"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none' }}
       >
         <div className="flex h-full items-center justify-around px-4">
             {tabs.map(tab => {
