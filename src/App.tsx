@@ -769,7 +769,7 @@ const TimerView = ({
   // 铃声播放状态
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
   // 记录响铃时的计时器ID（因为计时结束后 activeTimer 会被清空）
-  const [alarmTimerId, setAlarmTimerId] = useState<string | null>(null);
+  const [_alarmTimerId, setAlarmTimerId] = useState<string | null>(null);
   // 番茄钟等待进入下一阶段的状态
   const [pomodoroWaitingNextPhase, setPomodoroWaitingNextPhase] = useState(false);
   // 下一阶段信息
