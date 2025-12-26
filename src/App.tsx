@@ -178,6 +178,9 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
 let audioElement: HTMLAudioElement | null = null;
 let audioUnlocked = false;
 let stopTimeoutId: number | null = null;
+let audioContext: AudioContext | null = null;
+let gainNode: GainNode | null = null;
+let sourceNode: MediaElementAudioSourceNode | null = null;
 
 // 铃声播放器 - 简化版，专注于移动端兼容性
 const alarmPlayer = {
@@ -196,6 +199,24 @@ const alarmPlayer = {
     return audioElement;
   },
   
+  // 设置音频增益（放大音量）
+  setupGain() {
+    if (!audioContext && audioElement) {
+      try {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        sourceNode = audioContext.createMediaElementSource(audioElement);
+        gainNode = audioContext.createGain();
+        // 增益值：20分贝约等于10倍音量
+        gainNode.gain.value = 10;
+        sourceNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        console.log('音频增益已设置');
+      } catch (e) {
+        console.log('设置增益失败:', e);
+      }
+    }
+  },
+  
   // 解锁音频 - 必须在用户点击事件中直接调用
   async unlock(): Promise<boolean> {
     const audio = this.getAudio();
@@ -207,7 +228,10 @@ const alarmPlayer = {
       audio.volume = 1.0;
       await audio.play();
       
-      // 播放成功，标记为已解锁
+      // 播放成功，设置增益
+      this.setupGain();
+      
+      // 标记为已解锁
       audioUnlocked = true;
       console.log('音频解锁成功！');
       
@@ -227,6 +251,7 @@ const alarmPlayer = {
         audio.muted = false;
         audio.pause();
         audio.currentTime = 0;
+        this.setupGain();
         audioUnlocked = true;
         console.log('静音解锁成功');
         return true;
@@ -1002,6 +1027,51 @@ const TimerView = ({
       if (interval) clearInterval(interval);
     };
   }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, timerDuration]);
+
+  // 监听页面可见性变化，确保后台返回时检查计时器状态
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && activeTimer?.status === 'running' && timerStartTimestamp) {
+        // 页面重新可见，立即检查计时器状态
+        if (timerMode === 'countdown') {
+          const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+          const initialDuration = timerDuration * 60;
+          const newRemaining = Math.max(0, initialDuration - elapsed);
+          if (newRemaining <= 0) {
+            // 计算结束了多久
+            const endedSecondsAgo = elapsed - initialDuration;
+            // 只在结束后10秒内播放铃声
+            if (endedSecondsAgo <= 10) {
+              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+            }
+          }
+        } else if (timerMode === 'pomodoro') {
+          const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+          const phaseDuration = pomodoroPhase === 'work' 
+            ? pomodoroConfig.workDuration * 60 
+            : pomodoroPhase === 'break' 
+            ? pomodoroConfig.breakDuration * 60 
+            : pomodoroConfig.longBreakDuration * 60;
+          const newRemaining = Math.max(0, phaseDuration - elapsed);
+          if (newRemaining <= 0) {
+            // 计算结束了多久
+            const endedSecondsAgo = elapsed - phaseDuration;
+            // 只在结束后10秒内播放铃声
+            if (endedSecondsAgo <= 10) {
+              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+            }
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [activeTimer?.status, timerStartTimestamp, timerMode, timerDuration, pomodoroPhase, pomodoroConfig]);
 
   // 监听计时器完成，保存记录
   useEffect(() => {
@@ -4804,6 +4874,51 @@ const PlanView = ({
       if (interval) clearInterval(interval);
     };
   }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration]);
+
+  // 监听页面可见性变化，确保后台返回时检查计时器状态
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && timerStatus === 'running' && timerStartTimestamp) {
+        // 页面重新可见，立即检查计时器状态
+        if (timerMode === 'countdown') {
+          const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+          const initialDuration = countdownDuration * 60;
+          const newRemaining = Math.max(0, initialDuration - elapsed);
+          if (newRemaining <= 0) {
+            // 计算结束了多久
+            const endedSecondsAgo = elapsed - initialDuration;
+            // 只在结束后10秒内播放铃声
+            if (endedSecondsAgo <= 10) {
+              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+            }
+          }
+        } else if (timerMode === 'pomodoro') {
+          const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+          const phaseDuration = pomodoroPhase === 'work' 
+            ? pomodoroConfig.workDuration * 60 
+            : pomodoroPhase === 'break' 
+            ? pomodoroConfig.breakDuration * 60 
+            : pomodoroConfig.longBreakDuration * 60;
+          const newRemaining = Math.max(0, phaseDuration - elapsed);
+          if (newRemaining <= 0) {
+            // 计算结束了多久
+            const endedSecondsAgo = elapsed - phaseDuration;
+            // 只在结束后10秒内播放铃声
+            if (endedSecondsAgo <= 10) {
+              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              setIsAlarmPlaying(true);
+              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+            }
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [timerStatus, timerStartTimestamp, timerMode, countdownDuration, pomodoroPhase, pomodoroConfig]);
 
   // 监听计时器完成，保存记录
   useEffect(() => {
