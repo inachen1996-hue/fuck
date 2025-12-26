@@ -2,14 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 强制高度继承链 + 防止系统白底透出 */
+/* 根元素透明，让独立背景层透出 */
 html {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* 默认背景色为规划页的翡翠绿，JS 会根据页面动态切换 */
-  background-color: #E8F5E9;
+  background-color: transparent !important;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -21,7 +20,7 @@ body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: inherit; /* 继承 html 的背景色 */
+  background-color: transparent !important;
 }
 
 body {

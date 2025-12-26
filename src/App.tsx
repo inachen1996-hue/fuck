@@ -7910,27 +7910,6 @@ export default function App() {
     setAppState('main');
   };
 
-  // 根据当前页面动态更新 html 背景色，防止白边
-  useEffect(() => {
-    let bgColor = '#E8F5E9'; // 默认规划页颜色
-    
-    if (activeTab === 'timer') {
-      bgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#FFF0F3';
-    } else if (activeTab === 'journal') {
-      bgColor = '#fdf2f8';
-    } else if (activeTab === 'review') {
-      bgColor = '#f0f9ff';
-    } else if (activeTab === 'settings') {
-      bgColor = '#fefce8';
-    } else {
-      bgColor = '#E8F5E9';
-    }
-    
-    // 同时设置 html 和 body 背景色，确保覆盖所有情况
-    document.documentElement.style.setProperty('background-color', bgColor, 'important');
-    document.body.style.setProperty('background-color', bgColor, 'important');
-  }, [activeTab, selectedCategory]);
-
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
@@ -8011,14 +7990,22 @@ export default function App() {
 
   return (
     <>
-      {/* 第一步：独立背景层 - fixed inset-0 z-0 无脑铺满整个物理屏幕 */}
+      {/* 独立背景层 - fixed 铺满全屏，zIndex: -1 放在最底层 */}
       <div 
-        className="fixed inset-0 z-0 transition-all duration-700"
-        style={{ background: currentGradient }}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: -1,
+          background: currentGradient,
+          transition: 'background 0.5s ease',
+        }}
       />
       
-      {/* 第二步：内容层悬浮在背景层之上 */}
-      <div className="iphone-container relative z-10 bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* 内容层 - 背景透明，让底层渐变透出 */}
+      <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
       <div className="flex-1 overflow-y-auto pb-24">
         {renderView()}
