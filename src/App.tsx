@@ -7912,15 +7912,22 @@ export default function App() {
 
   // 根据当前页面动态更新 html 背景色，防止白边
   useEffect(() => {
-    const htmlBgColorMap: Record<TabId, string> = {
-      timer: '#faf5ff',    // purple-50
-      journal: '#fdf2f8',  // pink-50
-      review: '#f0f9ff',   // sky-50
-      plan: '#E8F5E9',     // 翡翠绿
-      settings: '#fefce8', // yellow-50
-    };
-    document.documentElement.style.backgroundColor = htmlBgColorMap[activeTab] || '#E8F5E9';
-  }, [activeTab]);
+    if (activeTab === 'timer') {
+      // 专注页面：根据分类切换背景色
+      const categoryBgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff';
+      document.documentElement.style.backgroundColor = categoryBgColor;
+    } else {
+      // 其他页面：使用固定背景色
+      const htmlBgColorMap: Record<TabId, string> = {
+        timer: '#faf5ff',    // purple-50 (fallback)
+        journal: '#fdf2f8',  // pink-50
+        review: '#f0f9ff',   // sky-50
+        plan: '#E8F5E9',     // 翡翠绿
+        settings: '#fefce8', // yellow-50
+      };
+      document.documentElement.style.backgroundColor = htmlBgColorMap[activeTab] || '#E8F5E9';
+    }
+  }, [activeTab, selectedCategory]);
 
   const renderView = () => {
     switch (activeTab) {
@@ -7985,13 +7992,18 @@ export default function App() {
     );
   }
 
-  // 动态渐变背景
+  // 动态渐变背景 - 使用纯垂直渐变，确保顶部颜色和 html 背景色一致
+  const getTimerGradient = () => {
+    const categoryLight = MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff';
+    return `linear-gradient(to bottom, ${categoryLight}, #ffffff)`;
+  };
+  
   const gradientMap: Record<string, string> = {
-    plan: 'linear-gradient(to bottom right, #E8F5E9, #E8F5E9)',
-    timer: 'linear-gradient(to bottom right, #faf5ff, #ffffff, #ecfeff)',
-    journal: 'linear-gradient(to bottom right, #fdf2f8, #ffffff, #f7fee7)',
-    review: 'linear-gradient(to bottom right, #f0f9ff, #ffffff, #fff1f2)',
-    settings: 'linear-gradient(to bottom right, #fefce8, #ffffff, #eff6ff)',
+    plan: 'linear-gradient(to bottom, #E8F5E9, #E8F5E9)',
+    timer: getTimerGradient(),
+    journal: 'linear-gradient(to bottom, #fdf2f8, #ffffff)',
+    review: 'linear-gradient(to bottom, #f0f9ff, #ffffff)',
+    settings: 'linear-gradient(to bottom, #fefce8, #ffffff)',
   };
   const currentGradient = gradientMap[activeTab] || gradientMap.plan;
 
