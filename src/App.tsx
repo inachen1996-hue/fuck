@@ -217,7 +217,7 @@ const alarmPlayer = {
     }
   },
   
-  // 解锁音频 - 必须在用户点击事件中直接调用
+  // 解锁音频 - 必须在用户点击事件中直接调用（静默解锁，不播放声音）
   async unlock(): Promise<boolean> {
     const audio = this.getAudio();
     audio.src = DEFAULT_ALARM_SOUND;
@@ -226,19 +226,23 @@ const alarmPlayer = {
       // 关键：在用户交互中直接调用 play()，但静音播放
       audio.currentTime = 0;
       audio.volume = 0; // 静音
+      audio.muted = true; // 双重保险
       await audio.play();
-      
-      // 播放成功，设置增益
-      this.setupGain();
-      
-      // 标记为已解锁
-      audioUnlocked = true;
-      console.log('音频解锁成功！');
       
       // 立即停止
       audio.pause();
       audio.currentTime = 0;
-      audio.volume = 1.0; // 恢复音量
+      
+      // 播放成功后再设置增益
+      this.setupGain();
+      
+      // 恢复音量设置
+      audio.volume = 1.0;
+      audio.muted = false;
+      
+      // 标记为已解锁
+      audioUnlocked = true;
+      console.log('音频解锁成功！');
       
       return true;
     } catch (err) {
@@ -246,11 +250,13 @@ const alarmPlayer = {
       // 尝试静音播放
       try {
         audio.muted = true;
+        audio.volume = 0;
         await audio.play();
-        audio.muted = false;
         audio.pause();
         audio.currentTime = 0;
         this.setupGain();
+        audio.muted = false;
+        audio.volume = 1.0;
         audioUnlocked = true;
         console.log('静音解锁成功');
         return true;
@@ -946,8 +952,12 @@ const TimerView = ({
             const newRemaining = Math.max(0, initialDuration - elapsed);
             
             if (newRemaining <= 0) {
-              // 倒计时结束，自动重置计时器
+              // 倒计时结束，保存记录
               const timerId = activeTimer?.id;
+              if (timerStartTime && activeTimer) {
+                saveTimeRecord(activeTimer, timerStartTime, new Date());
+              }
+              // 自动重置计时器
               setTimers(timers => timers.map(t => 
                 t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
               ));
@@ -1239,7 +1249,10 @@ const TimerView = ({
       }
       setNextPhaseInfo(null);
     } else if (pomodoroWaitingNextPhase && !nextPhaseInfo && activeTimer) {
-      // 长休息结束，整个番茄钟周期完成
+      // 长休息结束，整个番茄钟周期完成，保存记录
+      if (timerStartTime) {
+        saveTimeRecord(activeTimer, timerStartTime, new Date());
+      }
       setPomodoroWaitingNextPhase(false);
       setTimers(timers => timers.map(t => 
         t.id === activeTimer.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
@@ -4852,6 +4865,8 @@ const PlanView = ({
             const newRemaining = Math.max(0, countdownDuration * 60 - elapsed);
             
             if (newRemaining <= 0) {
+              // 倒计时结束，保存记录
+              saveTimeRecord();
               setTimerStatus('idle');
               setActiveTimerId(null);
               // 倒计时结束，播放铃声
@@ -4859,6 +4874,8 @@ const PlanView = ({
               setIsAlarmPlaying(true);
               setTimeout(() => setIsAlarmPlaying(false), 10000);
               setRemainingTime(0);
+              setTimerStartTime(null);
+              setCurrentTaskName('');
             } else {
               setRemainingTime(newRemaining);
             }
@@ -5191,13 +5208,16 @@ const PlanView = ({
       }
       setNextPhaseInfo(null);
     } else if (pomodoroWaitingNextPhase && !nextPhaseInfo) {
-      // 长休息结束，整个番茄钟周期完成
+      // 长休息结束，整个番茄钟周期完成，保存记录
+      saveTimeRecord();
       setPomodoroWaitingNextPhase(false);
       setTimerStatus('idle');
       setActiveTimerId(null);
       setPomodoroPhase('work');
       setCurrentPomodoroRound(1);
       setRemainingTime(0);
+      setTimerStartTime(null);
+      setCurrentTaskName('');
     }
   };
 
