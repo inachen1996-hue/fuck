@@ -21,7 +21,7 @@ body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: transparent !important; /* body 保持透明，让上层 div 显示渐变 */
+  background: inherit; /* 继承 html 的背景色 */
 }
 
 body {

@@ -7912,21 +7912,23 @@ export default function App() {
 
   // 根据当前页面动态更新 html 背景色，防止白边
   useEffect(() => {
+    let bgColor = '#E8F5E9'; // 默认规划页颜色
+    
     if (activeTab === 'timer') {
-      // 专注页面：根据分类切换背景色
-      const categoryBgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff';
-      document.documentElement.style.backgroundColor = categoryBgColor;
+      bgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#FFF0F3';
+    } else if (activeTab === 'journal') {
+      bgColor = '#fdf2f8';
+    } else if (activeTab === 'review') {
+      bgColor = '#f0f9ff';
+    } else if (activeTab === 'settings') {
+      bgColor = '#fefce8';
     } else {
-      // 其他页面：使用固定背景色
-      const htmlBgColorMap: Record<TabId, string> = {
-        timer: '#faf5ff',    // purple-50 (fallback)
-        journal: '#fdf2f8',  // pink-50
-        review: '#f0f9ff',   // sky-50
-        plan: '#E8F5E9',     // 翡翠绿
-        settings: '#fefce8', // yellow-50
-      };
-      document.documentElement.style.backgroundColor = htmlBgColorMap[activeTab] || '#E8F5E9';
+      bgColor = '#E8F5E9';
     }
+    
+    // 同时设置 html 和 body 背景色，确保覆盖所有情况
+    document.documentElement.style.setProperty('background-color', bgColor, 'important');
+    document.body.style.setProperty('background-color', bgColor, 'important');
   }, [activeTab, selectedCategory]);
 
   const renderView = () => {
