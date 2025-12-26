@@ -3,20 +3,25 @@
 @tailwind utilities;
 
 /* 强制高度继承链 + 防止系统白底透出 */
-html, body, #root {
+html {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* 禁止浏览器默认滚动，只允许内部滚动 */
-  background: transparent !important;
-}
-
-/* 防止移动端缩放和优化触摸体验 */
-html {
+  overflow: hidden;
+  /* 不要用 transparent！必须用一个和顶部接近的实色，防止白边 */
+  background-color: #fff0f5 !important; /* 粉色实色底，和渐变顶部颜色一致 */
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation;
+}
+
+body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent !important; /* body 保持透明，让上层 div 显示渐变 */
 }
 
 body {
