@@ -7988,30 +7988,31 @@ export default function App() {
   };
   const currentGradient = gradientMap[activeTab] || gradientMap.plan;
 
-  // Body 统一样式方案：让 body 直接承担渐变背景
-  useEffect(() => {
-    document.body.style.background = currentGradient;
-    document.body.style.backgroundAttachment = 'fixed';
-    document.body.style.backgroundSize = 'cover';
-    
-    return () => {
-      document.body.style.background = '';
-    };
-  }, [currentGradient]);
-
   return (
     <>
-      {/* 内容层 - 背景透明，让 body 渐变透出 */}
+      {/* 独立的超大背景层 - 120vh高度往上溢出覆盖刘海 */}
+      <div 
+        className="fixed left-0 w-full -z-10"
+        style={{ 
+          background: currentGradient, 
+          height: '120vh',
+          top: '-10vh',
+          backgroundAttachment: 'fixed',
+          transition: 'background 0.5s ease'
+        }} 
+      />
+      
+      {/* 内容层 - 背景透明 */}
       <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
       <div className="flex-1 overflow-y-auto pb-24">
         {renderView()}
       </div>
       
-      {/* 底部导航栏 - 移除所有边框 */}
+      {/* 底部导航栏 - 直接矩形，无圆角 */}
       <div 
-        className="fixed bottom-0 left-0 right-0 h-24 bg-white rounded-t-[2.5rem] border-none border-0 z-50"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none' }}
+        className="fixed bottom-0 left-0 right-0 h-24 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
       >
         <div className="flex h-full items-center justify-around px-4">
             {tabs.map(tab => {
@@ -8031,7 +8032,7 @@ export default function App() {
                     />
                   )}
                   <div 
-                    className={`p-3 rounded-2xl transition-all duration-500 shadow-none ring-0 border-0 outline-none ${
+                    className={`p-3 rounded-2xl transition-all duration-500 !border-0 !ring-0 !shadow-none !outline-none ${
                       isActive 
                         ? 'bg-white -translate-y-3 scale-110' 
                         : 'hover:bg-white/40'

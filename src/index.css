@@ -2,9 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Body 统一样式方案 - html 透明，body 承担渐变背景 */
+/* 超大背景 + 锁死回弹方案 */
 html {
-  background-color: transparent;
+  background-color: #ffffff; /* 白色兜底 */
+  overscroll-behavior-y: none; /* 核心：禁止下拉露出白边 */
   height: 100%;
   margin: 0;
   padding: 0;
@@ -16,11 +17,12 @@ html {
 }
 
 body {
+  background-color: transparent;
+  overscroll-behavior-y: none; /* 双重保险 */
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* 背景由 JS 动态设置 */
 }
 
 #root {
