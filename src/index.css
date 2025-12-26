@@ -2,25 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 根元素透明，让独立背景层透出 */
+/* 强制伪装策略 - html 必须是实色，不能透明 */
 html {
+  background-color: #E8F5E9 !important; /* 渐变起始实色，规划页的翡翠绿 */
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: transparent !important;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
   touch-action: manipulation;
 }
 
-body, #root {
+body {
+  background-color: transparent; /* 只有 body 保持透明 */
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: transparent !important;
+}
+
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: transparent;
 }
 
 body {

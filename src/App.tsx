@@ -7910,6 +7910,23 @@ export default function App() {
     setAppState('main');
   };
 
+  // 强制伪装策略：根据页面动态设置 html 背景色为渐变起始色
+  useEffect(() => {
+    let bgColor = '#E8F5E9'; // 默认规划页
+    
+    if (activeTab === 'timer') {
+      bgColor = MACARON_COLORS.categories[selectedCategory]?.light || '#FFF0F3';
+    } else if (activeTab === 'journal') {
+      bgColor = '#fdf2f8';
+    } else if (activeTab === 'review') {
+      bgColor = '#f0f9ff';
+    } else if (activeTab === 'settings') {
+      bgColor = '#fefce8';
+    }
+    
+    document.documentElement.style.backgroundColor = bgColor;
+  }, [activeTab, selectedCategory]);
+
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
@@ -8034,11 +8051,12 @@ export default function App() {
                     />
                   )}
                   <div 
-                    className={`p-3 rounded-2xl transition-all duration-500 ${
+                    className={`p-3 rounded-2xl transition-all duration-500 shadow-none ring-0 border-0 outline-none ${
                       isActive 
                         ? 'bg-white -translate-y-3 scale-110' 
                         : 'hover:bg-white/40'
                     }`}
+                    style={{ boxShadow: 'none', border: 'none', outline: 'none' }}
                   >
                     <Icon 
                       size={24} 
