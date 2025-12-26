@@ -172,27 +172,41 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
   );
 };
 
-// 铃声播放器类
+// 铃声播放器类 - 移动端兼容版本
 class AlarmPlayer {
   private audio: HTMLAudioElement | null = null;
   private timeoutId: number | null = null;
-  private preloadedAudio: HTMLAudioElement | null = null;
+  private isUnlocked: boolean = false;
   
-  // 预加载音频 - 必须在用户交互时调用
-  preload() {
+  constructor() {
+    // 创建一个持久的 audio 元素
+    this.audio = new Audio();
+    this.audio.loop = true;
+    this.audio.volume = 0.7;
+  }
+  
+  // 解锁音频 - 必须在用户交互时调用
+  unlock() {
+    if (this.isUnlocked) return;
+    
     const customSound = localStorage.getItem('alarmSound');
     const soundSrc = customSound || DEFAULT_ALARM_SOUND;
     
-    this.preloadedAudio = new Audio(soundSrc);
-    this.preloadedAudio.loop = true;
-    this.preloadedAudio.volume = 0.7;
-    // 播放一个极短的静音来解锁音频
-    this.preloadedAudio.play().then(() => {
-      this.preloadedAudio?.pause();
-      this.preloadedAudio!.currentTime = 0;
-    }).catch(() => {
-      // 忽略错误，可能用户还没交互
-    });
+    if (this.audio) {
+      this.audio.src = soundSrc;
+      // 播放并立即暂停来解锁
+      const playPromise = this.audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          this.audio?.pause();
+          this.audio!.currentTime = 0;
+          this.isUnlocked = true;
+          console.log('音频已解锁');
+        }).catch((err) => {
+          console.log('音频解锁失败:', err);
+        });
+      }
+    }
   }
   
   play(duration: number = 10000) {
@@ -202,18 +216,11 @@ class AlarmPlayer {
     const customSound = localStorage.getItem('alarmSound');
     const soundSrc = customSound || DEFAULT_ALARM_SOUND;
     
-    // 优先使用预加载的音频
-    if (this.preloadedAudio) {
-      this.audio = this.preloadedAudio;
-      this.preloadedAudio = null;
-    } else {
-      this.audio = new Audio(soundSrc);
+    if (this.audio) {
+      this.audio.src = soundSrc;
+      this.audio.currentTime = 0;
+      this.audio.play().catch(err => console.log('播放铃声失败:', err));
     }
-    
-    this.audio.loop = true;
-    this.audio.volume = 0.7;
-    this.audio.currentTime = 0;
-    this.audio.play().catch(err => console.log('播放铃声失败:', err));
     
     // 设置自动停止
     this.timeoutId = window.setTimeout(() => {
@@ -225,7 +232,6 @@ class AlarmPlayer {
     if (this.audio) {
       this.audio.pause();
       this.audio.currentTime = 0;
-      this.audio = null;
     }
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
@@ -823,12 +829,16 @@ const TimerView = ({
             setElapsedTime(prev => prev + 1);
           }
         } else if (timerMode === 'countdown') {
-          // 倒计时模式
-          setActiveTimer(prev => {
-            if (!prev || prev.remainingTime <= 0) {
+          // 倒计时模式 - 基于时间戳计算剩余时间
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            const initialDuration = timerDuration * 60;
+            const newRemaining = Math.max(0, initialDuration - elapsed);
+            
+            if (newRemaining <= 0) {
               // 倒计时结束，自动重置计时器
               setTimers(timers => timers.map(t => 
-                t.id === prev?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
+                t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
               ));
               // 倒计时结束，播放铃声
               alarmPlayer.play(10000);
@@ -836,21 +846,30 @@ const TimerView = ({
               setTimeout(() => setIsAlarmPlaying(false), 10000);
               setTimerStartTime(null);
               setElapsedTime(0);
-              return null;
+              setActiveTimer(null);
+            } else {
+              setActiveTimer(prev => {
+                if (!prev) return null;
+                const updated = { ...prev, remainingTime: newRemaining };
+                setTimers(timers => timers.map(t =>
+                  t.id === prev.id ? updated : t
+                ));
+                return updated;
+              });
             }
-            
-            const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
-            setTimers(timers => timers.map(t =>
-              t.id === prev.id ? updated : t
-            ));
-            return updated;
-          });
+          }
         } else if (timerMode === 'pomodoro') {
-          // 番茄钟模式
-          setActiveTimer(prev => {
-            if (!prev) return null;
+          // 番茄钟模式 - 基于时间戳计算剩余时间
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            const phaseDuration = pomodoroPhase === 'work' 
+              ? pomodoroConfig.workDuration * 60 
+              : pomodoroPhase === 'break' 
+              ? pomodoroConfig.breakDuration * 60 
+              : pomodoroConfig.longBreakDuration * 60;
+            const newRemaining = Math.max(0, phaseDuration - elapsed);
             
-            if (prev.remainingTime <= 1) {
+            if (newRemaining <= 0) {
               // 当前阶段结束，播放铃声提醒
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
@@ -861,47 +880,59 @@ const TimerView = ({
                 if (currentPomodoroRound >= pomodoroConfig.rounds) {
                   setPomodoroPhase('longBreak');
                   setCurrentPomodoroRound(1);
-                  const newRemaining = pomodoroConfig.longBreakDuration * 60;
-                  const updated = { ...prev, remainingTime: newRemaining };
-                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  const nextRemaining = pomodoroConfig.longBreakDuration * 60;
+                  setActiveTimer(prev => {
+                    if (!prev) return null;
+                    const updated = { ...prev, remainingTime: nextRemaining };
+                    setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                    return updated;
+                  });
                   // 更新时间戳
                   setTimerStartTimestamp(Date.now());
-                  return updated;
                 } else {
                   setPomodoroPhase('break');
-                  const newRemaining = pomodoroConfig.breakDuration * 60;
-                  const updated = { ...prev, remainingTime: newRemaining };
-                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  const nextRemaining = pomodoroConfig.breakDuration * 60;
+                  setActiveTimer(prev => {
+                    if (!prev) return null;
+                    const updated = { ...prev, remainingTime: nextRemaining };
+                    setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                    return updated;
+                  });
                   // 更新时间戳
                   setTimerStartTimestamp(Date.now());
-                  return updated;
                 }
               } else if (pomodoroPhase === 'break') {
                 setPomodoroPhase('work');
                 setCurrentPomodoroRound(r => r + 1);
-                const newRemaining = pomodoroConfig.workDuration * 60;
-                const updated = { ...prev, remainingTime: newRemaining };
-                setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                const nextRemaining = pomodoroConfig.workDuration * 60;
+                setActiveTimer(prev => {
+                  if (!prev) return null;
+                  const updated = { ...prev, remainingTime: nextRemaining };
+                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                  return updated;
+                });
                 // 更新时间戳
                 setTimerStartTimestamp(Date.now());
-                return updated;
               } else {
                 // 长休息结束，自动重置计时器
                 setTimers(timers => timers.map(t => 
-                  t.id === prev.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
+                  t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
                 ));
                 setPomodoroPhase('work');
                 setCurrentPomodoroRound(1);
                 setTimerStartTime(null);
                 setElapsedTime(0);
-                return null;
+                setActiveTimer(null);
               }
+            } else {
+              setActiveTimer(prev => {
+                if (!prev) return null;
+                const updated = { ...prev, remainingTime: newRemaining };
+                setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
+                return updated;
+              });
             }
-            
-            const updated = { ...prev, remainingTime: prev.remainingTime - 1 };
-            setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
-            return updated;
-          });
+          }
         }
       }, 1000);
     }
@@ -909,7 +940,7 @@ const TimerView = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig]);
+  }, [activeTimer?.status, activeTimer?.id, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, timerDuration]);
 
   // 监听计时器完成，保存记录
   useEffect(() => {
@@ -1044,8 +1075,8 @@ const TimerView = ({
   };
 
   const startTimer = (timer: Timer) => {
-    // 预加载铃声（移动端需要在用户交互时触发）
-    alarmPlayer.preload();
+    // 解锁音频（移动端需要在用户交互时触发）
+    alarmPlayer.unlock();
     // 打开计时模式选择弹窗
     openTimerModeModal(timer);
   };
@@ -4626,23 +4657,35 @@ const PlanView = ({
             setElapsedTime(prev => prev + 1);
           }
         } else if (timerMode === 'countdown') {
-          // 倒计时模式
-          setRemainingTime(prev => {
-            if (prev <= 1) {
+          // 倒计时模式 - 基于时间戳计算剩余时间
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            const newRemaining = Math.max(0, countdownDuration * 60 - elapsed);
+            
+            if (newRemaining <= 0) {
               setTimerStatus('idle');
               setActiveTimerId(null);
               // 倒计时结束，播放铃声
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
               setTimeout(() => setIsAlarmPlaying(false), 10000);
-              return 0;
+              setRemainingTime(0);
+            } else {
+              setRemainingTime(newRemaining);
             }
-            return prev - 1;
-          });
+          }
         } else if (timerMode === 'pomodoro') {
-          // 番茄钟模式
-          setRemainingTime(prev => {
-            if (prev <= 1) {
+          // 番茄钟模式 - 基于时间戳计算剩余时间
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            const phaseDuration = pomodoroPhase === 'work' 
+              ? pomodoroConfig.workDuration * 60 
+              : pomodoroPhase === 'break' 
+              ? pomodoroConfig.breakDuration * 60 
+              : pomodoroConfig.longBreakDuration * 60;
+            const newRemaining = Math.max(0, phaseDuration - elapsed);
+            
+            if (newRemaining <= 0) {
               // 当前阶段结束，播放铃声提醒
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
@@ -4656,12 +4699,12 @@ const PlanView = ({
                   setCurrentPomodoroRound(1);
                   // 更新时间戳
                   setTimerStartTimestamp(Date.now());
-                  return pomodoroConfig.longBreakDuration * 60;
+                  setRemainingTime(pomodoroConfig.longBreakDuration * 60);
                 } else {
                   setPomodoroPhase('break');
                   // 更新时间戳
                   setTimerStartTimestamp(Date.now());
-                  return pomodoroConfig.breakDuration * 60;
+                  setRemainingTime(pomodoroConfig.breakDuration * 60);
                 }
               } else if (pomodoroPhase === 'break') {
                 // 短休息结束，开始下一轮工作
@@ -4669,17 +4712,18 @@ const PlanView = ({
                 setCurrentPomodoroRound(prev => prev + 1);
                 // 更新时间戳
                 setTimerStartTimestamp(Date.now());
-                return pomodoroConfig.workDuration * 60;
+                setRemainingTime(pomodoroConfig.workDuration * 60);
               } else {
                 // 长休息结束，完成整个番茄钟周期
                 setTimerStatus('idle');
                 setActiveTimerId(null);
                 setPomodoroPhase('work');
-                return 0;
+                setRemainingTime(0);
               }
+            } else {
+              setRemainingTime(newRemaining);
             }
-            return prev - 1;
-          });
+          }
         }
       }, 1000);
     }
@@ -4687,7 +4731,7 @@ const PlanView = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig]);
+  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration]);
 
   // 监听计时器完成，保存记录
   useEffect(() => {
@@ -4837,8 +4881,8 @@ const PlanView = ({
 
   // 开始计时（旧方法保留兼容）
   const startTimer = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
-    // 预加载铃声（移动端需要在用户交互时触发）
-    alarmPlayer.preload();
+    // 解锁音频（移动端需要在用户交互时触发）
+    alarmPlayer.unlock();
     openTimerModeModal(taskId, duration, taskName, pomodoroSlots);
   };
   
