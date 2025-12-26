@@ -698,7 +698,7 @@ const TimerView = ({
   selectedCategory?: CategoryId;
   setSelectedCategory?: (category: CategoryId) => void;
   timeRecords: TimeRecord[];
-  setTimeRecords: (records: TimeRecord[]) => void;
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
@@ -1046,14 +1046,6 @@ const TimerView = ({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [activeTimer?.status, timerStartTimestamp, timerMode, timerDuration, pomodoroPhase, pomodoroConfig]);
 
-  // 监听计时器完成，保存记录
-  useEffect(() => {
-    if (activeTimer?.status === 'completed' && timerStartTime) {
-      saveTimeRecord(activeTimer, timerStartTime, new Date());
-      setTimerStartTime(null);
-    }
-  }, [activeTimer?.status]);
-
   const theme = selectedCategory === 'uncategorized' 
     ? { primary: '#9ca3af', light: '#f3f4f6', text: '#6b7280' }
     : (MACARON_COLORS.categories[selectedCategory as CategoryId] || {
@@ -1175,7 +1167,7 @@ const TimerView = ({
       createdAt: Date.now()
     };
     
-    setTimeRecords([...timeRecords, newRecord]);
+    setTimeRecords(prev => [...prev, newRecord]);
   };
 
   // 停止响铃并进入番茄钟下一阶段
@@ -1251,9 +1243,9 @@ const TimerView = ({
   };
 
   const resetTimer = (timer: Timer) => {
-    // 保存计时记录（如果有开始时间，且不是番茄钟休息阶段）
+    // 保存计时记录（如果有开始时间）
+    // 正计时、倒计时都保存，番茄钟只保存工作阶段
     if (timerStartTime && activeTimer?.id === timer.id) {
-      // 番茄钟休息阶段不保存记录
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
         saveTimeRecord(timer, timerStartTime, new Date());
       }
@@ -2477,6 +2469,10 @@ const JournalView = ({
   const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
   const [editingJournalDate, setEditingJournalDate] = useState<string>(''); // YYYY-MM-DD 格式
   const [previewImages, setPreviewImages] = useState<{ images: string[], index: number } | null>(null);
+  const [swipedJournalId, setSwipedJournalId] = useState<string | null>(null); // 当前滑动打开的日记ID
+  const [touchStartX, setTouchStartX] = useState<number>(0);
+  const [touchCurrentX, setTouchCurrentX] = useState<number>(0);
+  const [isSwiping, setIsSwiping] = useState(false);
 
   const moods = [
     { id: 'happy', emoji: '😊', label: '开心', color: '#FFD23F' },
@@ -2812,63 +2808,124 @@ const JournalView = ({
                     {dateJournals.map(journal => {
                       const mood = moods.find(m => m.id === journal.mood);
                       const timeStr = new Date(journal.date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                      const isThisSwiped = swipedJournalId === journal.id;
+                      const swipeOffset = isSwiping && isThisSwiped ? Math.min(0, touchCurrentX - touchStartX) : (isThisSwiped ? -80 : 0);
+                      
                       return (
                         <div 
                           key={journal.id}
-                          onClick={() => openEditor(journal)}
-                          className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden"
-                          style={{ border: '2px solid #E6E6FA' }}
+                          className="relative"
+                          style={{ overflow: 'hidden', borderRadius: '2rem' }}
                         >
-                          {/* 左侧装饰条 */}
-                          <div className="absolute top-0 left-0 w-2 h-full" style={{ backgroundColor: '#E0C3FC' }}></div>
-                          <div className="flex items-start gap-4">
-                            {/* 心情图标 */}
-                            <div 
-                              className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-                              style={{ backgroundColor: mood ? mood.color + '20' : '#F9FAFB' }}
+                          {/* 删除按钮背景 - 只在滑动时显示 */}
+                          <div 
+                            className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center"
+                            style={{ 
+                              borderRadius: '0 2rem 2rem 0',
+                              opacity: swipeOffset < 0 ? 1 : 0,
+                              transition: 'opacity 0.2s'
+                            }}
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setJournals(journals.filter(j => j.id !== journal.id));
+                                setSwipedJournalId(null);
+                              }}
+                              className="w-full h-full flex items-center justify-center text-white font-bold"
                             >
-                              <span className="text-2xl">{mood?.emoji || '📝'}</span>
-                            </div>
-                            
-                            {/* 内容 */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-bold text-gray-400">
-                                  {timeStr}
-                                </span>
-                                {mood && (
-                                  <span className="text-xs text-gray-400">{mood.label}</span>
+                              <Trash2 size={20} />
+                            </button>
+                          </div>
+                          
+                          {/* 日记卡片内容 */}
+                          <div 
+                            onClick={() => {
+                              if (!isSwiping && swipeOffset === 0) {
+                                openEditor(journal);
+                              }
+                            }}
+                            onTouchStart={(e) => {
+                              setTouchStartX(e.touches[0].clientX);
+                              setTouchCurrentX(e.touches[0].clientX);
+                              setIsSwiping(true);
+                            }}
+                            onTouchMove={(e) => {
+                              if (isSwiping) {
+                                setTouchCurrentX(e.touches[0].clientX);
+                                // 如果是向左滑动，设置当前日记为滑动状态
+                                if (e.touches[0].clientX < touchStartX - 10) {
+                                  setSwipedJournalId(journal.id);
+                                }
+                              }
+                            }}
+                            onTouchEnd={() => {
+                              setIsSwiping(false);
+                              const diff = touchCurrentX - touchStartX;
+                              // 如果滑动距离超过40px，保持打开状态
+                              if (diff < -40) {
+                                setSwipedJournalId(journal.id);
+                              } else if (diff > 40 || (diff > -40 && diff < 0)) {
+                                // 向右滑动或滑动距离不够，关闭
+                                setSwipedJournalId(null);
+                              }
+                            }}
+                            className="bg-white/95 backdrop-blur-sm p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative"
+                            style={{ 
+                              border: '2px solid #E6E6FA',
+                              borderRadius: '2rem',
+                              transform: `translateX(${swipeOffset}px)`,
+                              transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                            }}
+                          >
+                            {/* 左侧装饰条 */}
+                            <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: '#E0C3FC', borderRadius: '2rem 0 0 2rem' }}></div>
+                            <div className="flex items-start gap-4">
+                              {/* 心情图标 */}
+                              <div className="w-12 h-12 flex items-center justify-center flex-shrink-0">
+                                <span className="text-2xl">{mood?.emoji || '📝'}</span>
+                              </div>
+                              
+                              {/* 内容 */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-xs font-bold text-gray-400">
+                                    {timeStr}
+                                  </span>
+                                  {mood && (
+                                    <span className="text-xs text-gray-400">{mood.label}</span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-[#2D2D2D] leading-relaxed line-clamp-3">
+                                  {journal.content}
+                                </p>
+                                {journal.images.length > 0 && (
+                                  <div className="grid grid-cols-3 gap-1 mt-3" style={{ maxWidth: '156px' }}>
+                                    {journal.images.slice(0, 9).map((img, idx) => (
+                                      <div 
+                                        key={idx} 
+                                        className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const validImages = journal.images.filter(i => i.startsWith('data:'));
+                                          if (validImages.length > 0) {
+                                            const actualIndex = validImages.indexOf(img);
+                                            setPreviewImages({ images: validImages, index: actualIndex >= 0 ? actualIndex : 0 });
+                                          }
+                                        }}
+                                      >
+                                        {img.startsWith('data:') ? (
+                                          <img src={img} alt="" className="w-full h-full object-cover" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center">
+                                            <Camera size={14} className="text-gray-400" />
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
-                              <p className="text-sm text-[#2D2D2D] leading-relaxed line-clamp-3">
-                                {journal.content}
-                              </p>
-                              {journal.images.length > 0 && (
-                                <div className="grid grid-cols-3 gap-1 mt-3" style={{ maxWidth: '156px' }}>
-                                  {journal.images.slice(0, 9).map((img, idx) => (
-                                    <div 
-                                      key={idx} 
-                                      className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const validImages = journal.images.filter(i => i.startsWith('data:'));
-                                        if (validImages.length > 0) {
-                                          const actualIndex = validImages.indexOf(img);
-                                          setPreviewImages({ images: validImages, index: actualIndex >= 0 ? actualIndex : 0 });
-                                        }
-                                      }}
-                                    >
-                                      {img.startsWith('data:') ? (
-                                        <img src={img} alt="" className="w-full h-full object-cover" />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                          <Camera size={14} className="text-gray-400" />
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -3507,7 +3564,19 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         distribution[categoryId] = { totalMinutes: 0, records: [] };
       }
       distribution[categoryId].totalMinutes += minutes;
-      distribution[categoryId].records.push({ name: record.name, minutes });
+      
+      // 按名称去重（去除emoji后比较）
+      const normalizedName = record.name.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '').trim();
+      const existingRecord = distribution[categoryId].records.find(r => {
+        const existingNormalized = r.name.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '').trim();
+        return existingNormalized === normalizedName;
+      });
+      
+      if (existingRecord) {
+        existingRecord.minutes += minutes;
+      } else {
+        distribution[categoryId].records.push({ name: record.name, minutes });
+      }
     });
     
     return distribution;
@@ -3848,8 +3917,17 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   {/* 图例 */}
                   <div className="space-y-3">
                     {[...pieData].sort((a, b) => b.minutes - a.minutes).map(item => {
-                      // 计算理想时间（根据时间周期）
-                      const daysInPeriod = progressPeriod === 'today' ? 1 : progressPeriod === 'week' ? 7 : 30;
+                      // 计算理想时间（根据时间周期，使用已发生的天数）
+                      const today = new Date();
+                      let daysInPeriod = 1;
+                      if (progressPeriod === 'week') {
+                        // 本周已发生的天数（周一为1）
+                        const dayOfWeek = today.getDay();
+                        daysInPeriod = dayOfWeek === 0 ? 7 : dayOfWeek; // 周日算第7天
+                      } else if (progressPeriod === 'month') {
+                        // 本月已发生的天数
+                        daysInPeriod = today.getDate();
+                      }
                       const idealHoursPerDay = idealTimeAllocation[item.id] || 0;
                       const idealMinutes = idealHoursPerDay * 60 * daysInPeriod;
                       const progressPercent = idealMinutes > 0 ? Math.min((item.minutes / idealMinutes) * 100, 100) : 0;
@@ -4946,35 +5024,6 @@ const PlanView = ({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [timerStatus, timerStartTimestamp, timerMode, countdownDuration, pomodoroPhase, pomodoroConfig]);
 
-  // 监听计时器完成，保存记录
-  useEffect(() => {
-    if (timerStatus === 'idle' && timerStartTime && currentTaskName) {
-      // 计时器完成时保存记录
-      const endTime = new Date();
-      const formatTimeStr = (date: Date) => {
-        return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-      };
-      const formatDateStr = (date: Date) => {
-        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-      };
-      
-      const newRecord: TimeRecord = {
-        id: `plan_timer_${Date.now()}`,
-        name: currentTaskName,
-        date: formatDateStr(timerStartTime),
-        startTime: formatTimeStr(timerStartTime),
-        endTime: formatTimeStr(endTime),
-        source: 'timer',
-        categoryId: 'uncategorized',
-        createdAt: Date.now()
-      };
-      
-      setTimeRecords([...timeRecords, newRecord]);
-      setTimerStartTime(null);
-      setCurrentTaskName('');
-    }
-  }, [timerStatus]);
-
   // 打开计时模式选择弹窗
   const openTimerModeModal = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
     // 检查是否有正在进行的计时
@@ -5211,9 +5260,9 @@ const PlanView = ({
 
   // 停止计时
   const stopTimer = () => {
-    // 保存计时记录（如果有开始时间，且不是番茄钟休息阶段）
+    // 保存计时记录（如果有开始时间）
+    // 正计时、倒计时都保存，番茄钟只保存工作阶段
     if (timerStartTime && currentTaskName) {
-      // 番茄钟休息阶段不保存记录
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
         saveTimeRecord();
       }
@@ -7473,11 +7522,12 @@ END:VEVENT
 
   // 开始新增记录
   const startAddRecord = () => {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     setNewRecordDate(todayStr);
-    setNewRecordStartTime('09:00');
-    setNewRecordEndTime('10:00');
+    setNewRecordStartTime(currentTime);
+    setNewRecordEndTime(currentTime);
     setIsAddingRecord(true);
   };
 
