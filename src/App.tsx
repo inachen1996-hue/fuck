@@ -78,6 +78,7 @@ interface PersistentTimerState {
   focusTimer: {
     activeTimerId: string | null;
     timerMode: 'countdown' | 'countup' | 'pomodoro';
+    timerDuration?: number;         // 倒计时时长（分钟）
     startTimestamp: number | null;  // 计时开始的时间戳
     pausedAt: number | null;        // 暂停时的剩余时间或已过时间
     totalDuration: number;          // 总时长（秒）
@@ -95,6 +96,7 @@ interface PersistentTimerState {
   planTimer: {
     activeTimerId: string | null;
     timerMode: 'countdown' | 'countup' | 'pomodoro';
+    countdownDuration?: number;     // 倒计时时长（分钟）
     startTimestamp: number | null;
     pausedAt: number | null;
     totalDuration: number;
@@ -172,54 +174,111 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
   );
 };
 
-// 铃声播放器类 - 移动端兼容版本
+// 铃声播放器类 - 使用 Web Audio API 兼容移动端
 class AlarmPlayer {
-  private audio: HTMLAudioElement | null = null;
+  private audioContext: AudioContext | null = null;
+  private audioBuffer: AudioBuffer | null = null;
+  private sourceNode: AudioBufferSourceNode | null = null;
+  private gainNode: GainNode | null = null;
   private timeoutId: number | null = null;
-  private isUnlocked: boolean = false;
+  private isLoaded: boolean = false;
+  private fallbackAudio: HTMLAudioElement | null = null;
   
-  constructor() {
-    // 创建一个持久的 audio 元素
-    this.audio = new Audio();
-    this.audio.loop = true;
-    this.audio.volume = 0.7;
-  }
-  
-  // 解锁音频 - 必须在用户交互时调用
-  unlock() {
-    if (this.isUnlocked) return;
-    
-    const customSound = localStorage.getItem('alarmSound');
-    const soundSrc = customSound || DEFAULT_ALARM_SOUND;
-    
-    if (this.audio) {
-      this.audio.src = soundSrc;
-      // 播放并立即暂停来解锁
-      const playPromise = this.audio.play();
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          this.audio?.pause();
-          this.audio!.currentTime = 0;
-          this.isUnlocked = true;
-          console.log('音频已解锁');
-        }).catch((err) => {
-          console.log('音频解锁失败:', err);
-        });
+  // 解锁并加载音频 - 必须在用户交互时调用
+  async unlock() {
+    try {
+      // 创建 AudioContext（移动端需要在用户交互时创建）
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
+      
+      // 如果 AudioContext 被暂停，恢复它
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      
+      // 加载音频文件
+      if (!this.isLoaded) {
+        const customSound = localStorage.getItem('alarmSound');
+        let audioData: ArrayBuffer;
+        
+        if (customSound) {
+          // 从 base64 解码
+          const base64Data = customSound.split(',')[1];
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          audioData = bytes.buffer;
+        } else {
+          // 从文件加载
+          const response = await fetch(DEFAULT_ALARM_SOUND);
+          audioData = await response.arrayBuffer();
+        }
+        
+        this.audioBuffer = await this.audioContext.decodeAudioData(audioData);
+        this.isLoaded = true;
+        console.log('音频已加载');
+      }
+      
+      // 同时准备 fallback audio 元素
+      if (!this.fallbackAudio) {
+        const customSound = localStorage.getItem('alarmSound');
+        this.fallbackAudio = new Audio(customSound || DEFAULT_ALARM_SOUND);
+        this.fallbackAudio.loop = true;
+        this.fallbackAudio.volume = 0.7;
+        // 尝试播放并暂停来解锁
+        try {
+          await this.fallbackAudio.play();
+          this.fallbackAudio.pause();
+          this.fallbackAudio.currentTime = 0;
+        } catch (e) {
+          // 忽略
+        }
+      }
+      
+      console.log('音频已解锁');
+    } catch (err) {
+      console.log('音频解锁失败:', err);
     }
   }
   
   play(duration: number = 10000) {
-    this.stop(); // 先停止之前的播放
+    this.stop();
     
-    // 从 localStorage 获取自定义铃声，如果没有则使用默认铃声文件
-    const customSound = localStorage.getItem('alarmSound');
-    const soundSrc = customSound || DEFAULT_ALARM_SOUND;
-    
-    if (this.audio) {
-      this.audio.src = soundSrc;
-      this.audio.currentTime = 0;
-      this.audio.play().catch(err => console.log('播放铃声失败:', err));
+    // 尝试使用 Web Audio API
+    if (this.audioContext && this.audioBuffer) {
+      try {
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.value = 0.7;
+        this.gainNode.connect(this.audioContext.destination);
+        
+        const playSound = () => {
+          if (!this.audioContext || !this.audioBuffer || !this.gainNode) return;
+          
+          this.sourceNode = this.audioContext.createBufferSource();
+          this.sourceNode.buffer = this.audioBuffer;
+          this.sourceNode.connect(this.gainNode);
+          this.sourceNode.start();
+          
+          // 音频播放完后重新播放（循环）
+          this.sourceNode.onended = () => {
+            if (this.gainNode) {
+              playSound();
+            }
+          };
+        };
+        
+        playSound();
+        console.log('Web Audio API 播放成功');
+      } catch (err) {
+        console.log('Web Audio API 播放失败，使用 fallback:', err);
+        this.playFallback();
+      }
+    } else {
+      // 使用 fallback
+      this.playFallback();
     }
     
     // 设置自动停止
@@ -228,10 +287,37 @@ class AlarmPlayer {
     }, duration);
   }
   
+  private playFallback() {
+    if (this.fallbackAudio) {
+      this.fallbackAudio.currentTime = 0;
+      this.fallbackAudio.play().catch(err => console.log('Fallback 播放失败:', err));
+    } else {
+      // 最后的尝试
+      const customSound = localStorage.getItem('alarmSound');
+      this.fallbackAudio = new Audio(customSound || DEFAULT_ALARM_SOUND);
+      this.fallbackAudio.loop = true;
+      this.fallbackAudio.volume = 0.7;
+      this.fallbackAudio.play().catch(err => console.log('最终播放失败:', err));
+    }
+  }
+  
   stop() {
-    if (this.audio) {
-      this.audio.pause();
-      this.audio.currentTime = 0;
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.stop();
+        this.sourceNode.disconnect();
+      } catch (e) {
+        // 忽略
+      }
+      this.sourceNode = null;
+    }
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+      this.gainNode = null;
+    }
+    if (this.fallbackAudio) {
+      this.fallbackAudio.pause();
+      this.fallbackAudio.currentTime = 0;
     }
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
@@ -240,7 +326,7 @@ class AlarmPlayer {
   }
   
   isPlaying() {
-    return this.audio !== null && !this.audio.paused;
+    return this.sourceNode !== null || (this.fallbackAudio !== null && !this.fallbackAudio.paused);
   }
 }
 
@@ -719,17 +805,27 @@ const TimerView = ({
 
   // 计时开始时间戳（用于持久化）
   const [timerStartTimestamp, setTimerStartTimestamp] = useState<number | null>(null);
+  
+  // 是否已恢复计时器状态
+  const hasRestoredTimer = useRef(false);
 
   // 从localStorage恢复计时器状态
   useEffect(() => {
+    // 只恢复一次，且需要 globalTimers 已加载
+    if (hasRestoredTimer.current || globalTimers.length === 0) return;
+    
     const persistentState = loadPersistentTimerState();
     if (persistentState?.focusTimer && persistentState.focusTimer.status !== 'idle') {
+      hasRestoredTimer.current = true;
       const { focusTimer } = persistentState;
       const timer = globalTimers.find(t => t.id === focusTimer.activeTimerId);
       
       if (timer && focusTimer.startTimestamp) {
         // 恢复计时器模式和配置
         setTimerMode(focusTimer.timerMode);
+        if (focusTimer.timerDuration) {
+          setTimerDuration(focusTimer.timerDuration); // 恢复倒计时时长
+        }
         setPomodoroConfig(focusTimer.pomodoroConfig);
         setCurrentPomodoroRound(focusTimer.currentPomodoroRound);
         setPomodoroPhase(focusTimer.pomodoroPhase);
@@ -783,7 +879,7 @@ const TimerView = ({
         }
       }
     }
-  }, []);
+  }, [globalTimers]);
 
   // 保存计时器状态到localStorage
   useEffect(() => {
@@ -793,11 +889,12 @@ const TimerView = ({
       const focusTimerState = {
         activeTimerId: activeTimer.id,
         timerMode,
+        timerDuration, // 保存倒计时时长
         startTimestamp: timerStartTimestamp,
         pausedAt: activeTimer.status === 'paused' 
           ? (timerMode === 'countup' ? elapsedTime : activeTimer.remainingTime)
           : null,
-        totalDuration: timerMode === 'countup' ? 0 : activeTimer.duration * 60,
+        totalDuration: timerMode === 'countup' ? 0 : timerDuration * 60,
         pomodoroConfig,
         currentPomodoroRound,
         pomodoroPhase,
@@ -812,7 +909,7 @@ const TimerView = ({
         savePersistentTimerState({ ...persistentState, focusTimer: null });
       }
     }
-  }, [activeTimer?.status, activeTimer?.id, timerStartTimestamp, elapsedTime, timerMode, pomodoroConfig, currentPomodoroRound, pomodoroPhase]);
+  }, [activeTimer?.status, activeTimer?.id, timerStartTimestamp, elapsedTime, timerMode, timerDuration, pomodoroConfig, currentPomodoroRound, pomodoroPhase]);
 
   // 计时器逻辑
   useEffect(() => {
@@ -4558,15 +4655,25 @@ const PlanView = ({
     addicted: ['沉迷抖音', '沉迷游戏', '沉迷看电视', '沉迷伪兴趣']
   };
 
+  // 是否已恢复计时器状态
+  const hasRestoredPlanTimer = useRef(false);
+
   // 从localStorage恢复计时器状态
   useEffect(() => {
+    // 只恢复一次
+    if (hasRestoredPlanTimer.current) return;
+    
     const persistentState = loadPersistentTimerState();
     if (persistentState?.planTimer && persistentState.planTimer.status !== 'idle') {
+      hasRestoredPlanTimer.current = true;
       const { planTimer } = persistentState;
       
       if (planTimer.startTimestamp) {
         // 恢复计时器模式和配置
         setTimerMode(planTimer.timerMode);
+        if (planTimer.countdownDuration) {
+          setCountdownDuration(planTimer.countdownDuration); // 恢复倒计时时长
+        }
         setPomodoroConfig(planTimer.pomodoroConfig);
         setCurrentPomodoroRound(planTimer.currentPomodoroRound);
         setPomodoroPhase(planTimer.pomodoroPhase);
@@ -4620,6 +4727,7 @@ const PlanView = ({
       const planTimerState = {
         activeTimerId,
         timerMode,
+        countdownDuration, // 保存倒计时时长
         startTimestamp: timerStartTimestamp,
         pausedAt: timerStatus === 'paused' 
           ? (timerMode === 'countup' ? elapsedTime : remainingTime)
