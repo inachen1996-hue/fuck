@@ -262,8 +262,12 @@ const alarmPlayer = {
   },
   
   // 播放铃声
-  play(duration: number = 10000) {
-    this.stop();
+  async play(duration: number = 10000) {
+    // 先清理之前的状态
+    if (stopTimeoutId) {
+      clearTimeout(stopTimeoutId);
+      stopTimeoutId = null;
+    }
     
     // 振动
     if ('vibrate' in navigator) {
@@ -272,22 +276,30 @@ const alarmPlayer = {
     }
     
     const audio = this.getAudio();
+    
+    // 恢复 AudioContext（如果被暂停）- 必须先恢复再播放
+    if (audioContext && audioContext.state === 'suspended') {
+      try {
+        await audioContext.resume();
+        console.log('AudioContext 已恢复');
+      } catch (e) {
+        console.log('AudioContext 恢复失败:', e);
+      }
+    }
+    
+    // 重新设置音频属性
     audio.src = DEFAULT_ALARM_SOUND;
     audio.currentTime = 0;
     audio.volume = 1.0;
     audio.loop = true;
     
-    // 恢复 AudioContext（如果被暂停）
-    if (audioContext && audioContext.state === 'suspended') {
-      audioContext.resume().catch(() => {});
-    }
-    
     // 尝试播放
-    audio.play().then(() => {
+    try {
+      await audio.play();
       console.log('铃声开始播放');
-    }).catch(err => {
+    } catch (err) {
       console.error('播放失败:', err);
-    });
+    }
     
     // 设置自动停止
     stopTimeoutId = window.setTimeout(() => {
@@ -301,12 +313,6 @@ const alarmPlayer = {
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;
-      audioElement.loop = false; // 确保不会继续循环
-    }
-    
-    // 暂停 AudioContext（如果存在）
-    if (audioContext && audioContext.state === 'running') {
-      audioContext.suspend().catch(() => {});
     }
     
     if (stopTimeoutId) {
