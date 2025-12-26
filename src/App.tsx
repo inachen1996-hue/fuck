@@ -597,7 +597,9 @@ const TimerView = ({
   timeRecords,
   setTimeRecords,
   globalTimers,
-  setGlobalTimers
+  setGlobalTimers,
+  categories,
+  setCategories
 }: {
   selectedCategory?: CategoryId;
   setSelectedCategory?: (category: CategoryId) => void;
@@ -605,6 +607,8 @@ const TimerView = ({
   setTimeRecords: (records: TimeRecord[]) => void;
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
+  categories: Category[];
+  setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>(propSelectedCategory || 'work');
   // 同步外部传入的selectedCategory
@@ -622,16 +626,8 @@ const TimerView = ({
     }
   };
 
-  const [categories, setCategories] = useState<Category[]>([
-    { id: 'work', label: '工作' },
-    { id: 'study', label: '学习' },
-    { id: 'sleep', label: '睡眠' },
-    { id: 'life', label: '生活' },
-    { id: 'rest', label: '休息' },
-    { id: 'entertainment', label: '娱乐' },
-    { id: 'health', label: '健康' },
-    { id: 'hobby', label: '兴趣' },
-  ]);
+  // categories 现在从 props 传入，不再在组件内部定义
+  
   // 使用全局timers
   const timers = globalTimers;
   const setTimers = setGlobalTimers;
@@ -1139,8 +1135,14 @@ const TimerView = ({
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
   
-  // 背景色：主色 + 4% 不透明度 (96% 透明度)
-  const categoryBgColor = hexToRgba(currentCategoryTheme.primary, 0.04);
+  // 获取当前选中分类的完整对象，检查是否有自定义颜色
+  const currentCategory = categories.find(c => c.id === selectedCategory);
+  const hasCustomBgColor = currentCategory?.color !== undefined && currentCategory?.color !== null && currentCategory?.color !== '';
+  
+  // 背景色：优先使用用户自定义颜色，否则使用预定义主题色，主色 + 4% 不透明度
+  const categoryBgColor = hasCustomBgColor 
+    ? hexToRgba(currentCategory!.color!, 0.04) 
+    : hexToRgba(currentCategoryTheme.primary, 0.04);
 
   return (
     <div className="flex h-full relative overflow-hidden" style={{ backgroundColor: categoryBgColor }}>
@@ -1165,24 +1167,41 @@ const TimerView = ({
         <div className="space-y-2 w-full flex flex-col items-center px-1 pt-1 flex-1 overflow-y-auto">
           {categories.map(cat => {
             const isSelected = selectedCategory === cat.id;
-            const catTheme = MACARON_COLORS.categories[cat.id as CategoryId] || {
-              primary: cat.color || '#FF8CA1',
-              light: '#FFF0F3',
-              text: '#D9455F'
+            // 获取预定义主题
+            const predefinedTheme = MACARON_COLORS.categories[cat.id as CategoryId];
+            
+            // hex 转 rgba 的辅助函数
+            const hexToRgba = (hex: string, alpha: number) => {
+              const r = parseInt(hex.slice(1, 3), 16);
+              const g = parseInt(hex.slice(3, 5), 16);
+              const b = parseInt(hex.slice(5, 7), 16);
+              return `rgba(${r}, ${g}, ${b}, ${alpha})`;
             };
+            
+            // 判断是否有自定义颜色（cat.color 存在且不为空）
+            const hasCustomColor = cat.color !== undefined && cat.color !== null && cat.color !== '';
+            
+            // 主色：优先使用用户自定义颜色，否则使用预定义颜色
+            const primaryColor = hasCustomColor ? cat.color! : (predefinedTheme?.primary || '#FF8CA1');
+            
+            // 背景色：如果有自定义颜色，基于自定义颜色生成 rgba；否则使用预定义浅色
+            const lightBgColor = hasCustomColor 
+              ? hexToRgba(cat.color!, 0.2) 
+              : (predefinedTheme?.light || '#FFF0F3');
+            
             return (
               <button 
                 key={cat.id} 
                 onClick={() => handleCategoryChange(cat.id as CategoryId)}
-                className={`relative w-full py-3 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isSelected ? 'shadow-lg scale-105 bg-white border-2' : 'hover:bg-white/40 hover:scale-105'}`}
+                className={`relative w-full py-3 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 ${isSelected ? 'shadow-lg scale-105 border-2' : 'hover:bg-white/40 hover:scale-105'}`}
                 style={{ 
-                  borderColor: isSelected ? catTheme.primary : 'transparent',
-                  backgroundColor: isSelected ? 'white' : 'transparent'
+                  borderColor: isSelected ? primaryColor : 'transparent',
+                  backgroundColor: isSelected ? lightBgColor : 'transparent'
                 }}
               >
                 <span 
                   className="text-[10px] font-black"
-                  style={{ color: isSelected ? catTheme.primary : '#9ca3af' }}
+                  style={{ color: isSelected ? primaryColor : '#9ca3af' }}
                 >
                   {cat.label}
                 </span>
@@ -1219,10 +1238,19 @@ const TimerView = ({
             // 空状态
             <div className="flex-1 flex flex-col items-center justify-center">
               {(() => {
-                const currentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
+                // 获取当前选中分类的完整对象，检查是否有自定义颜色
+                const currentCat = categories.find(c => c.id === selectedCategory);
+                const hasCurrentCustomColor = currentCat?.color !== undefined && currentCat?.color !== null && currentCat?.color !== '';
+                const predefinedCurrentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
                   primary: '#9ca3af',
                   light: '#f3f4f6',
                   text: '#6b7280'
+                };
+                // 优先使用用户自定义颜色
+                const currentTheme = {
+                  primary: hasCurrentCustomColor ? currentCat!.color! : predefinedCurrentTheme.primary,
+                  light: hasCurrentCustomColor ? hexToRgba(currentCat!.color!, 0.15) : predefinedCurrentTheme.light,
+                  text: predefinedCurrentTheme.text
                 };
                 return (
                   <button 
@@ -1231,7 +1259,7 @@ const TimerView = ({
                     style={{ 
                       borderColor: currentTheme.primary,
                       color: currentTheme.primary,
-                      backgroundColor: `${currentTheme.primary}0D`
+                      backgroundColor: hasCurrentCustomColor ? hexToRgba(currentCat!.color!, 0.05) : `${currentTheme.primary}0D`
                     }}
                   >
                     <span>创建「{selectedCategory === 'uncategorized' ? '待分类' : categories.find(c => c.id === selectedCategory)?.label}」的第一个计时器吧～</span>
@@ -1246,10 +1274,20 @@ const TimerView = ({
               {categoryTimers.map(timer => {
                 const isTimerActive = activeTimer?.id === timer.id && (timer.status === 'running' || timer.status === 'paused');
                 const isSwiped = swipedTimerId === timer.id;
-                const theme = MACARON_COLORS.categories[timer.categoryId as CategoryId] || {
+                
+                // 获取计时器所属分类的完整对象，检查是否有自定义颜色
+                const timerCategory = categories.find(c => c.id === timer.categoryId);
+                const hasTimerCustomColor = timerCategory?.color !== undefined && timerCategory?.color !== null && timerCategory?.color !== '';
+                const predefinedTheme = MACARON_COLORS.categories[timer.categoryId as CategoryId] || {
                   primary: '#9ca3af',
                   light: '#f3f4f6',
                   text: '#6b7280'
+                };
+                // 优先使用用户自定义颜色
+                const theme = {
+                  primary: hasTimerCustomColor ? timerCategory!.color! : predefinedTheme.primary,
+                  light: hasTimerCustomColor ? hexToRgba(timerCategory!.color!, 0.15) : predefinedTheme.light,
+                  text: predefinedTheme.text
                 };
                 
                 return (
@@ -1288,7 +1326,7 @@ const TimerView = ({
                   
                   {/* 卡片内容 - 可滑动 */}
                   <div 
-                    className={`relative w-full rounded-2xl p-3 bg-white border-2 border-dashed transition-transform duration-300 cursor-pointer min-h-[140px] ${
+                    className={`relative w-full rounded-2xl p-3 bg-white border-2 transition-transform duration-300 cursor-pointer min-h-[140px] ${
                       activeTimer?.id === timer.id ? 'ring-2 ring-purple-100' : ''
                     }`}
                     style={{ 
@@ -1472,10 +1510,19 @@ const TimerView = ({
               
               {/* 添加计时器按钮 */}
               {(() => {
-                const currentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
+                // 获取当前选中分类的完整对象，检查是否有自定义颜色
+                const currentCat = categories.find(c => c.id === selectedCategory);
+                const hasCurrentCustomColor = currentCat?.color !== undefined && currentCat?.color !== null && currentCat?.color !== '';
+                const predefinedCurrentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
                   primary: '#9ca3af',
                   light: '#f3f4f6',
                   text: '#6b7280'
+                };
+                // 优先使用用户自定义颜色
+                const currentTheme = {
+                  primary: hasCurrentCustomColor ? currentCat!.color! : predefinedCurrentTheme.primary,
+                  light: hasCurrentCustomColor ? hexToRgba(currentCat!.color!, 0.15) : predefinedCurrentTheme.light,
+                  text: predefinedCurrentTheme.text
                 };
                 return (
                   <div 
@@ -1483,7 +1530,7 @@ const TimerView = ({
                     className="relative rounded-2xl p-3 border-2 border-dashed active:scale-98 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[140px]"
                     style={{
                       borderColor: currentTheme.primary,
-                      backgroundColor: `${currentTheme.primary}0D`
+                      backgroundColor: hasCurrentCustomColor ? hexToRgba(currentCat!.color!, 0.05) : `${currentTheme.primary}0D`
                     }}
                   >
                     <Plus size={32} style={{ color: currentTheme.primary }} />
@@ -1563,8 +1610,32 @@ const TimerView = ({
 
       {/* 新增计时器弹窗 */}
       {showNewTimerModal && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-          <div className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto">
+        <div 
+          className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in"
+          onClick={() => {
+            setShowNewTimerModal(false);
+            setNewTimerName('');
+            setNewTimerIcon('🎯');
+            setNewTimerCategory(selectedCategory);
+          }}
+        >
+          <div 
+            className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => {
+                setShowNewTimerModal(false);
+                setNewTimerName('');
+                setNewTimerIcon('🎯');
+                setNewTimerCategory(selectedCategory);
+              }}
+              className="absolute top-4 left-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-all"
+            >
+              <X size={18} />
+            </button>
+            
             <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">新增计时器</h3>
             
             <div className="space-y-4">
@@ -1638,24 +1709,12 @@ const TimerView = ({
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="mt-6">
               <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowNewTimerModal(false);
-                  setNewTimerName('');
-                  setNewTimerIcon('🎯');
-                  setNewTimerCategory(selectedCategory);
-                }}
-                className="flex-1"
-              >
-                取消
-              </Button>
-              <Button 
+                variant="outline"
                 onClick={addTimer}
                 disabled={!newTimerName.trim()}
-                className="flex-1"
-                style={{ backgroundColor: theme.primary }}
+                className="w-full"
               >
                 创建计时器
               </Button>
@@ -2380,7 +2439,6 @@ const JournalView = ({
               onChange={(e) => setCurrentJournal({...currentJournal, content: e.target.value})}
               placeholder="记录此刻的想法和感受..."
               className="w-full h-48 bg-transparent text-[#2D2D2D] text-base leading-relaxed outline-none resize-none placeholder:text-gray-300"
-              autoFocus
             />
           </div>
 
@@ -2653,11 +2711,17 @@ const JournalView = ({
 // 复盘视图
 const ReviewView = ({ 
   journals, 
-  timeRecords, 
+  timeRecords,
+  setTimeRecords,
+  globalTimers,
+  setGlobalTimers,
   idealTimeAllocation 
 }: { 
   journals: Journal[]; 
-  timeRecords: TimeRecord[]; 
+  timeRecords: TimeRecord[];
+  setTimeRecords: (records: TimeRecord[]) => void;
+  globalTimers: Timer[];
+  setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   idealTimeAllocation: Record<string, number>;
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
@@ -2965,7 +3029,7 @@ const ReviewView = ({
     
     // 构建AI提示词
     const prompt = `# Role
-你是一位**高阶时间资源分析师**。你不再关注数据的"完整性"，而是聚焦于数据的**"分布逻辑"**。请将用户的每一分钟记录视为一次**"价值投票"**——用户把时间花在哪里，说明用户当下的潜意识就认为哪里最重要。
+你不是一个只会读数的记账员，你是用户的**"首席人生战略官" (Chief Life Strategy Officer)**。你的核心能力是结合**行为心理学**与**资源配置理论**，对用户的时间数据进行全维度的战略审计。
 
 # Input Data
 ## 用户数据
@@ -2982,35 +3046,43 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Core Logic (深度分析逻辑)
-1. **解读"已有的分布"：** 不要抱怨数据缺失。如果用户记录了大量工作时间，0小时休息，请将其解读为：**"用户当前采取了'全部押注工作'的激进投资策略，认为休息的边际收益低于工作的边际收益。"**
-2. **分析"合理性"：**
-   - **边际效应分析：** 既然用户投入了大量时间在某事项，请分析：这部分投入是否已经进入了"边际效用递减"区间？（即：最后投入的那2小时，真的产生了价值吗？还是只是低效的磨洋工？）
-   - **代价分析：** 这种分布背后的"隐性成本"是什么？（例如：高强度脑力劳动未匹配相应的脑力恢复，导致单位时间产出贬值）
-3. **挖掘"背后的意义"：** 这种时间分布揭示了用户什么样的**心理图谱**？（例如：完美主义？急于求成？还是处于被迫的应激状态？）
+# Core Logic (核心分析逻辑·必须遵守)
+1. **解读"0数据"的潜台词：** 当看到睡眠/吃饭/休息数据为0时，**绝对禁止**说"你没记录"。**必须默认：** 用户进行了生理活动，但**心理带宽（Cognitive Bandwidth）已耗尽**，无力进行记录。这本身就是高压工作状态的最强证据。
+2. **存在即投票：** 用户把时间花在哪里（即使是看似不合理的加班），说明用户当下的潜意识认为哪里最重要。请分析这种"价值排序"背后的合理性与代价。
+3. **拒绝恐吓：** 在预测未来时，**不要**用生病/猝死来恐吓用户。要从**思维模式僵化、灵感枯竭、情绪麻木**等心理/职业发展维度进行客观预警。
+
+# Analysis Framework (5大审计透镜)
+请依次通过以下5个维度扫描数据，判断用户的时间配置是否合理：
+1. **💰 投资回报 (ROI)：** 用户"重仓"的时间板块，边际收益还在增长吗？还是已经进入了"垃圾时间"的无效堆砌？
+2. **⚡️ 能量匹配 (Energy Fit)：** 顺势工作 vs 逆势工作。用户是在黄金时间做决策，还是在疲劳时间硬抗？
+3. **🧱 颗粒度 (Granularity)：** 时间是完整的"砖块"（深度流），还是破碎的"沙砾"（频繁切换导致耗损）？
+4. **🔄 代谢平衡 (Metabolism)：** 计算【消耗端（输出）】与【补给端（休息/灵感/发呆）】的比例。判断是否存在"灵感透支"。
+5. **🎭 角色一致性 (Role Alignment)：** 实际数据扮演的角色（如"救火队员"）与用户渴望的角色（如"创造者"）是否一致？
 
 # Output Structure (严格按照此JSON格式输出)
 {
-  "strategyAnalysis": {
-    "currentPattern": "用一句话定义当前的时间分配模式。例如：'焦土式'冲刺模式——通过极度压缩维护成本，换取短期的产出爆发",
-    "reasonable": "分析把重心放在这里，短期内带来了什么不可替代的红利",
-    "unreasonable": "指出哪个时间块的投入产出比最低？例如：你在某任务上投入了过饱和的时间，但产出可能并没有线性增长"
+  "executiveSummary": {
+    "patternDefinition": "用一个精准的隐喻定义当前的模式。例如：'靠肾上腺素驱动的短跑手'",
+    "coreConflict": "一针见血指出'以为的重点'和'实际数据展现的重点'之间的最大冲突"
   },
-  "hiddenMeaning": {
-    "explicitValue": "显性价值观分析。例如：数据表明你极度渴望控制感，因此你把时间都投在了反馈最直接的项目上",
-    "implicitFear": "隐性恐惧分析。例如：你完全避开了休息和发呆，可能潜意识里在逃避面对空虚，或者认为'不产出就是罪恶'"
+  "fiveLensAudit": {
+    "roiAnalysis": "分析ROI。目前的重仓投入是否合理？是否存在'战术勤奋，战略懒惰'？",
+    "energyAndRhythm": "合并分析能量匹配度与颗粒度。工作流是否顺畅？是否存在大量碎片化的隐形损耗？",
+    "ecosystemBalance": "合并分析代谢平衡与角色。是不是变成了没有感情的执行机器？'创造者'身份是否被挤压？"
   },
-  "rebalancing": {
-    "cutWaste": "指出已记录的时间中，哪一部分是可以通过提升效率被'剪除'的垃圾时间",
-    "injectEnergy": "为了维持上述的高强度投入，必须强制注入哪一种'催化剂'时间？给出具体建议",
-    "threeMonthForecast": "如果继续维持目前的投资策略，三个月后的'身心账户'会盈利还是破产？客观描述后果"
+  "threeMonthProjection": {
+    "mindsetChange": "心态变化预测。例如：会对原本热爱的项目产生厌恶感，或陷入'为了做而做'的僵化状态",
+    "capabilityWarning": "能力预警。例如：创造力断崖式下跌，难以产生新的Idea"
+  },
+  "actionGuide": {
+    "threeThingsToProtect": "基于缺口，列出3个即便天塌下来也要守住的底线。如：每天20分钟无目的发呆",
+    "lazyRebalancing": "针对不爱记录、工作高压的特点，给出从源头调整时间分布的建议。不要让用户多记录，要让用户少做无效的事"
   }
 }
 
 # Tone
-- **像一个投资顾问，而不是保姆。**
-- **用词精准、客观、注重逻辑因果。**
-- **不要废话，不要寒暄。**
+- **犀利、客观、有洞察力。**
+- **像麦肯锡顾问一样专业，像心理咨询师一样懂我。**
 - 使用**加粗**标记重点内容
 - 只返回JSON，不要其他内容`;
 
@@ -3029,7 +3101,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是一位高阶时间资源分析师。你聚焦于数据的"分布逻辑"，将用户的每一分钟记录视为一次"价值投票"。你的风格像投资顾问——精准、客观、注重逻辑因果，不废话不寒暄。请以JSON格式返回分析报告。'
+              content: '你是用户的"首席人生战略官"(Chief Life Strategy Officer)。你结合行为心理学与资源配置理论，对用户的时间数据进行全维度的战略审计。你的风格犀利、客观、有洞察力，像麦肯锡顾问一样专业，像心理咨询师一样懂用户。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -3463,12 +3535,41 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
                               >
                                 <span className="text-sm font-medium text-gray-700">{record.name}</span>
-                                <span className="text-sm font-bold" style={{ color: catData.color }}>
-                                  {record.minutes >= 60 
-                                    ? `${Math.floor(record.minutes / 60)}h ${record.minutes % 60}m`
-                                    : `${record.minutes}m`
-                                  }
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold" style={{ color: catData.color }}>
+                                    {record.minutes >= 60 
+                                      ? `${Math.floor(record.minutes / 60)}h ${record.minutes % 60}m`
+                                      : `${record.minutes}m`
+                                    }
+                                  </span>
+                                  {selectedCategory === 'uncategorized' && (
+                                    <select
+                                      value="uncategorized"
+                                      onChange={(e) => {
+                                        const newCategoryId = e.target.value as CategoryId;
+                                        const recordName = record.name;
+                                        
+                                        // 更新所有同名的timeRecords
+                                        setTimeRecords(timeRecords.map(r => 
+                                          r.name === recordName ? { ...r, categoryId: newCategoryId } : r
+                                        ));
+                                        
+                                        // 更新所有同名的globalTimers
+                                        setGlobalTimers(prev => prev.map(t => 
+                                          t.name === recordName ? { ...t, categoryId: newCategoryId } : t
+                                        ));
+                                      }}
+                                      className="bg-white border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold text-gray-600 outline-none focus:border-sky-300"
+                                    >
+                                      <option value="uncategorized">选择分类</option>
+                                      {timeCategories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>
+                                          {cat.icon} {cat.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
                               </div>
                             ))
                           )}
@@ -3611,80 +3712,104 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 📊 Summary 深度复盘 */}
+                    {/* 📊 战略诊断 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
                           <Lightbulb size={18} className="text-purple-500" />
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">📊 Summary 深度复盘</h4>
+                        <h4 className="font-black text-gray-800 text-lg">📊 战略诊断</h4>
                       </div>
                       
-                      {/* 能量审计 */}
+                      {/* 模式定义 */}
                       <div className="mb-4">
-                        <h5 className="font-bold text-gray-700 mb-2">1. 能量审计 (Energy Audit)</h5>
-                        <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
-                          __html: (viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') 
-                        }} />
+                        <h5 className="font-bold text-gray-700 mb-2">模式定义</h5>
+                        <div className="bg-purple-50 rounded-xl p-3">
+                          <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.executiveSummary?.patternDefinition || viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                          }} />
+                        </div>
                       </div>
                       
-                      {/* 行为信号 */}
+                      {/* 核心矛盾 */}
                       <div>
-                        <h5 className="font-bold text-gray-700 mb-2">2. 行为信号 (Behavioral Signals)</h5>
+                        <h5 className="font-bold text-gray-700 mb-2">核心矛盾</h5>
                         <div className="space-y-2">
-                          <div className="bg-green-50 rounded-xl p-3">
-                            <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                              __html: (viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
-                            }} />
-                          </div>
                           <div className="bg-orange-50 rounded-xl p-3">
                             <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                              __html: (viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                              __html: (viewingHistoryReport.executiveSummary?.coreConflict || viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
                             }} />
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* 💡 Advice 未来指引 */}
+                    {/* 🧐 五维深度审计 */}
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">🧐</span>
+                        </div>
+                        <h4 className="font-black text-gray-800 text-lg">五维深度审计</h4>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="bg-amber-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-amber-600 mb-1">💰 关于投入产出</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.fiveLensAudit?.roiAnalysis || viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                          }} />
+                        </div>
+                        <div className="bg-blue-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-blue-600 mb-1">⚡️🧱 关于能量与节奏</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                          }} />
+                        </div>
+                        <div className="bg-rose-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-rose-600 mb-1">🔄🎭 关于身心生态</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.fiveLensAudit?.ecosystemBalance || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
+                          }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 🛡️ 极简行动指南 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <Lightbulb size={18} className="text-sky-500" />
+                          <span className="text-lg">🛡️</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">💡 Advice 未来指引</h4>
+                        <h4 className="font-black text-sky-800 text-lg">极简行动指南</h4>
                       </div>
                       
-                      {/* 三个月后的预警 */}
+                      {/* 三个月后的心理画像 */}
                       <div className="mb-5">
-                        <h5 className="font-bold text-gray-700 mb-2">1. 三个月后的预警 (The 3-Month Trajectory)</h5>
+                        <h5 className="font-bold text-gray-700 mb-2">🔮 三个月后的心理画像</h5>
                         <div className="bg-white/60 rounded-xl p-3">
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                            __html: (viewingHistoryReport.threeMonthProjection?.mindsetChange || viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                           }} />
                         </div>
                       </div>
 
-                      {/* 当前最需守护的三件事 */}
+                      {/* 最需守护的三件事 */}
                       <div className="mb-5">
-                        <h5 className="font-bold text-gray-700 mb-2">2. 当前最需守护的三件事 (Top 3 Protections)</h5>
-                        <div className="space-y-2">
-                          {(viewingHistoryReport.advice?.protections || []).map((item: string, i: number) => (
-                            <div key={i} className="bg-white/60 rounded-xl p-3">
-                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                                __html: item.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                              }} />
-                            </div>
-                          ))}
+                        <h5 className="font-bold text-gray-700 mb-2">🛡️ 最需守护的三件事</h5>
+                        <div className="bg-white/60 rounded-xl p-3">
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.actionGuide?.threeThingsToProtect || (viewingHistoryReport.advice?.protections || []).join('；') || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                          }} />
                         </div>
                       </div>
 
-                      {/* 时间分布调整建议 */}
+                      {/* "懒人"调仓建议 */}
                       <div>
-                        <h5 className="font-bold text-gray-700 mb-2">3. 时间分布调整建议 (Adjustment)</h5>
+                        <h5 className="font-bold text-gray-700 mb-2">🔧 "懒人"调仓建议</h5>
                         <div className="bg-white/60 rounded-xl p-3">
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                            __html: (viewingHistoryReport.actionGuide?.lazyRebalancing || viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
                           }} />
                         </div>
                       </div>
@@ -3776,105 +3901,117 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 📊 Summary 深度复盘 ===== */}
+                {/* ===== 📊 战略诊断 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
                       <Lightbulb size={18} className="text-purple-500" />
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">📊 时间投资策略分析</h4>
+                    <h4 className="font-black text-gray-800 text-lg">📊 战略诊断</h4>
                   </div>
                   
-                  {/* 现状画像 */}
+                  {/* 模式定义 */}
                   <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">1. 现状画像 (Current Pattern)</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">模式定义</h5>
                     <div className="bg-purple-50 rounded-xl p-3">
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.strategyAnalysis?.currentPattern || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                        __html: (reportData.executiveSummary?.patternDefinition || reportData.strategyAnalysis?.currentPattern || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                   
-                  {/* 合理性分析 */}
+                  {/* 核心矛盾 */}
                   <div>
-                    <h5 className="font-bold text-gray-700 mb-2">2. 这种分布合理吗？ (Is it Reasonable?)</h5>
-                    <div className="space-y-2">
-                      <div className="bg-green-50 rounded-xl p-3">
-                        <p className="text-xs font-bold text-green-600 mb-1">✓ 合理之处</p>
-                        <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                          __html: (reportData.strategyAnalysis?.reasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
-                        }} />
-                      </div>
-                      <div className="bg-orange-50 rounded-xl p-3">
-                        <p className="text-xs font-bold text-orange-600 mb-1">✗ 不合理之处（ROI视角）</p>
-                        <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                          __html: (reportData.strategyAnalysis?.unreasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                        }} />
-                      </div>
+                    <h5 className="font-bold text-gray-700 mb-2">核心矛盾</h5>
+                    <div className="bg-orange-50 rounded-xl p-3">
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.executiveSummary?.coreConflict || reportData.strategyAnalysis?.unreasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                      }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 🧠 分布背后的潜台词 ===== */}
+                {/* ===== 🧐 五维深度审计 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🧠</span>
+                      <span className="text-lg">🧐</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">分布背后的潜台词</h4>
+                    <h4 className="font-black text-gray-800 text-lg">五维深度审计</h4>
                   </div>
                   
                   <div className="space-y-3">
-                    <div className="bg-indigo-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-indigo-600 mb-1">显性价值观</p>
+                    <div className="bg-amber-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-amber-600 mb-1">💰 关于投入产出</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.hiddenMeaning?.explicitValue || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-indigo-700">$1</strong>') 
+                        __html: (reportData.fiveLensAudit?.roiAnalysis || reportData.hiddenMeaning?.explicitValue || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                      }} />
+                    </div>
+                    <div className="bg-blue-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-blue-600 mb-1">⚡️🧱 关于能量与节奏</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.fiveLensAudit?.energyAndRhythm || reportData.rebalancing?.cutWaste || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
                       }} />
                     </div>
                     <div className="bg-rose-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-rose-600 mb-1">隐性恐惧</p>
+                      <p className="text-xs font-bold text-rose-600 mb-1">🔄🎭 关于身心生态</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.hiddenMeaning?.implicitFear || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
+                        __html: (reportData.fiveLensAudit?.ecosystemBalance || reportData.hiddenMeaning?.implicitFear || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== ⚖️ 调仓建议 ===== */}
+                {/* ===== 🔮 三个月后的心理画像 ===== */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 bg-violet-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">🔮</span>
+                    </div>
+                    <h4 className="font-black text-gray-800 text-lg">三个月后的心理画像</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="bg-violet-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-violet-600 mb-1">心态变化</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.threeMonthProjection?.mindsetChange || reportData.rebalancing?.threeMonthForecast || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-violet-700">$1</strong>') 
+                      }} />
+                    </div>
+                    <div className="bg-pink-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-pink-600 mb-1">能力预警</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.threeMonthProjection?.capabilityWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-pink-700">$1</strong>') 
+                      }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ===== 🛡️ 极简行动指南 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">⚖️</span>
+                      <span className="text-lg">🛡️</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">调仓建议</h4>
+                    <h4 className="font-black text-sky-800 text-lg">极简行动指南</h4>
                   </div>
 
-                  {/* 剪除垃圾时间 */}
+                  {/* 最需守护的三件事 */}
                   <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">1. 剪除垃圾时间</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">🛡️ 最需守护的三件事</h5>
                     <div className="bg-white/60 rounded-xl p-3">
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.rebalancing?.cutWaste || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-600">$1</strong>') 
+                        __html: (reportData.actionGuide?.threeThingsToProtect || reportData.rebalancing?.injectEnergy || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
                       }} />
                     </div>
                   </div>
 
-                  {/* 注入高能资产 */}
-                  <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">2. 注入高能资产</h5>
-                    <div className="bg-white/60 rounded-xl p-3">
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.rebalancing?.injectEnergy || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
-
-                  {/* 三个月后的账户预测 */}
+                  {/* "懒人"调仓建议 */}
                   <div>
-                    <h5 className="font-bold text-gray-700 mb-2">3. 三个月后的账户预测</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">🔧 "懒人"调仓建议</h5>
                     <div className="bg-white/60 rounded-xl p-3">
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.rebalancing?.threeMonthForecast || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                        __html: (reportData.actionGuide?.lazyRebalancing || reportData.strategyAnalysis?.reasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-600">$1</strong>') 
                       }} />
                     </div>
                   </div>
@@ -5530,8 +5667,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 </button>
                 <Button 
                   onClick={saveScheduleChanges}
-                  className="w-[70%] shadow-[0_8px_0_0_#008E72] hover:shadow-[0_6px_0_0_#008E72] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
-                  style={{ backgroundColor: '#00B894', color: '#FFFFFF' }}
+                  className="w-[70%] shadow-[0_8px_0_0_#2BA890] hover:shadow-[0_6px_0_0_#2BA890] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #42E695 0%, #3BB2B8 100%)',
+                    boxShadow: '0 10px 25px rgba(66, 230, 149, 0.4)',
+                    color: '#FFFFFF' 
+                  }}
                 >
                   <Check size={18} />
                   保存
@@ -6558,6 +6699,7 @@ const SettingsView = ({
   
   // 编辑数据相关状态
   const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null);
+  const [editName, setEditName] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
@@ -6798,6 +6940,37 @@ END:VEVENT
     return records;
   };
 
+  // 合并记录：同一时间段的新数据覆盖旧数据
+  const mergeRecords = (existingRecords: TimeRecord[], newRecords: TimeRecord[]) => {
+    // 创建一个 Map，key 为 "日期_开始时间_结束时间"
+    const recordMap = new Map<string, TimeRecord>();
+    
+    // 先添加现有记录
+    existingRecords.forEach(record => {
+      const key = `${record.date}_${record.startTime}_${record.endTime}`;
+      recordMap.set(key, record);
+    });
+    
+    // 新记录覆盖同一时间段的旧记录
+    let overwriteCount = 0;
+    newRecords.forEach(record => {
+      const key = `${record.date}_${record.startTime}_${record.endTime}`;
+      if (recordMap.has(key)) {
+        overwriteCount++;
+      }
+      recordMap.set(key, record);
+    });
+    
+    // 转换回数组并按日期时间排序
+    const mergedRecords = Array.from(recordMap.values()).sort((a, b) => {
+      const aDateTime = `${a.date} ${a.startTime}`;
+      const bDateTime = `${b.date} ${b.startTime}`;
+      return aDateTime.localeCompare(bDateTime);
+    });
+    
+    return { mergedRecords, overwriteCount };
+  };
+
   // 处理文件上传 - 直接导入不展示预览
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -6812,8 +6985,12 @@ END:VEVENT
           newRecords = parseTextData(content);
         }
         if (newRecords.length > 0) {
-          setTimeRecords([...timeRecords, ...newRecords]);
-          showToastMessage(`导入成功，共 ${newRecords.length} 条数据`);
+          const { mergedRecords, overwriteCount } = mergeRecords(timeRecords, newRecords);
+          setTimeRecords(mergedRecords);
+          const message = overwriteCount > 0 
+            ? `导入成功，共 ${newRecords.length} 条数据，覆盖 ${overwriteCount} 条重复数据`
+            : `导入成功，共 ${newRecords.length} 条数据`;
+          showToastMessage(message);
           setShowImportModal(false);
         } else {
           showToastMessage('未能解析到有效数据');
@@ -6829,8 +7006,12 @@ END:VEVENT
     if (importText.trim()) {
       const newRecords = parseTextData(importText);
       if (newRecords.length > 0) {
-        setTimeRecords([...timeRecords, ...newRecords]);
-        showToastMessage(`导入成功，共 ${newRecords.length} 条数据`);
+        const { mergedRecords, overwriteCount } = mergeRecords(timeRecords, newRecords);
+        setTimeRecords(mergedRecords);
+        const message = overwriteCount > 0 
+          ? `导入成功，共 ${newRecords.length} 条数据，覆盖 ${overwriteCount} 条重复数据`
+          : `导入成功，共 ${newRecords.length} 条数据`;
+        showToastMessage(message);
         setShowImportModal(false);
         setImportText('');
       } else {
@@ -6848,6 +7029,7 @@ END:VEVENT
   // 开始编辑记录
   const handleStartEdit = (record: TimeRecord) => {
     setEditingRecord(record);
+    setEditName(record.name);
     setEditDate(record.date);
     setEditStartTime(record.startTime);
     setEditEndTime(record.endTime);
@@ -6858,7 +7040,7 @@ END:VEVENT
     if (editingRecord) {
       setTimeRecords(timeRecords.map(r => 
         r.id === editingRecord.id 
-          ? { ...r, date: editDate, startTime: editStartTime, endTime: editEndTime }
+          ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime }
           : r
       ));
       setEditingRecord(null);
@@ -6925,7 +7107,7 @@ END:VEVENT
           {/* AI计划番茄钟管理入口 */}
           <button 
             onClick={() => setShowPomodoroModal(true)}
-            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
@@ -6947,7 +7129,7 @@ END:VEVENT
           {/* 理想时间配比入口 */}
           <button 
             onClick={() => setShowIdealTimeModal(true)}
-            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
@@ -6969,7 +7151,7 @@ END:VEVENT
           {/* 数据管理 */}
           <button 
             onClick={() => setShowDataMenuModal(true)}
-            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
@@ -7308,8 +7490,8 @@ END:VEVENT
 
       {/* 数据管理弹窗 */}
       {showDataManageModal && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-          <div className="bg-white w-[95%] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[95%] max-w-[430px] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-black text-[#2D2D2D]">查看数据源</h3>
               <div className="flex items-center gap-2">
@@ -7345,7 +7527,6 @@ END:VEVENT
                       onChange={(e) => setNewRecordName(e.target.value)}
                       placeholder="输入事项名称..."
                       className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                      autoFocus
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -7606,7 +7787,15 @@ END:VEVENT
                                   {editingRecord?.id === record.id ? (
                                     // 编辑模式
                                     <div className="space-y-3">
-                                      <div className="font-bold text-gray-700">{record.name}</div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-500 w-12">名称</label>
+                                        <input
+                                          type="text"
+                                          value={editName}
+                                          onChange={(e) => setEditName(e.target.value)}
+                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300 font-bold text-gray-700"
+                                        />
+                                      </div>
                                       <div className="flex items-center gap-2">
                                         <label className="text-xs text-gray-500 w-12">日期</label>
                                         <input
@@ -7715,23 +7904,33 @@ END:VEVENT
             <p className="text-xs text-gray-400 mb-4">修改事件分类后，将同步更新复盘数据和专注页面</p>
 
             {(() => {
-              // 按名称去重获取唯一事件
-              const uniqueEvents = Array.from(
-                new Map(
-                  [...timeRecords, ...globalTimers.map(t => ({ 
-                    id: t.id, 
-                    name: t.name, 
-                    categoryId: t.categoryId 
-                  }))]
-                  .map(item => [item.name, item])
-                ).values()
-              ).sort((a: any, b: any) => {
+              // 移除emoji的辅助函数
+              const removeEmoji = (str: string) => {
+                return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu, '').trim();
+              };
+
+              // 按名称去重获取唯一事件（移除emoji后比较）
+              const eventMap = new Map<string, any>();
+              [...timeRecords, ...globalTimers.map(t => ({ 
+                id: t.id, 
+                name: t.name, 
+                categoryId: t.categoryId 
+              }))].forEach(item => {
+                const normalizedName = removeEmoji(item.name);
+                // 如果已存在，保留有分类的那个；如果都有或都没有分类，保留后来的
+                const existing = eventMap.get(normalizedName);
+                if (!existing || (item.categoryId && item.categoryId !== 'uncategorized')) {
+                  eventMap.set(normalizedName, { ...item, normalizedName });
+                }
+              });
+
+              const uniqueEvents = Array.from(eventMap.values()).sort((a: any, b: any) => {
                 // 待分类的排在前面
                 const aUncategorized = !a.categoryId || a.categoryId === 'uncategorized';
                 const bUncategorized = !b.categoryId || b.categoryId === 'uncategorized';
                 if (aUncategorized && !bUncategorized) return -1;
                 if (!aUncategorized && bUncategorized) return 1;
-                return a.name.localeCompare(b.name);
+                return a.normalizedName.localeCompare(b.normalizedName);
               });
               
               if (uniqueEvents.length === 0) {
@@ -7747,30 +7946,26 @@ END:VEVENT
               return (
                 <div className="flex-1 overflow-y-auto space-y-3">
                   {uniqueEvents.map((event: any) => {
-                    const currentCategory = timeCategories.find(c => c.id === event.categoryId) || 
-                      { id: 'uncategorized', label: '待分类', color: '#9ca3af', icon: '📁' };
-                    
                     return (
-                      <div key={event.name} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <div key={event.normalizedName} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <span className="text-lg">{currentCategory.icon}</span>
-                            <span className="font-bold text-gray-700">{event.name}</span>
+                            <span className="font-bold text-gray-700">{event.normalizedName}</span>
                           </div>
                           <select
                             value={event.categoryId || 'uncategorized'}
                             onChange={(e) => {
                               const newCategoryId = e.target.value as CategoryId;
-                              const eventName = event.name;
+                              const normalizedName = event.normalizedName;
                               
-                              // 更新所有同名的timeRecords
+                              // 更新所有同名的timeRecords（移除emoji后比较）
                               setTimeRecords(timeRecords.map(r => 
-                                r.name === eventName ? { ...r, categoryId: newCategoryId } : r
+                                removeEmoji(r.name) === normalizedName ? { ...r, categoryId: newCategoryId } : r
                               ));
                               
-                              // 更新所有同名的globalTimers
+                              // 更新所有同名的globalTimers（移除emoji后比较）
                               setGlobalTimers(prev => prev.map(t => 
-                                t.name === eventName ? { ...t, categoryId: newCategoryId } : t
+                                removeEmoji(t.name) === normalizedName ? { ...t, categoryId: newCategoryId } : t
                               ));
                             }}
                             className="bg-white border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:border-purple-300"
@@ -8123,6 +8318,21 @@ export default function App() {
   const [isFirstTime, setIsFirstTime] = useState(false); // 模拟首次使用
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work'); // 添加全局分类状态
   
+  // 全局分类数据 - 持久化到localStorage
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const saved = localStorage.getItem('categories');
+    return saved ? JSON.parse(saved) : [
+      { id: 'work', label: '工作' },
+      { id: 'study', label: '学习' },
+      { id: 'sleep', label: '睡眠' },
+      { id: 'life', label: '生活' },
+      { id: 'rest', label: '休息' },
+      { id: 'entertainment', label: '娱乐' },
+      { id: 'health', label: '健康' },
+      { id: 'hobby', label: '兴趣' },
+    ];
+  });
+  
   // 全局番茄钟设置
   const [pomodoroSettings, setPomodoroSettings] = useState<PomodoroSettings>({
     workDuration: 25,
@@ -8142,6 +8352,11 @@ export default function App() {
     const saved = localStorage.getItem('globalTimers');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // 持久化categories到localStorage
+  useEffect(() => {
+    localStorage.setItem('categories', JSON.stringify(categories));
+  }, [categories]);
 
   // 持久化timeRecords到localStorage
   useEffect(() => {
@@ -8274,9 +8489,9 @@ export default function App() {
 
   const renderView = () => {
     switch (activeTab) {
-      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
+      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} idealTimeAllocation={idealTimeAllocation} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -8303,7 +8518,7 @@ export default function App() {
         setGlobalTimers={setGlobalTimers}
       />;
       case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
-      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
+      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} />;
     }
   };
 
@@ -8335,9 +8550,25 @@ export default function App() {
     );
   }
 
+  // 将hex颜色转换为带透明度的rgba
+  const hexToRgbaApp = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   // 动态渐变背景
   const getTimerGradient = () => {
-    const categoryLight = MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff';
+    // 获取当前选中分类的完整对象，检查是否有自定义颜色
+    const currentCat = categories.find(c => c.id === selectedCategory);
+    const hasCustomColor = currentCat?.color !== undefined && currentCat?.color !== null && currentCat?.color !== '';
+    
+    // 如果有自定义颜色，使用自定义颜色生成浅色背景；否则使用预定义浅色
+    const categoryLight = hasCustomColor 
+      ? hexToRgbaApp(currentCat!.color!, 0.08) 
+      : (MACARON_COLORS.categories[selectedCategory]?.light || '#faf5ff');
+    
     return `linear-gradient(to bottom, ${categoryLight}, #ffffff)`;
   };
   
