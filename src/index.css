@@ -8,8 +8,8 @@ html {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* 不要用 transparent！必须用一个和顶部接近的实色，防止白边 */
-  background-color: #fff0f5 !important; /* 粉色实色底，和渐变顶部颜色一致 */
+  /* 默认背景色为规划页的翡翠绿，JS 会根据页面动态切换 */
+  background-color: #E8F5E9;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
