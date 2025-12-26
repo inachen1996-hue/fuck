@@ -174,112 +174,64 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
   );
 };
 
-// 铃声播放器类 - 使用 Web Audio API 兼容移动端
+// 全局 audio 元素 ID
+const ALARM_AUDIO_ID = 'global-alarm-audio';
+
+// 铃声播放器类 - 简化版，使用全局 audio 元素
 class AlarmPlayer {
-  private audioContext: AudioContext | null = null;
-  private audioBuffer: AudioBuffer | null = null;
-  private sourceNode: AudioBufferSourceNode | null = null;
-  private gainNode: GainNode | null = null;
   private timeoutId: number | null = null;
-  private isLoaded: boolean = false;
-  private fallbackAudio: HTMLAudioElement | null = null;
   
-  // 解锁并加载音频 - 必须在用户交互时调用
-  async unlock() {
-    try {
-      // 创建 AudioContext（移动端需要在用户交互时创建）
-      if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      
-      // 如果 AudioContext 被暂停，恢复它
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
-      
-      // 加载音频文件
-      if (!this.isLoaded) {
-        const customSound = localStorage.getItem('alarmSound');
-        let audioData: ArrayBuffer;
-        
-        if (customSound) {
-          // 从 base64 解码
-          const base64Data = customSound.split(',')[1];
-          const binaryString = atob(base64Data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          audioData = bytes.buffer;
-        } else {
-          // 从文件加载
-          const response = await fetch(DEFAULT_ALARM_SOUND);
-          audioData = await response.arrayBuffer();
-        }
-        
-        this.audioBuffer = await this.audioContext.decodeAudioData(audioData);
-        this.isLoaded = true;
-        console.log('音频已加载');
-      }
-      
-      // 同时准备 fallback audio 元素
-      if (!this.fallbackAudio) {
-        const customSound = localStorage.getItem('alarmSound');
-        this.fallbackAudio = new Audio(customSound || DEFAULT_ALARM_SOUND);
-        this.fallbackAudio.loop = true;
-        this.fallbackAudio.volume = 0.7;
-        // 尝试播放并暂停来解锁
-        try {
-          await this.fallbackAudio.play();
-          this.fallbackAudio.pause();
-          this.fallbackAudio.currentTime = 0;
-        } catch (e) {
-          // 忽略
-        }
-      }
-      
-      console.log('音频已解锁');
-    } catch (err) {
-      console.log('音频解锁失败:', err);
+  // 获取或创建全局 audio 元素
+  private getAudioElement(): HTMLAudioElement {
+    let audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = ALARM_AUDIO_ID;
+      audio.loop = true;
+      audio.volume = 0.7;
+      audio.preload = 'auto';
+      const customSound = localStorage.getItem('alarmSound');
+      audio.src = customSound || DEFAULT_ALARM_SOUND;
+      document.body.appendChild(audio);
     }
+    return audio;
+  }
+  
+  // 解锁音频 - 必须在用户交互时调用
+  unlock() {
+    const audio = this.getAudioElement();
+    // 更新音源
+    const customSound = localStorage.getItem('alarmSound');
+    audio.src = customSound || DEFAULT_ALARM_SOUND;
+    
+    // 尝试播放并立即暂停
+    audio.play().then(() => {
+      audio.pause();
+      audio.currentTime = 0;
+      console.log('音频已解锁');
+    }).catch(err => {
+      console.log('音频解锁失败:', err);
+    });
   }
   
   play(duration: number = 10000) {
     this.stop();
     
-    // 尝试使用 Web Audio API
-    if (this.audioContext && this.audioBuffer) {
-      try {
-        this.gainNode = this.audioContext.createGain();
-        this.gainNode.gain.value = 0.7;
-        this.gainNode.connect(this.audioContext.destination);
-        
-        const playSound = () => {
-          if (!this.audioContext || !this.audioBuffer || !this.gainNode) return;
-          
-          this.sourceNode = this.audioContext.createBufferSource();
-          this.sourceNode.buffer = this.audioBuffer;
-          this.sourceNode.connect(this.gainNode);
-          this.sourceNode.start();
-          
-          // 音频播放完后重新播放（循环）
-          this.sourceNode.onended = () => {
-            if (this.gainNode) {
-              playSound();
-            }
-          };
-        };
-        
-        playSound();
-        console.log('Web Audio API 播放成功');
-      } catch (err) {
-        console.log('Web Audio API 播放失败，使用 fallback:', err);
-        this.playFallback();
-      }
-    } else {
-      // 使用 fallback
-      this.playFallback();
-    }
+    const audio = this.getAudioElement();
+    // 更新音源
+    const customSound = localStorage.getItem('alarmSound');
+    audio.src = customSound || DEFAULT_ALARM_SOUND;
+    audio.currentTime = 0;
+    
+    // 播放
+    audio.play().catch(err => {
+      console.log('播放失败:', err);
+      // 尝试振动作为备用
+      this.vibrate();
+    });
+    
+    // 同时振动
+    this.vibrate();
     
     // 设置自动停止
     this.timeoutId = window.setTimeout(() => {
@@ -287,46 +239,34 @@ class AlarmPlayer {
     }, duration);
   }
   
-  private playFallback() {
-    if (this.fallbackAudio) {
-      this.fallbackAudio.currentTime = 0;
-      this.fallbackAudio.play().catch(err => console.log('Fallback 播放失败:', err));
-    } else {
-      // 最后的尝试
-      const customSound = localStorage.getItem('alarmSound');
-      this.fallbackAudio = new Audio(customSound || DEFAULT_ALARM_SOUND);
-      this.fallbackAudio.loop = true;
-      this.fallbackAudio.volume = 0.7;
-      this.fallbackAudio.play().catch(err => console.log('最终播放失败:', err));
+  // 振动（移动端备用方案）
+  private vibrate() {
+    if ('vibrate' in navigator) {
+      // 振动模式：振动200ms，暂停100ms，重复
+      const pattern = [200, 100, 200, 100, 200, 100, 200, 100, 200];
+      navigator.vibrate(pattern);
     }
   }
   
   stop() {
-    if (this.sourceNode) {
-      try {
-        this.sourceNode.stop();
-        this.sourceNode.disconnect();
-      } catch (e) {
-        // 忽略
-      }
-      this.sourceNode = null;
-    }
-    if (this.gainNode) {
-      this.gainNode.disconnect();
-      this.gainNode = null;
-    }
-    if (this.fallbackAudio) {
-      this.fallbackAudio.pause();
-      this.fallbackAudio.currentTime = 0;
+    const audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
     }
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
+    // 停止振动
+    if ('vibrate' in navigator) {
+      navigator.vibrate(0);
+    }
   }
   
   isPlaying() {
-    return this.sourceNode !== null || (this.fallbackAudio !== null && !this.fallbackAudio.paused);
+    const audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
+    return audio && !audio.paused;
   }
 }
 
@@ -5641,12 +5581,22 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               return scheduleData.schedule.map((item: any, index: number) => {
                 const isActive = activeTimerId === (item.id || `task-${index}`);
                 const taskId = item.id || `task-${index}`;
-                const isPast = item.end < now;
+                // 修复跨天判断：如果任务结束时间小于开始时间，说明是跨天任务，不应该判断为已过期
+                // 同时，如果任务结束时间在凌晨（0-6点），且当前时间在晚上，也不应该判断为已过期
+                const endHour = new Date(item.end).getHours();
+                const currentHour = new Date(now).getHours();
+                const isOvernightTask = endHour < 6 && currentHour >= 18; // 结束时间在凌晨，当前在晚上
+                const isPast = !isOvernightTask && item.end < now;
                 const isLast = index === totalItems - 1;
                 
-                // 判断是否需要在此任务前插入时间线
+                // 判断是否需要在此任务前插入时间线（跨天任务不参与时间线判断）
                 const prevItem = index > 0 ? scheduleData.schedule[index - 1] : null;
-                const shouldInsertTimeline = !timelineInserted && !isPast && (prevItem ? prevItem.end < now : true) && item.start > now;
+                const prevEndHour = prevItem ? new Date(prevItem.end).getHours() : 0;
+                const prevIsOvernight = prevItem && prevEndHour < 6 && currentHour >= 18;
+                const prevIsPast = prevItem && !prevIsOvernight && prevItem.end < now;
+                const startHour = new Date(item.start).getHours();
+                const itemIsOvernight = startHour < 6 && currentHour >= 18;
+                const shouldInsertTimeline = !timelineInserted && !isPast && (prevItem ? prevIsPast : true) && !itemIsOvernight && item.start > now;
                 if (shouldInsertTimeline) timelineInserted = true;
                 
                 return (
@@ -6154,6 +6104,23 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
+        {isAlarmPlaying && (
+          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+            <button
+              onClick={() => {
+                alarmPlayer.stop();
+                setIsAlarmPlaying(false);
+              }}
+              className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
+              style={{ boxShadow: '0 10px 30px rgba(236, 72, 153, 0.4)' }}
+            >
+              <span className="text-xl">🔔</span>
+              <span>停止响铃</span>
+            </button>
           </div>
         )}
       </div>
