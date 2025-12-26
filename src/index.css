@@ -2,12 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 强制高度继承链 */
+/* 强制高度继承链 + 防止系统白底透出 */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden; /* 禁止浏览器默认滚动，只允许内部滚动 */
+  background: transparent !important;
 }
 
 /* 防止移动端缩放和优化触摸体验 */
