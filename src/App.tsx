@@ -8049,7 +8049,7 @@ export default function App() {
                   <div 
                     className={`p-3 rounded-2xl transition-all duration-500 ${
                       isActive 
-                        ? 'bg-white shadow-md -translate-y-3 scale-110 ring-4 ring-white' 
+                        ? 'bg-white -translate-y-3 scale-110' 
                         : 'hover:bg-white/40'
                     }`}
                   >
