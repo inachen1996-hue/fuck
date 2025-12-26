@@ -7910,6 +7910,18 @@ export default function App() {
     setAppState('main');
   };
 
+  // 根据当前页面动态更新 html 背景色，防止白边
+  useEffect(() => {
+    const htmlBgColorMap: Record<TabId, string> = {
+      timer: '#faf5ff',    // purple-50
+      journal: '#fdf2f8',  // pink-50
+      review: '#f0f9ff',   // sky-50
+      plan: '#E8F5E9',     // 翡翠绿
+      settings: '#fefce8', // yellow-50
+    };
+    document.documentElement.style.backgroundColor = htmlBgColorMap[activeTab] || '#E8F5E9';
+  }, [activeTab]);
+
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
