@@ -223,9 +223,9 @@ const alarmPlayer = {
     audio.src = DEFAULT_ALARM_SOUND;
     
     try {
-      // 关键：在用户交互中直接调用 play()
+      // 关键：在用户交互中直接调用 play()，但静音播放
       audio.currentTime = 0;
-      audio.volume = 1.0;
+      audio.volume = 0; // 静音
       await audio.play();
       
       // 播放成功，设置增益
@@ -235,11 +235,10 @@ const alarmPlayer = {
       audioUnlocked = true;
       console.log('音频解锁成功！');
       
-      // 播放1.5秒后停止（作为测试）
-      setTimeout(() => {
-        audio.pause();
-        audio.currentTime = 0;
-      }, 1500);
+      // 立即停止
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = 1.0; // 恢复音量
       
       return true;
     } catch (err) {
@@ -278,6 +277,11 @@ const alarmPlayer = {
     audio.volume = 1.0;
     audio.loop = true;
     
+    // 恢复 AudioContext（如果被暂停）
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+    
     // 尝试播放
     audio.play().then(() => {
       console.log('铃声开始播放');
@@ -293,9 +297,16 @@ const alarmPlayer = {
   
   // 停止播放
   stop() {
+    // 停止 audio 元素
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;
+      audioElement.loop = false; // 确保不会继续循环
+    }
+    
+    // 暂停 AudioContext（如果存在）
+    if (audioContext && audioContext.state === 'running') {
+      audioContext.suspend().catch(() => {});
     }
     
     if (stopTimeoutId) {
@@ -780,6 +791,12 @@ const TimerView = ({
   
   // 铃声播放状态
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
+  // 记录响铃时的计时器ID（因为计时结束后 activeTimer 会被清空）
+  const [alarmTimerId, setAlarmTimerId] = useState<string | null>(null);
+  // 番茄钟等待进入下一阶段的状态
+  const [pomodoroWaitingNextPhase, setPomodoroWaitingNextPhase] = useState(false);
+  // 下一阶段信息
+  const [nextPhaseInfo, setNextPhaseInfo] = useState<{ phase: 'work' | 'break' | 'longBreak'; round: number } | null>(null);
   
   // 常用emoji列表
   const commonEmojis = ['🎯', '💼', '📚', '✏️', '💻', '🎨', '🎵', '🏃', '🧘', '☕', '🍎', '💪', '🌟', '🔥', '⏰', '📝', '🎮', '📖', '🧠', '💡'];
@@ -830,8 +847,9 @@ const TimerView = ({
           if (isCompleted) {
             // 计时已完成，播放铃声
             alarmPlayer.play(10000);
+            setAlarmTimerId(timer.id);
             setIsAlarmPlaying(true);
-            setTimeout(() => setIsAlarmPlaying(false), 10000);
+            setTimeout(() => { setIsAlarmPlaying(false); setAlarmTimerId(null); }, 10000);
             
             // 自动重置计时器
             const updatedTimer = { ...timer, status: 'idle' as TimerStatus, remainingTime: timer.duration * 60 };
@@ -923,25 +941,24 @@ const TimerView = ({
             
             if (newRemaining <= 0) {
               // 倒计时结束，自动重置计时器
+              const timerId = activeTimer?.id;
               setTimers(timers => timers.map(t => 
                 t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
               ));
               // 倒计时结束，播放铃声
               alarmPlayer.play(10000);
+              setAlarmTimerId(timerId || null);
               setIsAlarmPlaying(true);
-              setTimeout(() => setIsAlarmPlaying(false), 10000);
+              setTimeout(() => { setIsAlarmPlaying(false); setAlarmTimerId(null); }, 10000);
               setTimerStartTime(null);
               setElapsedTime(0);
               setActiveTimer(null);
             } else {
-              setActiveTimer(prev => {
-                if (!prev) return null;
-                const updated = { ...prev, remainingTime: newRemaining };
-                setTimers(timers => timers.map(t =>
-                  t.id === prev.id ? updated : t
-                ));
-                return updated;
-              });
+              const updated = { ...activeTimer, remainingTime: newRemaining };
+              setTimers(timers => timers.map(t =>
+                t.id === activeTimer?.id ? updated : t
+              ));
+              setActiveTimer(updated);
             }
           }
         } else if (timerMode === 'pomodoro') {
@@ -955,68 +972,39 @@ const TimerView = ({
               : pomodoroConfig.longBreakDuration * 60;
             const newRemaining = Math.max(0, phaseDuration - elapsed);
             
-            if (newRemaining <= 0) {
-              // 当前阶段结束，播放铃声提醒
+            if (newRemaining <= 0 && !pomodoroWaitingNextPhase) {
+              // 当前阶段结束，播放铃声提醒，暂停计时器等待用户确认
               alarmPlayer.play(10000);
+              setAlarmTimerId(activeTimer?.id || null);
               setIsAlarmPlaying(true);
-              setTimeout(() => setIsAlarmPlaying(false), 10000);
+              setPomodoroWaitingNextPhase(true);
               
-              // 切换到下一阶段
+              // 暂停计时器
+              if (activeTimer) {
+                const updated = { ...activeTimer, status: 'paused' as TimerStatus, remainingTime: 0 };
+                setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
+                setActiveTimer(updated);
+              }
+              
+              // 计算下一阶段信息
               if (pomodoroPhase === 'work') {
                 if (currentPomodoroRound >= pomodoroConfig.rounds) {
-                  setPomodoroPhase('longBreak');
-                  setCurrentPomodoroRound(1);
-                  const nextRemaining = pomodoroConfig.longBreakDuration * 60;
-                  setActiveTimer(prev => {
-                    if (!prev) return null;
-                    const updated = { ...prev, remainingTime: nextRemaining };
-                    setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
-                    return updated;
-                  });
-                  // 更新时间戳
-                  setTimerStartTimestamp(Date.now());
+                  setNextPhaseInfo({ phase: 'longBreak', round: 1 });
                 } else {
-                  setPomodoroPhase('break');
-                  const nextRemaining = pomodoroConfig.breakDuration * 60;
-                  setActiveTimer(prev => {
-                    if (!prev) return null;
-                    const updated = { ...prev, remainingTime: nextRemaining };
-                    setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
-                    return updated;
-                  });
-                  // 更新时间戳
-                  setTimerStartTimestamp(Date.now());
+                  setNextPhaseInfo({ phase: 'break', round: currentPomodoroRound });
                 }
               } else if (pomodoroPhase === 'break') {
-                setPomodoroPhase('work');
-                setCurrentPomodoroRound(r => r + 1);
-                const nextRemaining = pomodoroConfig.workDuration * 60;
-                setActiveTimer(prev => {
-                  if (!prev) return null;
-                  const updated = { ...prev, remainingTime: nextRemaining };
-                  setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
-                  return updated;
-                });
-                // 更新时间戳
-                setTimerStartTimestamp(Date.now());
+                setNextPhaseInfo({ phase: 'work', round: currentPomodoroRound + 1 });
               } else {
-                // 长休息结束，自动重置计时器
-                setTimers(timers => timers.map(t => 
-                  t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
-                ));
-                setPomodoroPhase('work');
-                setCurrentPomodoroRound(1);
-                setTimerStartTime(null);
-                setElapsedTime(0);
-                setActiveTimer(null);
+                // 长休息结束，整个番茄钟周期完成
+                setNextPhaseInfo(null);
               }
-            } else {
-              setActiveTimer(prev => {
-                if (!prev) return null;
-                const updated = { ...prev, remainingTime: newRemaining };
-                setTimers(timers => timers.map(t => t.id === prev.id ? updated : t));
-                return updated;
-              });
+            } else if (!pomodoroWaitingNextPhase) {
+              if (activeTimer) {
+                const updated = { ...activeTimer, remainingTime: newRemaining };
+                setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
+                setActiveTimer(updated);
+              }
             }
           }
         }
@@ -1042,9 +1030,11 @@ const TimerView = ({
             const endedSecondsAgo = elapsed - initialDuration;
             // 只在结束后10秒内播放铃声
             if (endedSecondsAgo <= 10) {
-              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              const duration = 10000 - endedSecondsAgo * 1000;
+              alarmPlayer.play(duration);
+              setAlarmTimerId(activeTimer?.id || null);
               setIsAlarmPlaying(true);
-              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+              setTimeout(() => { setIsAlarmPlaying(false); setAlarmTimerId(null); }, duration);
             }
           }
         } else if (timerMode === 'pomodoro') {
@@ -1060,9 +1050,11 @@ const TimerView = ({
             const endedSecondsAgo = elapsed - phaseDuration;
             // 只在结束后10秒内播放铃声
             if (endedSecondsAgo <= 10) {
-              alarmPlayer.play(10000 - endedSecondsAgo * 1000);
+              const duration = 10000 - endedSecondsAgo * 1000;
+              alarmPlayer.play(duration);
+              setAlarmTimerId(activeTimer?.id || null);
               setIsAlarmPlaying(true);
-              setTimeout(() => setIsAlarmPlaying(false), 10000 - endedSecondsAgo * 1000);
+              setTimeout(() => { setIsAlarmPlaying(false); setAlarmTimerId(null); }, duration);
             }
           }
         }
@@ -1203,6 +1195,55 @@ const TimerView = ({
     };
     
     setTimeRecords([...timeRecords, newRecord]);
+  };
+
+  // 停止响铃并进入番茄钟下一阶段
+  const stopAlarmAndProceed = () => {
+    alarmPlayer.stop();
+    setIsAlarmPlaying(false);
+    setAlarmTimerId(null);
+    
+    // 如果是番茄钟等待下一阶段
+    if (pomodoroWaitingNextPhase && nextPhaseInfo && activeTimer) {
+      setPomodoroWaitingNextPhase(false);
+      
+      if (nextPhaseInfo.phase === 'longBreak') {
+        setPomodoroPhase('longBreak');
+        setCurrentPomodoroRound(1);
+        const nextRemaining = pomodoroConfig.longBreakDuration * 60;
+        const updated = { ...activeTimer, status: 'running' as TimerStatus, remainingTime: nextRemaining };
+        setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
+        setActiveTimer(updated);
+        setTimerStartTimestamp(Date.now());
+      } else if (nextPhaseInfo.phase === 'break') {
+        setPomodoroPhase('break');
+        const nextRemaining = pomodoroConfig.breakDuration * 60;
+        const updated = { ...activeTimer, status: 'running' as TimerStatus, remainingTime: nextRemaining };
+        setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
+        setActiveTimer(updated);
+        setTimerStartTimestamp(Date.now());
+      } else if (nextPhaseInfo.phase === 'work') {
+        setPomodoroPhase('work');
+        setCurrentPomodoroRound(nextPhaseInfo.round);
+        const nextRemaining = pomodoroConfig.workDuration * 60;
+        const updated = { ...activeTimer, status: 'running' as TimerStatus, remainingTime: nextRemaining };
+        setTimers(timers => timers.map(t => t.id === activeTimer.id ? updated : t));
+        setActiveTimer(updated);
+        setTimerStartTimestamp(Date.now());
+      }
+      setNextPhaseInfo(null);
+    } else if (pomodoroWaitingNextPhase && !nextPhaseInfo && activeTimer) {
+      // 长休息结束，整个番茄钟周期完成
+      setPomodoroWaitingNextPhase(false);
+      setTimers(timers => timers.map(t => 
+        t.id === activeTimer.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
+      ));
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(1);
+      setTimerStartTime(null);
+      setElapsedTime(0);
+      setActiveTimer(null);
+    }
   };
 
   const startTimer = (timer: Timer) => {
@@ -1664,13 +1705,10 @@ const TimerView = ({
                           >
                             <X size={14} />
                           </button>
-                          {/* 停止铃声按钮 */}
-                          {isAlarmPlaying && (
+                          {/* 停止铃声按钮 - 只在当前计时的卡片显示 */}
+                          {isAlarmPlaying && alarmTimerId === timer.id && (
                             <button
-                              onClick={() => {
-                                alarmPlayer.stop();
-                                setIsAlarmPlaying(false);
-                              }}
+                              onClick={() => stopAlarmAndProceed()}
                               className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg hover:bg-pink-600 transition-all animate-pulse text-sm"
                             >
                               🔔
@@ -1691,13 +1729,12 @@ const TimerView = ({
                           <Play size={12} fill={theme.primary} style={{ color: theme.primary, flexShrink: 0 }} />
                         </div>
                         
-                        {/* 停止铃声按钮 - 铃声响起时显示 */}
-                        {isAlarmPlaying && (
+                        {/* 停止铃声按钮 - 铃声响起时显示，只在当前计时的卡片显示 */}
+                        {isAlarmPlaying && alarmTimerId === timer.id && (
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              alarmPlayer.stop();
-                              setIsAlarmPlaying(false);
+                              stopAlarmAndProceed();
                             }}
                             className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all animate-pulse"
                             style={{ backgroundColor: '#FF6B6B' }}
@@ -4652,6 +4689,10 @@ const PlanView = ({
   
   // 铃声播放状态
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
+  // 番茄钟等待进入下一阶段的状态
+  const [pomodoroWaitingNextPhase, setPomodoroWaitingNextPhase] = useState(false);
+  // 下一阶段信息
+  const [nextPhaseInfo, setNextPhaseInfo] = useState<{ phase: 'work' | 'break' | 'longBreak'; round: number } | null>(null);
   
   // 计时模式选择弹窗
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
@@ -4827,42 +4868,28 @@ const PlanView = ({
               : pomodoroConfig.longBreakDuration * 60;
             const newRemaining = Math.max(0, phaseDuration - elapsed);
             
-            if (newRemaining <= 0) {
-              // 当前阶段结束，播放铃声提醒
+            if (newRemaining <= 0 && !pomodoroWaitingNextPhase) {
+              // 当前阶段结束，播放铃声提醒，暂停等待用户确认
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
-              setTimeout(() => setIsAlarmPlaying(false), 10000);
+              setPomodoroWaitingNextPhase(true);
+              setTimerStatus('paused');
+              setRemainingTime(0);
               
-              // 切换到下一阶段
+              // 计算下一阶段信息
               if (pomodoroPhase === 'work') {
-                // 工作结束，判断是否需要长休息
                 if (currentPomodoroRound >= pomodoroConfig.rounds) {
-                  setPomodoroPhase('longBreak');
-                  setCurrentPomodoroRound(1);
-                  // 更新时间戳
-                  setTimerStartTimestamp(Date.now());
-                  setRemainingTime(pomodoroConfig.longBreakDuration * 60);
+                  setNextPhaseInfo({ phase: 'longBreak', round: 1 });
                 } else {
-                  setPomodoroPhase('break');
-                  // 更新时间戳
-                  setTimerStartTimestamp(Date.now());
-                  setRemainingTime(pomodoroConfig.breakDuration * 60);
+                  setNextPhaseInfo({ phase: 'break', round: currentPomodoroRound });
                 }
               } else if (pomodoroPhase === 'break') {
-                // 短休息结束，开始下一轮工作
-                setPomodoroPhase('work');
-                setCurrentPomodoroRound(prev => prev + 1);
-                // 更新时间戳
-                setTimerStartTimestamp(Date.now());
-                setRemainingTime(pomodoroConfig.workDuration * 60);
+                setNextPhaseInfo({ phase: 'work', round: currentPomodoroRound + 1 });
               } else {
-                // 长休息结束，完成整个番茄钟周期
-                setTimerStatus('idle');
-                setActiveTimerId(null);
-                setPomodoroPhase('work');
-                setRemainingTime(0);
+                // 长休息结束，整个番茄钟周期完成
+                setNextPhaseInfo(null);
               }
-            } else {
+            } else if (!pomodoroWaitingNextPhase) {
               setRemainingTime(newRemaining);
             }
           }
@@ -4873,7 +4900,7 @@ const PlanView = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration]);
+  }, [timerStatus, timerMode, pomodoroPhase, currentPomodoroRound, pomodoroConfig, timerStartTimestamp, countdownDuration, pomodoroWaitingNextPhase]);
 
   // 监听页面可见性变化，确保后台返回时检查计时器状态
   useEffect(() => {
@@ -5127,6 +5154,45 @@ const PlanView = ({
       setTimerStartTimestamp(Date.now() - (totalDuration - remainingTime) * 1000);
     }
     setTimerStatus('running');
+  };
+
+  // 停止响铃并进入番茄钟下一阶段
+  const stopAlarmAndProceed = () => {
+    alarmPlayer.stop();
+    setIsAlarmPlaying(false);
+    
+    // 如果是番茄钟等待下一阶段
+    if (pomodoroWaitingNextPhase && nextPhaseInfo) {
+      setPomodoroWaitingNextPhase(false);
+      
+      if (nextPhaseInfo.phase === 'longBreak') {
+        setPomodoroPhase('longBreak');
+        setCurrentPomodoroRound(1);
+        setRemainingTime(pomodoroConfig.longBreakDuration * 60);
+        setTimerStartTimestamp(Date.now());
+        setTimerStatus('running');
+      } else if (nextPhaseInfo.phase === 'break') {
+        setPomodoroPhase('break');
+        setRemainingTime(pomodoroConfig.breakDuration * 60);
+        setTimerStartTimestamp(Date.now());
+        setTimerStatus('running');
+      } else if (nextPhaseInfo.phase === 'work') {
+        setPomodoroPhase('work');
+        setCurrentPomodoroRound(nextPhaseInfo.round);
+        setRemainingTime(pomodoroConfig.workDuration * 60);
+        setTimerStartTimestamp(Date.now());
+        setTimerStatus('running');
+      }
+      setNextPhaseInfo(null);
+    } else if (pomodoroWaitingNextPhase && !nextPhaseInfo) {
+      // 长休息结束，整个番茄钟周期完成
+      setPomodoroWaitingNextPhase(false);
+      setTimerStatus('idle');
+      setActiveTimerId(null);
+      setPomodoroPhase('work');
+      setCurrentPomodoroRound(1);
+      setRemainingTime(0);
+    }
   };
 
   // 停止计时
@@ -5867,10 +5933,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           {/* 停止铃声按钮 */}
                           {isAlarmPlaying && (
                             <button
-                              onClick={() => {
-                                alarmPlayer.stop();
-                                setIsAlarmPlaying(false);
-                              }}
+                              onClick={() => stopAlarmAndProceed()}
                               className="w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center text-white shadow-lg hover:bg-pink-600 transition-all animate-pulse"
                             >
                               🔔
@@ -6250,10 +6313,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         {isAlarmPlaying && (
           <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
             <button
-              onClick={() => {
-                alarmPlayer.stop();
-                setIsAlarmPlaying(false);
-              }}
+              onClick={() => stopAlarmAndProceed()}
               className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
               style={{ boxShadow: '0 10px 30px rgba(236, 72, 153, 0.4)' }}
             >
@@ -7482,8 +7542,6 @@ END:VEVENT
             onClick={async () => {
               const success = await alarmPlayer.unlock();
               if (success) {
-                // 播放一小段测试音
-                alarmPlayer.play(1500);
                 showToastMessage('🔔 铃声已启用！');
               } else {
                 showToastMessage('启用失败，请重试');
@@ -8865,6 +8923,73 @@ export default function App() {
     health: 1,
     hobby: 1
   });
+
+  // 全局计时器完成检测 - 在任何页面都能播放铃声
+  useEffect(() => {
+    const checkTimerCompletion = () => {
+      const persistentState = localStorage.getItem('persistentTimerState');
+      if (!persistentState) return;
+      
+      try {
+        const state = JSON.parse(persistentState);
+        
+        // 检查专注页面计时器
+        if (state.focusTimer && state.focusTimer.status === 'running' && state.focusTimer.startTimestamp) {
+          const { startTimestamp, totalDuration, timerMode, pomodoroConfig, pomodoroPhase } = state.focusTimer;
+          
+          if (timerMode === 'countdown') {
+            const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+            const remaining = totalDuration - elapsed;
+            if (remaining <= 0 && remaining > -2) {
+              alarmPlayer.play(10000);
+            }
+          } else if (timerMode === 'pomodoro' && pomodoroConfig) {
+            const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+            const phaseDuration = pomodoroPhase === 'work' 
+              ? pomodoroConfig.workDuration * 60 
+              : pomodoroPhase === 'break' 
+              ? pomodoroConfig.breakDuration * 60 
+              : pomodoroConfig.longBreakDuration * 60;
+            const remaining = phaseDuration - elapsed;
+            if (remaining <= 0 && remaining > -2) {
+              alarmPlayer.play(10000);
+            }
+          }
+        }
+        
+        // 检查规划页面计时器
+        if (state.planTimer && state.planTimer.status === 'running' && state.planTimer.startTimestamp) {
+          const { startTimestamp, totalDuration, timerMode, pomodoroConfig, pomodoroPhase } = state.planTimer;
+          
+          if (timerMode === 'countdown') {
+            const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+            const remaining = totalDuration - elapsed;
+            if (remaining <= 0 && remaining > -2) {
+              alarmPlayer.play(10000);
+            }
+          } else if (timerMode === 'pomodoro' && pomodoroConfig) {
+            const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+            const phaseDuration = pomodoroPhase === 'work' 
+              ? pomodoroConfig.workDuration * 60 
+              : pomodoroPhase === 'break' 
+              ? pomodoroConfig.breakDuration * 60 
+              : pomodoroConfig.longBreakDuration * 60;
+            const remaining = phaseDuration - elapsed;
+            if (remaining <= 0 && remaining > -2) {
+              alarmPlayer.play(10000);
+            }
+          }
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    };
+    
+    // 每秒检查一次
+    const interval = setInterval(checkTimerCompletion, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogin = () => {
     if (isFirstTime) {
       setAppState('onboarding');
@@ -9070,10 +9195,7 @@ export default function App() {
               
               <button
                 onClick={async () => {
-                  const success = await alarmPlayer.unlock();
-                  if (success) {
-                    alarmPlayer.play(1500);
-                  }
+                  await alarmPlayer.unlock();
                   setShowSoundTip(false);
                   localStorage.setItem('soundTipShown', 'true');
                 }}
