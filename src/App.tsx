@@ -174,104 +174,125 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
   );
 };
 
-// 全局 audio 元素 ID
-const ALARM_AUDIO_ID = 'global-alarm-audio';
+// 全局音频状态
+let audioUnlocked = false;
+let audioContext: AudioContext | null = null;
+let audioBuffer: AudioBuffer | null = null;
+let currentSource: AudioBufferSourceNode | null = null;
+let stopTimeoutId: number | null = null;
 
-// 铃声播放器类 - 简化版，使用全局 audio 元素
-class AlarmPlayer {
-  private timeoutId: number | null = null;
-  
-  // 获取或创建全局 audio 元素
-  private getAudioElement(): HTMLAudioElement {
-    let audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
-    if (!audio) {
-      audio = document.createElement('audio');
-      audio.id = ALARM_AUDIO_ID;
-      audio.loop = true;
-      audio.volume = 0.7;
-      audio.preload = 'auto';
-      const customSound = localStorage.getItem('alarmSound');
-      audio.src = customSound || DEFAULT_ALARM_SOUND;
-      document.body.appendChild(audio);
+// 铃声播放器 - 使用 Web Audio API
+const alarmPlayer = {
+  // 初始化 AudioContext（必须在用户交互时调用）
+  async unlock() {
+    if (audioUnlocked && audioContext && audioBuffer) {
+      console.log('音频已经解锁');
+      return true;
     }
-    return audio;
-  }
-  
-  // 解锁音频 - 必须在用户交互时调用
-  unlock() {
-    const audio = this.getAudioElement();
-    // 更新音源
-    const customSound = localStorage.getItem('alarmSound');
-    audio.src = customSound || DEFAULT_ALARM_SOUND;
     
-    // 尝试播放并立即暂停
-    audio.play().then(() => {
-      audio.pause();
-      audio.currentTime = 0;
-      console.log('音频已解锁');
-    }).catch(err => {
-      console.log('音频解锁失败:', err);
-    });
-  }
+    try {
+      // 创建 AudioContext
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      // 如果 context 被暂停，恢复它
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      
+      // 加载音频文件
+      const soundUrl = localStorage.getItem('alarmSound') || DEFAULT_ALARM_SOUND;
+      const response = await fetch(soundUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      audioUnlocked = true;
+      console.log('音频解锁成功！');
+      return true;
+    } catch (err) {
+      console.error('音频解锁失败:', err);
+      return false;
+    }
+  },
   
-  play(duration: number = 10000) {
+  // 播放铃声
+  async play(duration: number = 10000) {
     this.stop();
     
-    const audio = this.getAudioElement();
-    // 更新音源
-    const customSound = localStorage.getItem('alarmSound');
-    audio.src = customSound || DEFAULT_ALARM_SOUND;
-    audio.currentTime = 0;
-    
-    // 播放
-    audio.play().catch(err => {
-      console.log('播放失败:', err);
-      // 尝试振动作为备用
-      this.vibrate();
-    });
-    
-    // 同时振动
-    this.vibrate();
-    
-    // 设置自动停止
-    this.timeoutId = window.setTimeout(() => {
-      this.stop();
-    }, duration);
-  }
-  
-  // 振动（移动端备用方案）
-  private vibrate() {
+    // 振动
     if ('vibrate' in navigator) {
-      // 振动模式：振动200ms，暂停100ms，重复
-      const pattern = [200, 100, 200, 100, 200, 100, 200, 100, 200];
+      const pattern = [200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200];
       navigator.vibrate(pattern);
     }
-  }
+    
+    // 如果没有解锁，尝试解锁
+    if (!audioUnlocked || !audioContext || !audioBuffer) {
+      const success = await this.unlock();
+      if (!success) {
+        console.log('无法播放音频，使用振动替代');
+        return;
+      }
+    }
+    
+    try {
+      // 确保 context 是运行状态
+      if (audioContext!.state === 'suspended') {
+        await audioContext!.resume();
+      }
+      
+      // 创建音源节点
+      currentSource = audioContext!.createBufferSource();
+      currentSource.buffer = audioBuffer;
+      currentSource.loop = true;
+      currentSource.connect(audioContext!.destination);
+      currentSource.start(0);
+      
+      console.log('铃声开始播放');
+      
+      // 设置自动停止
+      stopTimeoutId = window.setTimeout(() => {
+        this.stop();
+      }, duration);
+    } catch (err) {
+      console.error('播放失败:', err);
+    }
+  },
   
+  // 停止播放
   stop() {
-    const audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
+    if (currentSource) {
+      try {
+        currentSource.stop();
+      } catch (e) {
+        // 忽略已停止的错误
+      }
+      currentSource = null;
     }
-    if (this.timeoutId) {
-      clearTimeout(this.timeoutId);
-      this.timeoutId = null;
+    
+    if (stopTimeoutId) {
+      clearTimeout(stopTimeoutId);
+      stopTimeoutId = null;
     }
+    
     // 停止振动
     if ('vibrate' in navigator) {
       navigator.vibrate(0);
     }
-  }
+    
+    console.log('铃声已停止');
+  },
   
+  // 检查是否正在播放
   isPlaying() {
-    const audio = document.getElementById(ALARM_AUDIO_ID) as HTMLAudioElement;
-    return audio && !audio.paused;
+    return currentSource !== null;
+  },
+  
+  // 检查是否已解锁
+  isUnlocked() {
+    return audioUnlocked;
   }
-}
-
-// 全局铃声播放器实例
-const alarmPlayer = new AlarmPlayer();
+};
 
 // 配置常量 - 升级版马卡龙配色 (Mixed Macaron Palette)
 const MACARON_COLORS = {
@@ -7334,6 +7355,39 @@ END:VEVENT
             </div>
             <ChevronRight size={20} style={{ color: '#FFA000' }} />
           </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 启用铃声 */}
+          <button 
+            onClick={async () => {
+              const success = await alarmPlayer.unlock();
+              if (success) {
+                // 播放一小段测试音
+                alarmPlayer.play(1500);
+                showToastMessage('🔔 铃声已启用！');
+              } else {
+                showToastMessage('启用失败，请重试');
+              }
+            }}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFE0E6 0%, #FFCDD2 100%)' }}>
+                <span className="text-2xl">🔔</span>
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>启用铃声</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  点击启用计时器提醒铃声（手机必点）
+                </p>
+              </div>
+            </div>
+            <div className="px-3 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: alarmPlayer.isUnlocked() ? '#E8F5E9' : '#FFF3E0', color: alarmPlayer.isUnlocked() ? '#4CAF50' : '#FF9800' }}>
+              {alarmPlayer.isUnlocked() ? '已启用' : '未启用'}
+            </div>
+          </button>
         </div>
       </div>
 
@@ -8530,6 +8584,13 @@ export default function App() {
   const [isFirstTime, setIsFirstTime] = useState(false); // 模拟首次使用
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work'); // 添加全局分类状态
   
+  // 铃声提示弹窗状态
+  const [showSoundTip, setShowSoundTip] = useState(() => {
+    // 检查是否已经显示过提示
+    const hasShown = localStorage.getItem('soundTipShown');
+    return !hasShown;
+  });
+  
   // 全局分类数据 - 持久化到localStorage
   const [categories, setCategories] = useState<Category[]>(() => {
     const saved = localStorage.getItem('categories');
@@ -8864,6 +8925,58 @@ export default function App() {
             })}
           </div>
         </div>
+
+        {/* 铃声启用提示弹窗 */}
+        {showSoundTip && (
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4"
+            onClick={() => {
+              setShowSoundTip(false);
+              localStorage.setItem('soundTipShown', 'true');
+            }}
+          >
+            <div 
+              className="bg-white rounded-3xl p-6 w-full max-w-sm animate-scale-in"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center mb-4">
+                <div className="text-5xl mb-3">🔔</div>
+                <h3 className="text-xl font-black text-[#2D3436] mb-2">启用铃声提醒</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  为了在计时结束时提醒你，请点击下方按钮启用铃声。
+                  <br />
+                  <span className="text-pink-500 font-bold">手机用户必须点击！</span>
+                </p>
+              </div>
+              
+              <button
+                onClick={async () => {
+                  const success = await alarmPlayer.unlock();
+                  if (success) {
+                    alarmPlayer.play(1500);
+                  }
+                  setShowSoundTip(false);
+                  localStorage.setItem('soundTipShown', 'true');
+                }}
+                className="w-full py-4 rounded-2xl text-white font-bold text-base hover:opacity-90 transition-all mb-3"
+                style={{ backgroundColor: '#FF6B6B' }}
+              >
+                🔊 启用铃声
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowSoundTip(false);
+                  localStorage.setItem('soundTipShown', 'true');
+                }}
+                className="w-full py-3 text-gray-400 font-medium text-sm"
+              >
+                稍后再说
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
