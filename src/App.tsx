@@ -198,6 +198,11 @@ const alarmPlayer = {
   
   // 解锁音频 - 必须在用户点击事件中直接调用（静默解锁，不播放声音）
   async unlock(): Promise<boolean> {
+    // 如果已经解锁，直接返回
+    if (audioUnlocked) {
+      return true;
+    }
+    
     const audio = this.getAudio();
     audio.src = DEFAULT_ALARM_SOUND;
     
@@ -206,11 +211,14 @@ const alarmPlayer = {
       audio.currentTime = 0;
       audio.volume = 0; // 静音
       audio.muted = true; // 双重保险
+      audio.loop = false; // 确保不循环
+      
       await audio.play();
       
       // 立即停止
       audio.pause();
       audio.currentTime = 0;
+      audio.loop = true; // 恢复循环设置
       
       // 恢复音量设置
       audio.volume = 1.0;
@@ -227,9 +235,11 @@ const alarmPlayer = {
       try {
         audio.muted = true;
         audio.volume = 0;
+        audio.loop = false;
         await audio.play();
         audio.pause();
         audio.currentTime = 0;
+        audio.loop = true;
         audio.muted = false;
         audio.volume = 1.0;
         audioUnlocked = true;
@@ -688,7 +698,7 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 const TimerView = ({ 
   selectedCategory: propSelectedCategory, 
   setSelectedCategory: propSetSelectedCategory,
-  timeRecords,
+  timeRecords: _timeRecords,
   setTimeRecords,
   globalTimers,
   setGlobalTimers,
@@ -3897,7 +3907,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                             fill="none"
                             stroke={slice.color}
                             strokeWidth="24"
-                            strokeLinecap="round"
+                            strokeLinecap="butt"
                             className="hover:opacity-80 cursor-pointer"
                             onClick={() => setSelectedCategory(slice.id)}
                           />
@@ -4696,7 +4706,7 @@ const PlanView = ({
   setNewTaskName,
   newTaskDuration,
   setNewTaskDuration,
-  timeRecords,
+  timeRecords: _timeRecords,
   setTimeRecords,
   globalTimers,
   setGlobalTimers
@@ -8855,13 +8865,21 @@ export default function App() {
     ];
   });
   
-  // 全局番茄钟设置
-  const [pomodoroSettings, setPomodoroSettings] = useState<PomodoroSettings>({
-    workDuration: 25,
-    breakDuration: 5,
-    rounds: 4,
-    longBreakDuration: 15
+  // 全局番茄钟设置 - 持久化到localStorage
+  const [pomodoroSettings, setPomodoroSettings] = useState<PomodoroSettings>(() => {
+    const saved = localStorage.getItem('pomodoroSettings');
+    return saved ? JSON.parse(saved) : {
+      workDuration: 25,
+      breakDuration: 5,
+      rounds: 4,
+      longBreakDuration: 15
+    };
   });
+
+  // 持久化pomodoroSettings到localStorage
+  useEffect(() => {
+    localStorage.setItem('pomodoroSettings', JSON.stringify(pomodoroSettings));
+  }, [pomodoroSettings]);
 
   // 全局时间记录数据 - 持久化到localStorage
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>(() => {
