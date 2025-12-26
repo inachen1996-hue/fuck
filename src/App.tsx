@@ -2713,7 +2713,7 @@ const ReviewView = ({
   journals, 
   timeRecords,
   setTimeRecords,
-  globalTimers,
+  globalTimers: _globalTimers,
   setGlobalTimers,
   idealTimeAllocation 
 }: { 
