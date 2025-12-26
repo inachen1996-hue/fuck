@@ -6,7 +6,7 @@ import {
   Edit3, X, Camera, ChevronLeft, Check,
   RefreshCw, Brain, Lightbulb,
   ListTodo, Moon, Utensils,
-  Shield, LogOut, Download, Upload, Trash2, Database
+  Download, Upload, Trash2, Database
 } from 'lucide-react';
 
 // 类型定义
@@ -234,7 +234,7 @@ const MACARON_COLORS = {
   },
   themes: {
     timer: '#a78bfa',    // 香芋紫
-    journal: '#f472b6',  // 草莓粉
+    journal: '#CFA0E9',  // 淡紫色
     review: '#89CFF0',   // 天空蓝
     plan: '#00B894',     // 翡翠绿（与生成AI规划按钮同色）
     settings: '#fde047', // 柠檬黄
@@ -250,7 +250,7 @@ const MACARON_COLORS = {
   // 渐变背景
   gradients: {
     timer: 'from-purple-50 via-white to-cyan-50',
-    journal: 'from-pink-50 via-white to-lime-50',
+    journal: 'linear-gradient(135deg, #E0C3FC 0%, #CFA0E9 100%)',
     review: 'from-sky-50 via-white to-rose-50',
     plan: 'from-[#E8F5E9] to-[#E8F5E9]',
     settings: 'from-yellow-50 via-white to-blue-50',
@@ -642,6 +642,7 @@ const TimerView = ({
   const [showNewTimerModal, setShowNewTimerModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#FF8CA1');
+  const [editingCategoryColorId, setEditingCategoryColorId] = useState<string | null>(null); // 正在编辑颜色的分类ID
   const [newTimerName, setNewTimerName] = useState('');
   const [newTimerIcon, setNewTimerIcon] = useState('🎯');
   const [newTimerCategory, setNewTimerCategory] = useState<CategoryId>(selectedCategory);
@@ -788,8 +789,13 @@ const TimerView = ({
     if (activeTimer && activeTimer.status === 'running') {
       interval = window.setInterval(() => {
         if (timerMode === 'countup') {
-          // 正计时模式
-          setElapsedTime(prev => prev + 1);
+          // 正计时模式 - 基于时间戳实时计算
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            setElapsedTime(elapsed);
+          } else {
+            setElapsedTime(prev => prev + 1);
+          }
         } else if (timerMode === 'countdown') {
           // 倒计时模式
           setActiveTimer(prev => {
@@ -934,6 +940,7 @@ const TimerView = ({
   const openTimerModeModal = (timer: Timer) => {
     setPendingTimer(timer);
     setTimerDuration(25);
+    setTimerMode('countup'); // 默认选中正计时
     setPomodoroConfig({
       workDuration: 25,
       breakDuration: 5,
@@ -1211,13 +1218,27 @@ const TimerView = ({
           {categoryTimers.length === 0 ? (
             // 空状态
             <div className="flex-1 flex flex-col items-center justify-center">
-              <button 
-                onClick={() => setShowNewTimerModal(true)}
-                className="px-8 py-6 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-bold hover:border-gray-400 hover:text-gray-500 hover:bg-white/50 active:scale-95 transition-all flex flex-col items-center gap-3"
-              >
-                <span>创建「{selectedCategory === 'uncategorized' ? '待分类' : categories.find(c => c.id === selectedCategory)?.label}」的第一个计时器吧～</span>
-                <Plus size={32} strokeWidth={2} />
-              </button>
+              {(() => {
+                const currentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
+                  primary: '#9ca3af',
+                  light: '#f3f4f6',
+                  text: '#6b7280'
+                };
+                return (
+                  <button 
+                    onClick={() => setShowNewTimerModal(true)}
+                    className="px-8 py-6 rounded-2xl border-2 border-dashed font-bold active:scale-95 transition-all flex flex-col items-center gap-3"
+                    style={{ 
+                      borderColor: currentTheme.primary,
+                      color: currentTheme.primary,
+                      backgroundColor: `${currentTheme.primary}0D`
+                    }}
+                  >
+                    <span>创建「{selectedCategory === 'uncategorized' ? '待分类' : categories.find(c => c.id === selectedCategory)?.label}」的第一个计时器吧～</span>
+                    <Plus size={32} strokeWidth={2} />
+                  </button>
+                );
+              })()}
             </div>
           ) : (
             // 计时器列表 - 两列网格
@@ -1267,14 +1288,28 @@ const TimerView = ({
                   
                   {/* 卡片内容 - 可滑动 */}
                   <div 
-                    className={`relative w-full rounded-2xl p-3 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.1)] bg-white border-2 border-white transition-transform duration-300 ${
+                    className={`relative w-full rounded-2xl p-3 bg-white border-2 border-dashed transition-transform duration-300 cursor-pointer min-h-[140px] ${
                       activeTimer?.id === timer.id ? 'ring-2 ring-purple-100' : ''
                     }`}
                     style={{ 
+                      boxShadow: `0 4px 12px -2px ${theme.primary}30, 0 8px 20px -8px ${theme.primary}40`,
                       borderColor: timer.status === 'running' ? theme.primary : 
-                                  timer.status === 'completed' ? '#42D4A4' : 'white',
+                                  timer.status === 'completed' ? '#42D4A4' : theme.primary,
                       transform: isSwiped ? 'translateX(-96px)' : 'translateX(0)',
                       touchAction: 'pan-y'
+                    }}
+                    onClick={(e) => {
+                      // 如果点击的是更多按钮区域，不触发
+                      if ((e.target as HTMLElement).closest('.more-btn')) return;
+                      // 如果已滑动，先收回
+                      if (isSwiped) {
+                        setSwipedTimerId(null);
+                        return;
+                      }
+                      // 如果不是计时中状态，打开计时模式选择弹窗
+                      if (!isTimerActive) {
+                        startTimer(timer);
+                      }
                     }}
                     onTouchStart={(e) => {
                       const touch = e.touches[0];
@@ -1297,11 +1332,6 @@ const TimerView = ({
                       } else if (diffX < -50 && Math.abs(diffX) > diffY * 2) {
                         // 向右滑动
                         setSwipedTimerId(null);
-                      } else if (Math.abs(diffX) < 10 && diffY < 10) {
-                        // 点击（几乎没有移动）
-                        if (isSwiped) {
-                          setSwipedTimerId(null);
-                        }
                       }
                     }}
                   >
@@ -1311,7 +1341,7 @@ const TimerView = ({
                       e.stopPropagation();
                       setSwipedTimerId(isSwiped ? null : timer.id);
                     }}
-                    className="absolute top-2 right-2 w-6 h-6 rounded-lg flex flex-col items-center justify-center gap-[2px] hover:bg-gray-100 transition-all"
+                    className="more-btn absolute top-2 right-2 w-6 h-6 rounded-lg flex flex-col items-center justify-center gap-[2px] hover:bg-gray-100 transition-all"
                   >
                     <div className="w-1 h-1 rounded-full bg-gray-300"></div>
                     <div className="w-1 h-1 rounded-full bg-gray-300"></div>
@@ -1408,35 +1438,32 @@ const TimerView = ({
                       </>
                     ) : (
                       // 默认内容
-                      <>
+                      <div className="flex flex-col items-center justify-center flex-1">
                         <div 
-                          className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm text-2xl mb-2"
-                          style={{ backgroundColor: theme.light }}
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-[18px]"
                         >
                           {timer.icon}
                         </div>
-                        <h4 className="text-sm font-bold text-[#2D2D2D] truncate w-full px-1">{timer.name}</h4>
+                        <div className="flex items-center justify-center gap-2.5 w-full px-1">
+                          <h4 className="text-sm font-bold text-[#2D2D2D] truncate">{timer.name}</h4>
+                          <Play size={12} fill={theme.primary} style={{ color: theme.primary, flexShrink: 0 }} />
+                        </div>
                         
-                        {/* 状态按钮 */}
-                        {timer.status === 'completed' ? (
+                        {/* 状态按钮 - 仅完成状态显示重置 */}
+                        {timer.status === 'completed' && (
                           <button 
-                            onClick={() => resetTimer(timer)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resetTimer(timer);
+                            }}
                             className="w-full mt-2 py-2 rounded-xl flex items-center justify-center text-white font-bold text-xs active:scale-98 transition-all"
                             style={{ backgroundColor: '#42D4A4' }}
                           >
                             <RefreshCw size={14} className="mr-1" />
                             重置
                           </button>
-                        ) : (
-                          <button 
-                            onClick={() => startTimer(timer)}
-                            className="w-full mt-2 py-2 rounded-xl flex items-center justify-center font-bold text-xs active:scale-98 transition-all hover:brightness-95"
-                            style={{ backgroundColor: theme.light, color: theme.primary }}
-                          >
-                            开始计时
-                          </button>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                   </div>
@@ -1444,12 +1471,26 @@ const TimerView = ({
               )})}
               
               {/* 添加计时器按钮 */}
-              <div 
-                onClick={() => setShowNewTimerModal(true)}
-                className="relative rounded-2xl p-3 bg-white border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50 active:scale-98 transition-all cursor-pointer flex items-center justify-center"
-              >
-                <Plus size={32} className="text-gray-400" />
-              </div>
+              {(() => {
+                const currentTheme = MACARON_COLORS.categories[selectedCategory as CategoryId] || {
+                  primary: '#9ca3af',
+                  light: '#f3f4f6',
+                  text: '#6b7280'
+                };
+                return (
+                  <div 
+                    onClick={() => setShowNewTimerModal(true)}
+                    className="relative rounded-2xl p-3 border-2 border-dashed active:scale-98 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[140px]"
+                    style={{
+                      borderColor: currentTheme.primary,
+                      backgroundColor: `${currentTheme.primary}0D`
+                    }}
+                  >
+                    <Plus size={32} style={{ color: currentTheme.primary }} />
+                    <span className="text-xs font-bold mt-2" style={{ color: currentTheme.primary }}>添加计时器</span>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1965,64 +2006,93 @@ const TimerView = ({
                   light: '#FFF0F3',
                   text: '#D9455F'
                 };
+                const isEditingColor = editingCategoryColorId === cat.id;
                 return (
                   <div 
                     key={cat.id}
-                    className="flex items-center gap-3 bg-gray-50 rounded-2xl p-3 group"
+                    className="bg-gray-50 rounded-2xl p-3"
                   >
-                    {/* 排序按钮 */}
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => {
-                          if (index > 0) {
-                            const newCategories = [...categories];
-                            [newCategories[index - 1], newCategories[index]] = [newCategories[index], newCategories[index - 1]];
-                            setCategories(newCategories);
-                          }
-                        }}
-                        disabled={index === 0}
-                        className="w-6 h-6 rounded bg-white flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                      >
-                        <ChevronLeft size={14} className="rotate-90" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (index < categories.length - 1) {
-                            const newCategories = [...categories];
-                            [newCategories[index], newCategories[index + 1]] = [newCategories[index + 1], newCategories[index]];
-                            setCategories(newCategories);
-                          }
-                        }}
-                        disabled={index === categories.length - 1}
-                        className="w-6 h-6 rounded bg-white flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                      >
-                        <ChevronLeft size={14} className="-rotate-90" />
-                      </button>
+                    <div className="flex items-center gap-3">
+                      {/* 排序按钮 */}
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => {
+                            if (index > 0) {
+                              const newCategories = [...categories];
+                              [newCategories[index - 1], newCategories[index]] = [newCategories[index], newCategories[index - 1]];
+                              setCategories(newCategories);
+                            }
+                          }}
+                          disabled={index === 0}
+                          className="w-6 h-6 rounded bg-white flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                        >
+                          <ChevronLeft size={14} className="rotate-90" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (index < categories.length - 1) {
+                              const newCategories = [...categories];
+                              [newCategories[index], newCategories[index + 1]] = [newCategories[index + 1], newCategories[index]];
+                              setCategories(newCategories);
+                            }
+                          }}
+                          disabled={index === categories.length - 1}
+                          className="w-6 h-6 rounded bg-white flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                        >
+                          <ChevronLeft size={14} className="-rotate-90" />
+                        </button>
+                      </div>
+                      
+                      {/* 颜色标识 - 点击可编辑 */}
+                      <button 
+                        onClick={() => setEditingCategoryColorId(isEditingColor ? null : cat.id)}
+                        className="w-6 h-6 rounded-full flex-shrink-0 ring-2 ring-offset-1 ring-transparent hover:ring-gray-300 transition-all"
+                        style={{ backgroundColor: cat.color || catTheme.primary }}
+                        title="点击修改颜色"
+                      />
+                      
+                      {/* 分类名称 */}
+                      <span className="flex-1 font-bold text-gray-700">{cat.label}</span>
+                      
+                      {/* 删除按钮 */}
+                      {categories.length > 1 && (
+                        <button
+                          onClick={() => {
+                            if (selectedCategory === cat.id) {
+                              const remainingCategories = categories.filter(c => c.id !== cat.id);
+                              handleCategoryChange(remainingCategories[0].id as CategoryId);
+                            }
+                            setCategories(categories.filter(c => c.id !== cat.id));
+                          }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
                     </div>
                     
-                    {/* 颜色标识 */}
-                    <div 
-                      className="w-4 h-4 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: catTheme.primary }}
-                    />
-                    
-                    {/* 分类名称 */}
-                    <span className="flex-1 font-bold text-gray-700">{cat.label}</span>
-                    
-                    {/* 删除按钮 */}
-                    {categories.length > 1 && (
-                      <button
-                        onClick={() => {
-                          if (selectedCategory === cat.id) {
-                            const remainingCategories = categories.filter(c => c.id !== cat.id);
-                            handleCategoryChange(remainingCategories[0].id as CategoryId);
-                          }
-                          setCategories(categories.filter(c => c.id !== cat.id));
-                        }}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
+                    {/* 颜色选择器 - 展开时显示 */}
+                    {isEditingColor && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-xs text-gray-400 mb-2">选择颜色</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {['#FF8CA1', '#FFD23F', '#42D4A4', '#B589F6', '#6CB6FF', '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA000', '#E91E63', '#9C27B0', '#3F51B5'].map(color => (
+                            <button
+                              key={color}
+                              onClick={() => {
+                                setCategories(categories.map(c => 
+                                  c.id === cat.id ? { ...c, color } : c
+                                ));
+                                setEditingCategoryColorId(null);
+                              }}
+                              className={`w-7 h-7 rounded-full transition-all ${
+                                (cat.color || catTheme.primary) === color ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'hover:scale-105'
+                              }`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
@@ -2078,7 +2148,11 @@ const TimerView = ({
                   }
                 }}
                 disabled={!newCategoryName.trim()}
-                style={{ backgroundColor: newCategoryColor }}
+                className="!shadow-none hover:!shadow-none active:!shadow-none !translate-y-0 hover:!translate-y-0 active:!translate-y-0"
+                style={{ 
+                  backgroundColor: newCategoryColor,
+                  boxShadow: `0 8px 20px ${newCategoryColor}40`
+                }}
               >
                 <Plus size={18} />
                 添加分类
@@ -2200,23 +2274,25 @@ const JournalView = ({
 
   if (view === 'editor') {
     return (
-      <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFF0F5, #F0FFF0)' }}>
+      <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(180deg, #F9F6FD 0%, #FFFFFF 100%)' }}>
         {/* 背景装饰 */}
-        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-pink-100 blur-2xl opacity-50"></div>
-        <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-lime-100 blur-xl opacity-40"></div>
+        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#E6E6FA' }}></div>
+        <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#E0C3FC' }}></div>
         
         {/* 编辑器头部 */}
         <div className="px-6 pt-8 pb-4 flex justify-between items-center backdrop-blur-sm sticky top-0 z-10">
           <button 
             onClick={() => setView('list')}
-            className="text-gray-400 hover:text-gray-600 p-2 -ml-2"
+            className="p-2 -ml-2"
+            style={{ color: '#BA68C8' }}
           >
             <ChevronLeft size={24} />
           </button>
-          <span className="font-bold text-pink-600">写日记</span>
+          <span className="font-bold" style={{ color: '#BA68C8' }}>写日记</span>
           <button 
             onClick={saveJournal}
-            className="text-pink-500 font-bold p-2 -mr-2"
+            className="font-bold p-2 -mr-2"
+            style={{ color: '#BA68C8' }}
             disabled={!currentJournal.content.trim()}
           >
             <Check size={24} />
@@ -2226,7 +2302,7 @@ const JournalView = ({
         <div className="flex-1 overflow-y-auto px-6 pb-6 z-10">
           {/* 日期选择 */}
           <div className="mb-6">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider block mb-3" style={{ color: '#BA68C8' }}>
               日期
             </span>
             <div className="relative">
@@ -2235,18 +2311,21 @@ const JournalView = ({
                 value={editingJournalDate}
                 onChange={(e) => setEditingJournalDate(e.target.value)}
                 max={getTodayStr()}
-                className="w-full px-5 py-4 rounded-2xl border-2 border-pink-100 bg-white/80 backdrop-blur-sm text-gray-700 font-bold text-base focus:border-pink-300 focus:outline-none focus:ring-4 focus:ring-pink-50 transition-all shadow-sm appearance-none cursor-pointer"
+                className="w-full px-5 py-4 rounded-2xl bg-white font-bold text-base focus:outline-none transition-all appearance-none cursor-pointer"
                 style={{
-                  colorScheme: 'light'
+                  colorScheme: 'light',
+                  color: '#6A4C93',
+                  boxShadow: '0 4px 15px rgba(186, 104, 200, 0.1)',
+                  border: 'none'
                 }}
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                <Calendar size={20} className="text-pink-300" />
+                <Calendar size={20} style={{ color: '#BA68C8' }} />
               </div>
             </div>
             {/* 显示友好的日期格式 */}
             {editingJournalDate && (
-              <p className="text-xs text-pink-400 mt-2 ml-1">
+              <p className="text-xs mt-2 ml-1" style={{ color: '#CE93D8' }}>
                 {(() => {
                   const [year, month, day] = editingJournalDate.split('-').map(Number);
                   const date = new Date(year, month - 1, day);
@@ -2268,10 +2347,10 @@ const JournalView = ({
 
           {/* 心情选择 */}
           <div className="mb-6">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider block mb-3" style={{ color: '#BA68C8' }}>
               当下心情
             </span>
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className="flex gap-3 overflow-x-auto py-2 px-1 -mx-1">
               {moods.map(mood => (
                 <button
                   key={mood.id}
@@ -2353,7 +2432,12 @@ const JournalView = ({
                   />
                   <button 
                     onClick={() => document.getElementById('journal-image-upload')?.click()}
-                    className="w-16 h-16 bg-white/60 rounded-xl border-2 border-dashed border-pink-200 flex items-center justify-center text-pink-300 hover:border-pink-400 hover:text-pink-400 transition-all"
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center transition-all"
+                    style={{
+                      backgroundColor: 'rgba(209, 196, 233, 0.15)',
+                      border: '2px dashed #D1C4E9',
+                      color: '#BA68C8'
+                    }}
                   >
                     <Camera size={20} />
                   </button>
@@ -2367,28 +2451,26 @@ const JournalView = ({
   }
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFF0F5, #F0FFF0)' }}>
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: '#F9F6FD' }}>
       {/* 背景装饰 */}
-      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-pink-100 blur-2xl opacity-50"></div>
-      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-lime-100 blur-xl opacity-40"></div>
+      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#E6E6FA' }}></div>
+      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#E0C3FC' }}></div>
       
       {/* 头部 */}
       <div className="px-6 pt-8 pb-4 flex justify-between items-end z-10">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-pink-600 mb-2">心情日记</h2>
-            <div className="w-2 h-2 rounded-full bg-lime-200 ring-2 ring-pink-200"></div>
+            <h2 className="text-2xl font-black mb-2" style={{ color: '#9E7CB8' }}>心情日记</h2>
+            <div className="w-2 h-2 rounded-full ring-2" style={{ backgroundColor: '#E0C3FC', borderColor: '#CFA0E9' }}></div>
           </div>
-          <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider">
-            MOMENTS & THOUGHTS
-          </p>
         </div>
         <button 
           onClick={() => openEditor()}
-          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all border-b-4 border-pink-500/30"
+          className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all border-b-4"
           style={{ 
-            backgroundColor: '#f472b6', 
-            boxShadow: '0 10px 20px -5px #f472b666' 
+            backgroundColor: '#CFA0E9', 
+            borderColor: 'rgba(159, 124, 184, 0.3)',
+            boxShadow: '0 10px 20px -5px rgba(207, 160, 233, 0.4)' 
           }}
         >
           <Plus size={24} strokeWidth={3} />
@@ -2400,8 +2482,8 @@ const JournalView = ({
         {journals.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center opacity-60">
-              <div className="w-24 h-24 rounded-[2rem] mb-4 flex items-center justify-center bg-pink-100">
-                <BookHeart size={40} className="text-pink-400" />
+              <div className="w-24 h-24 rounded-[2rem] mb-4 flex items-center justify-center" style={{ backgroundColor: '#E6E6FA' }}>
+                <BookHeart size={40} style={{ color: '#CFA0E9' }} />
               </div>
               <p className="text-[#2D2D2D] font-bold text-lg">记录美好时光</p>
               <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角开始写下今天的心情</p>
@@ -2424,11 +2506,11 @@ const JournalView = ({
                 <div key={dateKey}>
                   {/* 日期标识 */}
                   <div className="flex items-center gap-3 py-3">
-                    <div className="w-2 h-2 rounded-full bg-pink-400"></div>
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#CFA0E9' }}></div>
                     <span className="text-sm font-black text-gray-600">
                       {formatDate(dateJournals[0].date)}
                     </span>
-                    <div className="flex-1 h-px bg-gradient-to-r from-pink-200 to-transparent"></div>
+                    <div className="flex-1 h-px" style={{ backgroundColor: '#E6E6FA' }}></div>
                   </div>
                   
                   {/* 该日期下的日记卡片 */}
@@ -2440,10 +2522,11 @@ const JournalView = ({
                         <div 
                           key={journal.id}
                           onClick={() => openEditor(journal)}
-                          className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-all cursor-pointer border-2 border-pink-100 relative overflow-hidden"
+                          className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative overflow-hidden"
+                          style={{ border: '2px solid #E6E6FA' }}
                         >
                           {/* 左侧装饰条 */}
-                          <div className="absolute top-0 left-0 w-2 h-full bg-lime-100"></div>
+                          <div className="absolute top-0 left-0 w-2 h-full" style={{ backgroundColor: '#E0C3FC' }}></div>
                           <div className="flex items-start gap-4">
                             {/* 心情图标 */}
                             <div 
@@ -2579,15 +2662,13 @@ const ReviewView = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatingPeriod, setGeneratingPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | null>(null); // 记录正在生成的时间段
-  const [generatingProgress, setGeneratingProgress] = useState('');
-  const [reportData, setReportData] = useState<any>(null);
+  const [generatingPeriods, setGeneratingPeriods] = useState<Set<string>>(new Set()); // 支持多个时间段同时生成
+  const [generatingProgress, setGeneratingProgress] = useState<Record<string, string>>({}); // 每个时间段的进度
   
   // 当前进度时间周期
   const [progressPeriod, setProgressPeriod] = useState<'today' | 'week' | 'month'>('today');
   
-  // 复盘历史记录
+  // 复盘历史记录 - 从localStorage加载
   const [reportHistory, setReportHistory] = useState<Array<{
     id: string;
     period: 'yesterday' | 'today' | 'week' | 'month' | 'history';
@@ -2595,8 +2676,29 @@ const ReviewView = ({
     dateRange: string;
     createdAt: number;
     report: any;
-  }>>([]);
+  }>>(() => {
+    const saved = localStorage.getItem('aiReportHistory');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
   const [viewingHistoryReport, setViewingHistoryReport] = useState<any>(null);
+  
+  // 根据当前时间段获取对应的报告
+  const reportData = useMemo(() => {
+    const historyItem = reportHistory.find(h => h.period === aiPeriod);
+    return historyItem?.report || null;
+  }, [reportHistory, aiPeriod]);
+
+  // 保存reportHistory到localStorage
+  useEffect(() => {
+    localStorage.setItem('aiReportHistory', JSON.stringify(reportHistory));
+  }, [reportHistory]);
 
   // 习惯追踪状态
   const [trackedHabits, setTrackedHabits] = useState<Array<{
@@ -2818,20 +2920,22 @@ const ReviewView = ({
 
   // 生成AI复盘报告
   const generateReport = async () => {
-    setIsGenerating(true);
-    setGeneratingPeriod(aiPeriod as 'yesterday' | 'today' | 'week' | 'month');
-    setGeneratingProgress('正在收集数据...');
+    const currentPeriod = aiPeriod as 'yesterday' | 'today' | 'week' | 'month';
+    
+    // 添加到正在生成的时间段集合
+    setGeneratingPeriods(prev => new Set([...prev, currentPeriod]));
+    setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在收集数据...' }));
     
     // 获取数据
-    const actualDistribution = calculateActualTimeDistribution(aiPeriod);
-    const periodJournals = getJournalsInPeriod(aiPeriod);
+    const actualDistribution = calculateActualTimeDistribution(currentPeriod);
+    const periodJournals = getJournalsInPeriod(currentPeriod);
     const periodLabels: Record<string, string> = { yesterday: '昨日', today: '今日', week: '本周', month: '本月', history: '历史' };
     const periodDays: Record<string, number> = { yesterday: 1, today: 1, week: 7, month: 30, history: 365 };
     
-    setGeneratingProgress('正在分析时间分布...');
+    setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在分析时间分布...' }));
     
     // 准备数据
-    const days = periodDays[aiPeriod];
+    const days = periodDays[currentPeriod];
     const totalActualHours = Object.values(actualDistribution).reduce((sum, h) => sum + h, 0);
     
     // 分析日记情绪
@@ -2842,7 +2946,7 @@ const ReviewView = ({
       }
     });
     
-    setGeneratingProgress('正在计算理想与实际差距...');
+    setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在计算理想与实际差距...' }));
     
     // 计算理想与实际的差距
     const gaps: Array<{category: string, ideal: number, actual: number, diff: number}> = [];
@@ -2857,17 +2961,15 @@ const ReviewView = ({
       });
     });
     
-    setGeneratingProgress('正在构建AI提示词...');
+    setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在构建AI提示词...' }));
     
     // 构建AI提示词
     const prompt = `# Role
-你是一位**客观、敏锐的数据生活策略师**。你的特长是透过冰冷的时间数据，洞察用户当下的能量状态和长期趋势。你的风格**简洁有力、中肯深入**，拒绝泛泛而谈的鸡汤，也不使用危言耸听的警告。
+你是一位**高阶时间资源分析师**。你不再关注数据的"完整性"，而是聚焦于数据的**"分布逻辑"**。请将用户的每一分钟记录视为一次**"价值投票"**——用户把时间花在哪里，说明用户当下的潜意识就认为哪里最重要。
 
 # Input Data
-用户的时间记录数据 + 日记复盘内容
-
 ## 用户数据
-- 时间周期：${periodLabels[aiPeriod]}（${days}天）
+- 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
 - 时间记录总时长：${totalActualHours.toFixed(1)}小时
 
@@ -2880,43 +2982,39 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Analysis Goals & Constraints (必须遵守)
-1.  **透支诊断：** 必须分析"产出"与"休息"的比例，判断是否存在"借用未来能量"的行为。
-2.  **长期推演：** 基于当前模式，描绘3个月后的状态。**重点描述"坏的变化"**（如创造力枯竭、情绪波动），作为客观预警，**语气要冷静客观，点到为止，不要制造恐慌**。
-3.  **筛选信号：** 明确指出哪些行为是"高杠杆"（坚持有益），哪些是"负资产"（坚持有害）。
-4.  **排版要求：**
-* 分为 **📊 Summary** 和 **💡 Advice** 两个大板块。
-* 使用自然分段，避免全是零散的列点。
-* **重点内容必须加粗**。
-* 适当使用emoji作为视觉引导，但不要滥用。
+# Core Logic (深度分析逻辑)
+1. **解读"已有的分布"：** 不要抱怨数据缺失。如果用户记录了大量工作时间，0小时休息，请将其解读为：**"用户当前采取了'全部押注工作'的激进投资策略，认为休息的边际收益低于工作的边际收益。"**
+2. **分析"合理性"：**
+   - **边际效应分析：** 既然用户投入了大量时间在某事项，请分析：这部分投入是否已经进入了"边际效用递减"区间？（即：最后投入的那2小时，真的产生了价值吗？还是只是低效的磨洋工？）
+   - **代价分析：** 这种分布背后的"隐性成本"是什么？（例如：高强度脑力劳动未匹配相应的脑力恢复，导致单位时间产出贬值）
+3. **挖掘"背后的意义"：** 这种时间分布揭示了用户什么样的**心理图谱**？（例如：完美主义？急于求成？还是处于被迫的应激状态？）
 
-# Output Structure (严格按照此格式输出JSON)
-请以JSON格式返回复盘报告，格式如下：
+# Output Structure (严格按照此JSON格式输出)
 {
-  "summary": {
-    "energyAudit": "能量审计分析：用一段话直接分析数据是否显示在透支，结合日记情绪与客观记录的矛盾，指出这种状态是可持续的还是虚假的繁荣",
-    "positiveSignal": "📈 坚持下去有益处：指出数据中体现的一个核心亮点或好习惯",
-    "negativeSignal": "📉 坚持下去有坏处：指出一个正在悄悄侵蚀效率或健康的隐患"
+  "strategyAnalysis": {
+    "currentPattern": "用一句话定义当前的时间分配模式。例如：'焦土式'冲刺模式——通过极度压缩维护成本，换取短期的产出爆发",
+    "reasonable": "分析把重心放在这里，短期内带来了什么不可替代的红利",
+    "unreasonable": "指出哪个时间块的投入产出比最低？例如：你在某任务上投入了过饱和的时间，但产出可能并没有线性增长"
   },
-  "advice": {
-    "threeMonthWarning": "三个月后的预警：如果维持现状不变，三个月后会发生什么负面变化。侧重于边际效应递减、精力崩塌或热情耗尽。语气保持中肯评价，客观描述后果",
-    "protections": [
-      "🛡️ 守护事项1：基于缺口，最不能牺牲的东西",
-      "🛡️ 守护事项2",
-      "🛡️ 守护事项3"
-    ],
-    "adjustment": "时间分布调整建议：针对记录缺陷，给出具体的时间配比建议。不要只说多休息，要说将工作切块，强制插入15分钟留白等具体操作"
+  "hiddenMeaning": {
+    "explicitValue": "显性价值观分析。例如：数据表明你极度渴望控制感，因此你把时间都投在了反馈最直接的项目上",
+    "implicitFear": "隐性恐惧分析。例如：你完全避开了休息和发呆，可能潜意识里在逃避面对空虚，或者认为'不产出就是罪恶'"
+  },
+  "rebalancing": {
+    "cutWaste": "指出已记录的时间中，哪一部分是可以通过提升效率被'剪除'的垃圾时间",
+    "injectEnergy": "为了维持上述的高强度投入，必须强制注入哪一种'催化剂'时间？给出具体建议",
+    "threeMonthForecast": "如果继续维持目前的投资策略，三个月后的'身心账户'会盈利还是破产？客观描述后果"
   }
 }
 
-要求：
-1. 语气简洁有力、中肯深入，拒绝泛泛而谈的鸡汤
-2. 分析要有深度，透过数据洞察能量状态
-3. 建议要具体可行，不要空洞
-4. 使用**加粗**标记重点内容
-5. 只返回JSON，不要其他内容`;
+# Tone
+- **像一个投资顾问，而不是保姆。**
+- **用词精准、客观、注重逻辑因果。**
+- **不要废话，不要寒暄。**
+- 使用**加粗**标记重点内容
+- 只返回JSON，不要其他内容`;
 
-    setGeneratingProgress('正在调用AI分析...');
+    setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
     try {
       // 调用DeepSeek API（通过代理）
@@ -2931,7 +3029,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是一位客观、敏锐的数据生活策略师。你的特长是透过冰冷的时间数据，洞察用户当下的能量状态和长期趋势。你的风格简洁有力、中肯深入，拒绝泛泛而谈的鸡汤，也不使用危言耸听的警告。请以JSON格式返回分析报告。'
+              content: '你是一位高阶时间资源分析师。你聚焦于数据的"分布逻辑"，将用户的每一分钟记录视为一次"价值投票"。你的风格像投资顾问——精准、客观、注重逻辑因果，不废话不寒暄。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -2947,7 +3045,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         throw new Error(`API请求失败: ${response.status}`);
       }
 
-      setGeneratingProgress('正在解析AI响应...');
+      setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在解析AI响应...' }));
       const data = await response.json();
       const aiResponse = data.choices[0].message.content;
       
@@ -2966,36 +3064,41 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       }
       
       // 添加period字段
-      report.period = periodLabels[aiPeriod];
+      report.period = periodLabels[currentPeriod];
       
       // 生成日期范围描述
       const now = new Date();
       let dateRange = '';
-      if (aiPeriod === 'yesterday') {
+      if (currentPeriod === 'yesterday') {
         const yesterday = new Date(now.getTime() - 86400000);
         dateRange = `${yesterday.getMonth() + 1}月${yesterday.getDate()}日`;
-      } else if (aiPeriod === 'today') {
+      } else if (currentPeriod === 'today') {
         dateRange = `${now.getMonth() + 1}月${now.getDate()}日`;
-      } else if (aiPeriod === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 86400000);
-        dateRange = `${weekAgo.getMonth() + 1}月${weekAgo.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
+      } else if (currentPeriod === 'week') {
+        // 获取本周一
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        dateRange = `${monday.getMonth() + 1}月${monday.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
       } else {
-        const monthAgo = new Date(now.getTime() - 30 * 86400000);
-        dateRange = `${monthAgo.getMonth() + 1}月${monthAgo.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
+        // 获取本月1号
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateRange = `${firstDay.getMonth() + 1}月${firstDay.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
       }
       
       // 保存到历史记录
       const historyEntry = {
-        id: `${aiPeriod}_${now.toISOString().split('T')[0]}`,
-        period: aiPeriod,
-        periodLabel: periodLabels[aiPeriod],
+        id: `${currentPeriod}_${now.toISOString().split('T')[0]}`,
+        period: currentPeriod,
+        periodLabel: periodLabels[currentPeriod],
         dateRange: dateRange,
         createdAt: now.getTime(),
         report: report
       };
       
       setReportHistory(prev => {
-        const existingIndex = prev.findIndex(h => h.period === aiPeriod);
+        const existingIndex = prev.findIndex(h => h.period === currentPeriod);
         if (existingIndex >= 0) {
           const newHistory = [...prev];
           newHistory[existingIndex] = historyEntry;
@@ -3005,14 +3108,31 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         }
       });
       
-      setReportData(report);
-      setIsGenerating(false);
-      setGeneratingPeriod(null);
+      // 从正在生成的集合中移除
+      setGeneratingPeriods(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentPeriod);
+        return newSet;
+      });
+      setGeneratingProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[currentPeriod];
+        return newProgress;
+      });
       
     } catch (error) {
       console.error('生成复盘报告失败:', error);
-      setIsGenerating(false);
-      setGeneratingPeriod(null);
+      // 从正在生成的集合中移除
+      setGeneratingPeriods(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentPeriod);
+        return newSet;
+      });
+      setGeneratingProgress(prev => {
+        const newProgress = { ...prev };
+        delete newProgress[currentPeriod];
+        return newProgress;
+      });
       const errorMessage = error instanceof Error ? error.message : 'AI复盘生成失败，请检查网络连接后重试';
       alert(errorMessage);
     }
@@ -3460,7 +3580,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               {aiPeriods.map(period => (
                 <button
                   key={period.id}
-                  onClick={() => { setAiPeriod(period.id); if (period.id !== 'history') setReportData(null); setViewingHistoryReport(null); }}
+                  onClick={() => { setAiPeriod(period.id); setViewingHistoryReport(null); }}
                   className="flex-1 py-2 text-xs font-bold transition-all relative"
                   style={{ 
                     color: aiPeriod === period.id ? '#89CFF0' : '#BDBDBD'
@@ -3621,9 +3741,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                 )}
               </div>
-            ) : (isGenerating && generatingPeriod === aiPeriod) ? (
+            ) : generatingPeriods.has(aiPeriod) ? (
               <div className="text-center py-12">
-                <h3 className="text-lg font-black text-sky-600 mb-3">{generatingProgress}</h3>
+                <h3 className="text-lg font-black text-sky-600 mb-3">{generatingProgress[aiPeriod] || '正在生成...'}</h3>
                 <div className="flex justify-center gap-1">
                   {[0, 1, 2].map((i) => (
                     <div
@@ -3636,19 +3756,23 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               </div>
             ) : reportData ? (
               <div className="space-y-4">
-                {/* 报告头部 - 显示时间周期和重新生成按钮 */}
+                {/* 报告头部 - 显示时间周期、时间范围和重新生成按钮 */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-gray-700">
                       {reportData.period || aiPeriods.find(p => p.id === aiPeriod)?.label}复盘报告
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {reportHistory.find(h => h.period === aiPeriod)?.dateRange || ''}
                     </span>
                   </div>
                   <button
                     onClick={generateReport}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 transition-all"
+                    disabled={generatingPeriods.has(aiPeriod)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 transition-all disabled:opacity-50"
                   >
-                    <RefreshCw size={12} />
-                    重新生成
+                    <RefreshCw size={12} className={generatingPeriods.has(aiPeriod) ? 'animate-spin' : ''} />
+                    {generatingPeriods.has(aiPeriod) ? '生成中...' : '重新生成'}
                   </button>
                 </div>
 
@@ -3658,74 +3782,99 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
                       <Lightbulb size={18} className="text-purple-500" />
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">📊 Summary 深度复盘</h4>
+                    <h4 className="font-black text-gray-800 text-lg">📊 时间投资策略分析</h4>
                   </div>
                   
-                  {/* 能量审计 */}
+                  {/* 现状画像 */}
                   <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">1. 能量审计 (Energy Audit)</h5>
-                    <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
-                      __html: (reportData.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-800">$1</strong>') 
-                    }} />
+                    <h5 className="font-bold text-gray-700 mb-2">1. 现状画像 (Current Pattern)</h5>
+                    <div className="bg-purple-50 rounded-xl p-3">
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.strategyAnalysis?.currentPattern || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                      }} />
+                    </div>
                   </div>
                   
-                  {/* 行为信号 */}
+                  {/* 合理性分析 */}
                   <div>
-                    <h5 className="font-bold text-gray-700 mb-2">2. 行为信号 (Behavioral Signals)</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">2. 这种分布合理吗？ (Is it Reasonable?)</h5>
                     <div className="space-y-2">
                       <div className="bg-green-50 rounded-xl p-3">
+                        <p className="text-xs font-bold text-green-600 mb-1">✓ 合理之处</p>
                         <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                          __html: (reportData.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
+                          __html: (reportData.strategyAnalysis?.reasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
                         }} />
                       </div>
                       <div className="bg-orange-50 rounded-xl p-3">
+                        <p className="text-xs font-bold text-orange-600 mb-1">✗ 不合理之处（ROI视角）</p>
                         <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                          __html: (reportData.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                          __html: (reportData.strategyAnalysis?.unreasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
                         }} />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 💡 Advice 未来指引 ===== */}
+                {/* ===== 🧠 分布背后的潜台词 ===== */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">🧠</span>
+                    </div>
+                    <h4 className="font-black text-gray-800 text-lg">分布背后的潜台词</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="bg-indigo-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-indigo-600 mb-1">显性价值观</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.hiddenMeaning?.explicitValue || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-indigo-700">$1</strong>') 
+                      }} />
+                    </div>
+                    <div className="bg-rose-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-rose-600 mb-1">隐性恐惧</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.hiddenMeaning?.implicitFear || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
+                      }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ===== ⚖️ 调仓建议 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <Lightbulb size={18} className="text-sky-500" />
+                      <span className="text-lg">⚖️</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">💡 Advice 未来指引</h4>
+                    <h4 className="font-black text-sky-800 text-lg">调仓建议</h4>
                   </div>
 
-                  {/* 三个月后的预警 */}
-                  <div className="mb-5">
-                    <h5 className="font-bold text-gray-700 mb-2">1. 三个月后的预警 (The 3-Month Trajectory)</h5>
+                  {/* 剪除垃圾时间 */}
+                  <div className="mb-4">
+                    <h5 className="font-bold text-gray-700 mb-2">1. 剪除垃圾时间</h5>
                     <div className="bg-white/60 rounded-xl p-3">
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                        __html: (reportData.rebalancing?.cutWaste || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-600">$1</strong>') 
                       }} />
                     </div>
                   </div>
 
-                  {/* 当前最需守护的三件事 */}
-                  <div className="mb-5">
-                    <h5 className="font-bold text-gray-700 mb-2">2. 当前最需守护的三件事 (Top 3 Protections)</h5>
-                    <div className="space-y-2">
-                      {(reportData.advice?.protections || []).map((item: string, i: number) => (
-                        <div key={i} className="bg-white/60 rounded-xl p-3">
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: item.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                          }} />
-                        </div>
-                      ))}
+                  {/* 注入高能资产 */}
+                  <div className="mb-4">
+                    <h5 className="font-bold text-gray-700 mb-2">2. 注入高能资产</h5>
+                    <div className="bg-white/60 rounded-xl p-3">
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.rebalancing?.injectEnergy || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
+                      }} />
                     </div>
                   </div>
 
-                  {/* 时间分布调整建议 */}
+                  {/* 三个月后的账户预测 */}
                   <div>
-                    <h5 className="font-bold text-gray-700 mb-2">3. 时间分布调整建议 (Adjustment)</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">3. 三个月后的账户预测</h5>
                     <div className="bg-white/60 rounded-xl p-3">
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                        __html: (reportData.rebalancing?.threeMonthForecast || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
@@ -3735,7 +3884,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               <div className="text-center py-8">
                 <p className="text-gray-500 text-sm mb-6">点击下方按钮生成{aiPeriods.find(p => p.id === aiPeriod)?.label}的AI复盘报告</p>
                 <Button 
-                  onClick={generateReport} 
+                  onClick={generateReport}
+                  disabled={generatingPeriods.has(aiPeriod)}
                   style={{ 
                     background: 'linear-gradient(90deg, #89CFF0 0%, #FFB6C1 100%)',
                     boxShadow: '0 8px 25px rgba(137, 207, 240, 0.4), 0 8px 25px rgba(255, 182, 193, 0.3)',
@@ -4123,8 +4273,8 @@ const PlanView = ({
     dinner: boolean;
     nightWash: boolean;
   }) => void;
-  mentalStatus: 'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry';
-  setMentalStatus: (status: 'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry') => void;
+  mentalStatus: 'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry' | 'addicted';
+  setMentalStatus: (status: 'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry' | 'addicted') => void;
   bodyStatus: 'good' | 'backPain' | 'headache' | 'periodPain' | 'wristPain';
   setBodyStatus: (status: 'good' | 'backPain' | 'headache' | 'periodPain' | 'wristPain') => void;
   newTaskName: string;
@@ -4164,7 +4314,8 @@ const PlanView = ({
   
   // 计时模式选择弹窗
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
-  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string} | null>(null);
+  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string, hasPomodoroSlots?: boolean} | null>(null);
+  const [selectedTimerTab, setSelectedTimerTab] = useState<'countup' | 'countdown' | 'pomodoro'>('countup');
   const [_showPomodoroSettings, setShowPomodoroSettings] = useState(false);
   const [_showCountdownSettings, setShowCountdownSettings] = useState(false);
   const [countdownDuration, setCountdownDuration] = useState(25);
@@ -4193,7 +4344,8 @@ const PlanView = ({
     tired: ['没睡好', '工作了太久'],
     nervous: ['工作压力大', '金钱压力大'],
     sad: ['跟伴侣吵架', '跟家人吵架'],
-    angry: ['讨厌原生家庭', '讨厌自己', '讨厌老板同事']
+    angry: ['讨厌原生家庭', '讨厌自己', '讨厌老板同事'],
+    addicted: ['沉迷抖音', '沉迷游戏', '沉迷看电视', '沉迷伪兴趣']
   };
 
   // 从localStorage恢复计时器状态
@@ -4287,8 +4439,13 @@ const PlanView = ({
     if (timerStatus === 'running') {
       interval = window.setInterval(() => {
         if (timerMode === 'countup') {
-          // 正计时模式
-          setElapsedTime(prev => prev + 1);
+          // 正计时模式 - 基于时间戳实时计算
+          if (timerStartTimestamp) {
+            const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+            setElapsedTime(elapsed);
+          } else {
+            setElapsedTime(prev => prev + 1);
+          }
         } else if (timerMode === 'countdown') {
           // 倒计时模式
           setRemainingTime(prev => {
@@ -4401,22 +4558,24 @@ const PlanView = ({
   
   // 直接打开计时模式选择弹窗（不检查当前计时状态）
   const openTimerModeModalDirect = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
-    setPendingTimerTask({ id: taskId, duration, name: taskName });
+    const hasPomodoroSlots = pomodoroSlots && pomodoroSlots.length > 0;
+    setPendingTimerTask({ id: taskId, duration, name: taskName, hasPomodoroSlots });
     // 设置默认倒计时时长为AI计划的时长
     setCountdownDuration(duration);
     setShowCountdownSettings(false);
-    // 如果任务有番茄钟配置，使用任务的配置并默认展开番茄钟设置；否则使用全局设置
-    if (pomodoroSlots && pomodoroSlots.length > 0) {
+    // 如果任务有番茄钟配置，默认选中番茄钟 tab
+    if (hasPomodoroSlots) {
+      setSelectedTimerTab('pomodoro');
       // 从AI生成的番茄钟配置中推断参数
       setPomodoroConfig({
         workDuration: pomodoroSettings.workDuration,
         breakDuration: pomodoroSettings.breakDuration,
-        rounds: pomodoroSlots.length,
+        rounds: pomodoroSlots!.length,
         longBreakDuration: pomodoroSettings.longBreakDuration
       });
-      // 默认展开番茄钟设置
       setShowPomodoroSettings(true);
     } else {
+      setSelectedTimerTab('countup');
       setPomodoroConfig({
         workDuration: pomodoroSettings.workDuration,
         breakDuration: pomodoroSettings.breakDuration,
@@ -4734,50 +4893,22 @@ const PlanView = ({
           ],
           temperature: 0.7,
           max_tokens: 2000,
-          stream: true
+          stream: false
         })
       });
 
       if (!response.ok) {
-        throw new Error(`API请求失败: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
       }
 
-      // 处理流式响应
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = '';
-
-      if (!reader) {
-        throw new Error('无法读取响应流');
-      }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-            
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content || '';
-              if (content) {
-                fullContent += content;
-                onProgress?.(fullContent);
-              }
-            } catch {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-
-      return fullContent;
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      
+      // 调用进度回调
+      onProgress?.(content);
+      
+      return content;
     } catch (error) {
       console.error('DeepSeek API调用失败:', error);
       throw error;
@@ -4817,7 +4948,8 @@ const PlanView = ({
         anxious: '感到焦虑',
         nervous: '感到紧张',
         sad: '感到伤心',
-        angry: '感到生气'
+        angry: '感到生气',
+        addicted: '沉迷状态'
       }[mentalStatus];
 
       const bodyStatusText = {
@@ -4838,7 +4970,7 @@ const PlanView = ({
       }
 
       // 需要安慰语句的精神状态
-      const needsComfort = ['tired', 'anxious', 'nervous', 'sad', 'angry'].includes(mentalStatus);
+      const needsComfort = ['tired', 'anxious', 'nervous', 'sad', 'angry', 'addicted'].includes(mentalStatus);
 
       const prompt = `请为我制定今日时间安排：
 
@@ -4864,7 +4996,7 @@ ${pomodoroInfo}
 4. 确保在睡觉时间前完成所有安排
 5. 任务之间留出适当的休息时间
 6. 每个任务都要给出一条简短的执行建议（advice字段）
-7. 对于需要久坐（持续时间超过40分钟）的任务，需要按照番茄钟设置拆分成多个番茄钟时间段（pomodoroSlots字段），每个时间段包含工作开始时间、工作结束时间、休息结束时间
+7. 【重要】对于duration超过40分钟的任务，必须提供pomodoroSlots字段！这是强制要求，不能省略。pomodoroSlots是一个数组，包含多个番茄钟时间段，每个时间段包含workStart、workEnd、breakEnd、isLongBreak四个字段
 8. 任务名称必须保持用户输入的原始名称，不要添加"第x部分"、"Part x"等后缀
 ${needsComfort ? `9. 由于用户当前精神状态不佳（${mentalDetailText}），请以专业心理医生的角色，在comfortSection字段中提供治愈内容。要求：
    - words: 2-3句默读话语，必须使用第一人称"我"来写，让用户默读时产生沉浸感
@@ -4887,28 +5019,37 @@ ${needsComfort ? `9. 由于用户当前精神状态不佳（${mentalDetailText}�
   "schedule": [
     {
       "id": "task1",
-      "name": "任务名称",
-      "start": "HH:MM",
-      "end": "HH:MM", 
+      "name": "短任务示例",
+      "start": "09:00",
+      "end": "09:30", 
       "duration": 30,
-      "type": "pomodoro|life|rest",
+      "type": "pomodoro",
       "icon": "🎯",
-      "advice": "执行该任务的简短建议",
+      "advice": "执行该任务的简短建议"
+    },
+    {
+      "id": "task2",
+      "name": "长任务示例（超过40分钟必须有pomodoroSlots）",
+      "start": "10:00",
+      "end": "12:00", 
+      "duration": 120,
+      "type": "pomodoro",
+      "icon": "💻",
+      "advice": "专注工作，每轮结束后起身活动",
       "pomodoroSlots": [
-        {
-          "workStart": "HH:MM",
-          "workEnd": "HH:MM",
-          "breakEnd": "HH:MM",
-          "isLongBreak": false
-        }
+        {"workStart": "10:00", "workEnd": "10:25", "breakEnd": "10:30", "isLongBreak": false},
+        {"workStart": "10:30", "workEnd": "10:55", "breakEnd": "11:00", "isLongBreak": false},
+        {"workStart": "11:00", "workEnd": "11:25", "breakEnd": "11:30", "isLongBreak": false},
+        {"workStart": "11:30", "workEnd": "11:55", "breakEnd": "12:00", "isLongBreak": false}
       ]
     }
   ]
 }
 
-注意：
+【强制规则】：
 - advice字段必须为每个任务提供
-- pomodoroSlots字段只有当任务duration超过40分钟时才需要提供
+- 当任务duration >= 40分钟时，pomodoroSlots字段是【必填】的，不能省略！
+- pomodoroSlots数组中每个对象必须包含：workStart、workEnd、breakEnd、isLongBreak
 - 番茄钟时间段要严格按照设置：工作${pomodoroSettings.workDuration}分钟，休息${pomodoroSettings.breakDuration}分钟，每${pomodoroSettings.rounds}轮后长休息${pomodoroSettings.longBreakDuration}分钟
 ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话语）、actionTip（行动建议）、breathingTip（呼吸建议）' : ''}`;
 
@@ -5022,12 +5163,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-teal-100 blur-2xl opacity-50"></div>
         <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-orange-100 blur-xl opacity-40"></div>
         
-        <div className="text-center z-10">
-          {/* 呼吸光圈 */}
-          <div className="relative w-24 h-24 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full bg-[#81ECEC] opacity-30" style={{ animation: 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite' }}></div>
-            <div className="absolute inset-0 rounded-full bg-[#00D2D3]" style={{ animation: 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
-          </div>
+        <div className="text-center z-10 flex flex-col items-center justify-center">
           <h3 className="text-xl font-black text-teal-700 mb-2">AI 正在规划中...</h3>
           <p className="text-gray-500 text-sm mb-8">DeepSeek正在为你制定最佳时间安排</p>
           
@@ -5042,7 +5178,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             ))}
           </div>
           
-          <div className="text-xs text-gray-400 space-y-1">
+          <div className="text-xs text-gray-400 space-y-1 text-center">
             <div>📋 分析你的{tasks.length}个任务</div>
             <div>🍽️ 考虑生活习惯安排</div>
             <div>⚡ 根据{
@@ -5051,7 +5187,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               mentalStatus === 'tired' ? '疲惫' :
               mentalStatus === 'anxious' ? '焦虑' :
               mentalStatus === 'nervous' ? '紧张' :
-              mentalStatus === 'sad' ? '伤心' : '生气'
+              mentalStatus === 'sad' ? '伤心' : 
+              mentalStatus === 'addicted' ? '沉迷' : '生气'
             }状态调整</div>
             <div>🌙 确保{bedtime}前完成所有安排</div>
             {generatingStatus && (
@@ -5724,10 +5861,13 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           </div>
         </div>
         {/* 添加任务 */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-teal-100">
-          <div className="space-y-3 mb-4">
-            {tasks.map(task => (
-              <div key={task.id} className="flex items-center gap-3 p-3 rounded-2xl border border-teal-100 border-l-4" style={{ backgroundColor: '#FDFFFC', borderLeftColor: '#55EFC4' }}>
+        <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6">
+          <div className="mb-4">
+            {tasks.map((task, index) => (
+              <div 
+                key={task.id} 
+                className={`flex items-center gap-3 py-3 ${index < tasks.length - 1 ? 'border-b border-teal-100' : ''}`}
+              >
                 {editingTaskId === task.id ? (
                   // 编辑模式
                   <>
@@ -5969,7 +6109,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                     { id: 'anxious', label: '焦虑', emoji: '😰', color: '#FF8CA1' },
                     { id: 'nervous', label: '紧张', emoji: '😬', color: '#B589F6' },
                     { id: 'sad', label: '伤心', emoji: '😢', color: '#7dd3fc' },
-                    { id: 'angry', label: '生气', emoji: '😠', color: '#f87171' }
+                    { id: 'angry', label: '生气', emoji: '😠', color: '#f87171' },
+                    { id: 'addicted', label: '沉迷', emoji: '📱', color: '#a78bfa' }
                   ].map(status => {
                     const hasSubOptions = mentalSubOptions[status.id];
                     const isSelected = mentalStatus === status.id;
@@ -6120,8 +6261,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         <Button 
           onClick={generateSchedule}
           disabled={tasks.length === 0 || isGenerating}
-          className="shadow-[0_8px_0_0_#008E72] hover:shadow-[0_6px_0_0_#008E72] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
-          style={{ backgroundColor: '#00B894' }}
+          className="font-bold"
+          style={{ 
+            background: 'linear-gradient(135deg, #42E695 0%, #3BB2B8 100%)',
+            boxShadow: '0 10px 25px rgba(66, 230, 149, 0.4)',
+            color: '#FFFFFF'
+          }}
         >
           {isGenerating ? (
             <>
@@ -6148,128 +6293,165 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="text-xl font-black text-[#2D2D2D] mb-4 text-center">选择计时模式</h3>
             
-            {/* 模式选择 */}
-            <div className="space-y-3 mb-6">
+            {/* Tab 切换 */}
+            <div className="flex gap-2 mb-4 bg-gray-100 p-1 rounded-2xl">
               <button
-                onClick={() => confirmStartTimer('countup')}
-                className="w-full p-4 rounded-2xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 transition-all flex items-center gap-4"
+                onClick={() => setSelectedTimerTab('countup')}
+                className={`flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all ${
+                  selectedTimerTab === 'countup' 
+                    ? 'bg-blue-500 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-200'
+                }`}
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center text-white">
-                  <Timer size={24} />
-                </div>
-                <div className="text-left">
-                  <div className="font-bold text-[#2D2D2D]">⏱️ 正计时</div>
-                  <div className="text-xs text-gray-500">从0开始计时，记录实际用时</div>
-                </div>
+                ⏱️ 正计时
               </button>
-              
               <button
-                onClick={() => confirmStartTimer('countdown')}
-                className="w-full p-4 rounded-2xl border-2 border-green-200 bg-green-50 hover:bg-green-100 transition-all flex items-center gap-4"
+                onClick={() => setSelectedTimerTab('countdown')}
+                className={`flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all ${
+                  selectedTimerTab === 'countdown' 
+                    ? 'bg-green-500 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-200'
+                }`}
               >
-                <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center text-white">
-                  <Clock size={24} />
-                </div>
-                <div className="text-left">
-                  <div className="font-bold text-[#2D2D2D]">⏳ 倒计时</div>
-                  <div className="text-xs text-gray-500">按计划时长 {pendingTimerTask?.duration} 分钟倒计时</div>
-                </div>
+                ⏳ 倒计时
               </button>
-              
-              <div className="p-4 rounded-2xl border-2 border-red-200 bg-red-50">
-                <button
-                  onClick={() => confirmStartTimer('pomodoro')}
-                  className="w-full flex items-center gap-4 hover:opacity-80 transition-all"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center text-white">
-                    <Target size={24} />
-                  </div>
-                  <div className="text-left flex-1">
-                    <div className="font-bold text-[#2D2D2D]">🍅 番茄钟</div>
-                    <div className="text-xs text-gray-500">专注与休息交替进行</div>
-                  </div>
-                </button>
-                
-                {/* 番茄钟参数设置 */}
-                <div className="mt-4 pt-4 border-t border-red-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">专注时长</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        -
-                      </button>
-                      <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(180, prev.workDuration + 5) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">休息时长</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        -
-                      </button>
-                      <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">几轮后长休息</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.max(1, prev.rounds - 1) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        -
-                      </button>
-                      <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.rounds}轮</span>
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.min(10, prev.rounds + 1) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">长休息时长</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        -
-                      </button>
-                      <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
-                      <button
-                        onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
-                        className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <button
+                onClick={() => setSelectedTimerTab('pomodoro')}
+                className={`flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all relative ${
+                  selectedTimerTab === 'pomodoro' 
+                    ? 'bg-red-500 text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                🍅 番茄钟
+                {pendingTimerTask?.hasPomodoroSlots && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"></span>
+                )}
+              </button>
             </div>
+            
+            {/* 内容区域 */}
+            <div className="mb-6">
+              {selectedTimerTab === 'countup' && (
+                <div className="p-4 rounded-2xl border-2 border-blue-200 bg-blue-50">
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center text-white">
+                      <Timer size={24} />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-[#2D2D2D]">正计时模式</div>
+                      <div className="text-xs text-gray-500">从0开始计时，记录实际用时</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {selectedTimerTab === 'countdown' && (
+                <div className="p-4 rounded-2xl border-2 border-green-200 bg-green-50">
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center text-white">
+                      <Clock size={24} />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-[#2D2D2D]">倒计时模式</div>
+                      <div className="text-xs text-gray-500">按计划时长 {pendingTimerTask?.duration} 分钟倒计时</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {selectedTimerTab === 'pomodoro' && (
+                <div className="p-4 rounded-2xl border-2 border-red-200 bg-red-50">
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center text-white">
+                      <Target size={24} />
+                    </div>
+                    <div className="text-left flex-1">
+                      <div className="font-bold text-[#2D2D2D]">番茄钟模式</div>
+                      <div className="text-xs text-gray-500">专注与休息交替进行</div>
+                    </div>
+                    {pendingTimerTask?.hasPomodoroSlots && (
+                      <span className="text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded-full">AI推荐</span>
+                    )}
+                  </div>
+                  
+                  {/* 番茄钟参数设置 */}
+                  <div className="mt-4 pt-4 border-t border-red-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">专注时长</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >-</button>
+                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(180, prev.workDuration + 5) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >+</button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">休息时长</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >-</button>
+                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >+</button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">轮数</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.max(1, prev.rounds - 1) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >-</button>
+                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.rounds}轮</span>
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, rounds: Math.min(10, prev.rounds + 1) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >+</button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">长休息</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >-</button>
+                        <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                          className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >+</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* 开始按钮 */}
+            <button
+              onClick={() => confirmStartTimer(selectedTimerTab)}
+              className={`w-full py-3 rounded-2xl text-white font-bold mb-3 transition-all ${
+                selectedTimerTab === 'countup' ? 'bg-blue-500 hover:bg-blue-600' :
+                selectedTimerTab === 'countdown' ? 'bg-green-500 hover:bg-green-600' :
+                'bg-red-500 hover:bg-red-600'
+              }`}
+            >
+              开始计时
+            </button>
             
             {/* 取消按钮 */}
             <button
@@ -6310,16 +6492,11 @@ const SettingsView = ({
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
 }) => {
-  const [user] = useState({
-    name: '治愈体验官',
-    avatar: '🐱',
-    phone: '+86 138****8888'
-  });
-
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showDataManageModal, setShowDataManageModal] = useState(false);
+  const [showDataMenuModal, setShowDataMenuModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showIdealTimeModal, setShowIdealTimeModal] = useState(false);
   const [showCategoryAssignModal, setShowCategoryAssignModal] = useState(false);
@@ -6706,7 +6883,14 @@ END:VEVENT
       createdAt: Date.now()
     };
     
-    setTimeRecords([newRecord, ...timeRecords]);
+    // 添加新记录并按日期和时间排序
+    const updatedRecords = [...timeRecords, newRecord].sort((a, b) => {
+      const aDateTime = `${a.date} ${a.startTime}`;
+      const bDateTime = `${b.date} ${b.startTime}`;
+      return aDateTime.localeCompare(bDateTime);
+    });
+    
+    setTimeRecords(updatedRecords);
     setIsAddingRecord(false);
     setNewRecordName('');
     setNewRecordDate('');
@@ -6726,158 +6910,169 @@ END:VEVENT
   };
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(to bottom right, #FFFEF0, #F0F8FF)' }}>
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ backgroundColor: '#FFFAF0' }}>
       {/* 背景装饰 */}
-      <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-yellow-100 blur-2xl opacity-50"></div>
-      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-blue-100 blur-xl opacity-40"></div>
+      <div className="absolute -right-10 top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#FFECB3' }}></div>
+      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#FFF8E1' }}></div>
       
       {/* 头部 */}
       <div className="px-6 pt-8 pb-4 z-10">
-        <p className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">
-          PREFERENCES
-        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
-        {/* 用户信息 */}
-        <div className="bg-gradient-to-r from-yellow-100 to-blue-50 rounded-[2rem] p-5 shadow-sm mb-6 border border-white relative overflow-hidden">
-          <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-yellow-200 rounded-full opacity-30 blur-xl"></div>
-          <div className="flex items-center gap-4 mb-4 relative z-10">
-            <div className="w-16 h-16 bg-white rounded-full border-4 border-yellow-50 flex items-center justify-center text-3xl shadow-lg">
-              {user.avatar}
+        {/* 功能入口统一容器 */}
+        <div className="bg-white rounded-[20px] overflow-hidden" style={{ boxShadow: '0 8px 24px rgba(255, 193, 7, 0.15)' }}>
+          {/* AI计划番茄钟管理入口 */}
+          <button 
+            onClick={() => setShowPomodoroModal(true)}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <Timer size={24} style={{ color: '#FFA000' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>AI计划番茄钟管理</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  工作{pomodoroSettings.workDuration}分钟 · 休息{pomodoroSettings.breakDuration}分钟 · {pomodoroSettings.rounds}轮后长休息
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="font-black text-slate-700 text-lg">{user.name}</h3>
-              <p className="text-yellow-600 text-xs font-bold bg-white/60 px-2 py-1 rounded-full inline-block mt-1">{user.phone}</p>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 理想时间配比入口 */}
+          <button 
+            onClick={() => setShowIdealTimeModal(true)}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <PieChart size={24} style={{ color: '#FFA000' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>理想时间配比</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  已分配 {totalAllocatedTime}h / 24h
+                </p>
+              </div>
             </div>
-            <button className="text-yellow-400 hover:text-yellow-600 p-2">
-              <Edit3 size={20} />
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/50 relative z-10">
-            <div className="text-center">
-              <div className="text-xl font-black text-slate-700">127</div>
-              <div className="text-xs text-slate-500">专注时长(h)</div>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 数据管理 */}
+          <button 
+            onClick={() => setShowDataMenuModal(true)}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <Database size={24} style={{ color: '#FFA000' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>数据管理</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  共 {timeRecords.length} 条记录
+                </p>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-xl font-black text-slate-700">45</div>
-              <div className="text-xs text-slate-500">完成任务</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xl font-black text-slate-700">12</div>
-              <div className="text-xs text-slate-500">使用天数</div>
-            </div>
-          </div>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
         </div>
-
-        {/* AI计划番茄钟管理入口 */}
-        <button 
-          onClick={() => setShowPomodoroModal(true)}
-          className="w-full bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-yellow-100 flex items-center justify-between hover:bg-white transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-red-400 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <Timer size={24} className="text-white" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-black text-yellow-700">AI计划番茄钟管理</h3>
-              <p className="text-xs text-gray-500 mt-1">
-                工作{pomodoroSettings.workDuration}分钟 · 休息{pomodoroSettings.breakDuration}分钟 · {pomodoroSettings.rounds}轮后长休息
-              </p>
-            </div>
-          </div>
-          <ChevronRight size={20} className="text-gray-400" />
-        </button>
-
-        {/* 理想时间配比入口 */}
-        <button 
-          onClick={() => setShowIdealTimeModal(true)}
-          className="w-full bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-purple-100 flex items-center justify-between hover:bg-white transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <PieChart size={24} className="text-white" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-black text-purple-700">理想时间配比</h3>
-              <p className="text-xs text-gray-500 mt-1">
-                已分配 {totalAllocatedTime}h / 24h
-              </p>
-            </div>
-          </div>
-          <ChevronRight size={20} className="text-gray-400" />
-        </button>
-
-        {/* 数据管理 */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border border-gray-50">
-          <h3 className="font-black text-[#2D2D2D] mb-4 flex items-center gap-2">
-            <Shield size={20} className="text-green-500" />
-            数据管理
-          </h3>
-          
-          <div className="space-y-3">
-            <button 
-              onClick={() => setShowDataManageModal(true)}
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Database size={18} className="text-blue-500" />
-                <div>
-                  <span className="text-sm font-bold text-gray-700">管理数据</span>
-                  <span className="text-xs text-gray-400 ml-2">共 {timeRecords.length} 条</span>
-                </div>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </button>
-            
-            <button 
-              onClick={() => setShowCategoryAssignModal(true)}
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <ListTodo size={18} className="text-purple-500" />
-                <div>
-                  <span className="text-sm font-bold text-gray-700">分类归属</span>
-                  <span className="text-xs text-gray-400 ml-2">管理事件分类</span>
-                </div>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </button>
-            
-            <button 
-              onClick={exportData}
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Download size={18} className="text-gray-600" />
-                <span className="text-sm font-bold text-gray-700">导出数据</span>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </button>
-            
-            <button 
-              onClick={() => setShowImportModal(true)}
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gray-50 hover:bg-gray-100 transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Upload size={18} className="text-gray-600" />
-                <span className="text-sm font-bold text-gray-700">导入数据</span>
-              </div>
-              <ChevronRight size={16} className="text-gray-400" />
-            </button>
-          </div>
-        </div>
-
-        {/* 退出登录 */}
-        <button 
-          onClick={() => setShowLogoutConfirm(true)}
-          className="w-full bg-red-50 border-2 border-red-100 rounded-3xl p-4 flex items-center justify-center gap-2 text-red-500 font-bold hover:bg-red-100 transition-all"
-        >
-          <LogOut size={20} />
-          退出登录
-        </button>
       </div>
+
+      {/* 数据管理菜单弹窗 */}
+      {showDataMenuModal && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[85%] rounded-[2rem] p-5 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-black text-[#2D2D2D]">数据管理</h3>
+              <button 
+                onClick={() => setShowDataMenuModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              <button 
+                onClick={() => {
+                  setShowDataMenuModal(false);
+                  setShowDataManageModal(true);
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-yellow-50 hover:bg-yellow-100 transition-all border-2 border-yellow-100"
+              >
+                <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center">
+                  <Database size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <span className="text-sm font-bold text-gray-700">查看数据源</span>
+                  <p className="text-xs text-gray-400 mt-0.5">查看和编辑时间记录</p>
+                </div>
+                <ChevronRight size={18} className="text-gray-400" />
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setShowDataMenuModal(false);
+                  setShowCategoryAssignModal(true);
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-purple-50 hover:bg-purple-100 transition-all border-2 border-purple-100"
+              >
+                <div className="w-10 h-10 bg-purple-400 rounded-xl flex items-center justify-center">
+                  <ListTodo size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <span className="text-sm font-bold text-gray-700">分类归属</span>
+                  <p className="text-xs text-gray-400 mt-0.5">管理事件分类</p>
+                </div>
+                <ChevronRight size={18} className="text-gray-400" />
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setShowDataMenuModal(false);
+                  exportData();
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-green-50 hover:bg-green-100 transition-all border-2 border-green-100"
+              >
+                <div className="w-10 h-10 bg-green-400 rounded-xl flex items-center justify-center">
+                  <Download size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <span className="text-sm font-bold text-gray-700">导出数据</span>
+                  <p className="text-xs text-gray-400 mt-0.5">导出时间记录为文件</p>
+                </div>
+                <ChevronRight size={18} className="text-gray-400" />
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setShowDataMenuModal(false);
+                  setShowImportModal(true);
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-blue-50 hover:bg-blue-100 transition-all border-2 border-blue-100"
+              >
+                <div className="w-10 h-10 bg-blue-400 rounded-xl flex items-center justify-center">
+                  <Upload size={20} className="text-white" />
+                </div>
+                <div className="text-left flex-1">
+                  <span className="text-sm font-bold text-gray-700">导入数据</span>
+                  <p className="text-xs text-gray-400 mt-0.5">从文件导入时间记录</p>
+                </div>
+                <ChevronRight size={18} className="text-gray-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 退出确认弹窗 */}
       {showLogoutConfirm && (
@@ -7116,11 +7311,12 @@ END:VEVENT
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
           <div className="bg-white w-[95%] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-black text-[#2D2D2D]">管理数据</h3>
+              <h3 className="text-xl font-black text-[#2D2D2D]">查看数据源</h3>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={startAddRecord}
                   className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200"
+                  title="添加记录"
                 >
                   <Plus size={18} />
                 </button>
@@ -7281,92 +7477,217 @@ END:VEVENT
                         </span>
                       </div>
                       
-                      {/* 该日期下的记录 */}
+                      {/* 该日期下的记录和空白时间段（按时间排序） */}
                       <div className="space-y-2">
-                        {groupedByDate[date].map(record => (
-                          <div key={record.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    {editingRecord?.id === record.id ? (
-                      // 编辑模式
-                      <div className="space-y-3">
-                        <div className="font-bold text-gray-700">{record.name}</div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-12">日期</label>
-                          <input
-                            type="date"
-                            value={editDate}
-                            onChange={(e) => setEditDate(e.target.value)}
-                            className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-12">开始</label>
-                          <input
-                            type="time"
-                            value={editStartTime}
-                            onChange={(e) => setEditStartTime(e.target.value)}
-                            className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-12">结束</label>
-                          <input
-                            type="time"
-                            value={editEndTime}
-                            onChange={(e) => setEditEndTime(e.target.value)}
-                            className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                          />
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={() => setEditingRecord(null)}
-                            className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={handleSaveEdit}
-                            className="flex-1 py-2 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600"
-                          >
-                            保存
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      // 显示模式
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-700">{record.name}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                              record.source === 'timer' 
-                                ? 'bg-purple-100 text-purple-600' 
-                                : 'bg-blue-100 text-blue-600'
-                            }`}>
-                              {record.source === 'timer' ? '计时器' : '导入'}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {record.startTime} - {record.endTime}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleStartEdit(record)}
-                            className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteRecord(record.id)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                        ))}
+                        {(() => {
+                          // 时间转分钟
+                          const timeToMinutes = (time: string) => {
+                            const [h, m] = time.split(':').map(Number);
+                            return h * 60 + m;
+                          };
+                          
+                          // 分钟转时间字符串
+                          const minutesToTimeStr = (mins: number) => {
+                            const h = Math.floor(mins / 60);
+                            const m = mins % 60;
+                            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                          };
+                          
+                          // 判断是否是今天
+                          const today = new Date();
+                          const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                          const isToday = date === todayStr;
+                          const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : 24 * 60;
+                          
+                          // 获取当天记录并排序
+                          const dayRecords = [...groupedByDate[date]].sort((a, b) => 
+                            a.startTime.localeCompare(b.startTime)
+                          );
+                          
+                          // 计算空白时间段
+                          const gaps: { start: string; end: string; duration: number }[] = [];
+                          
+                          // 合并重叠的时间段，得到已覆盖的时间区间
+                          const coveredIntervals: { start: number; end: number }[] = [];
+                          dayRecords.forEach(record => {
+                            const start = timeToMinutes(record.startTime);
+                            const end = timeToMinutes(record.endTime);
+                            
+                            if (coveredIntervals.length === 0) {
+                              coveredIntervals.push({ start, end });
+                            } else {
+                              const last = coveredIntervals[coveredIntervals.length - 1];
+                              if (start <= last.end) {
+                                last.end = Math.max(last.end, end);
+                              } else {
+                                coveredIntervals.push({ start, end });
+                              }
+                            }
+                          });
+                          
+                          // 计算区间之间的空白
+                          for (let i = 0; i < coveredIntervals.length - 1; i++) {
+                            const gapStart = coveredIntervals[i].end;
+                            const gapEnd = coveredIntervals[i + 1].start;
+                            const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
+                            const gapMinutes = effectiveGapEnd - gapStart;
+                            
+                            if (gapMinutes >= 60) {
+                              gaps.push({
+                                start: minutesToTimeStr(gapStart),
+                                end: minutesToTimeStr(effectiveGapEnd),
+                                duration: gapMinutes
+                              });
+                            }
+                          }
+                          
+                          // 检查最后一个区间到当前时间的空白（仅限今天）
+                          if (isToday && coveredIntervals.length > 0) {
+                            const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
+                            const gapToNow = currentMinutes - lastEnd;
+                            
+                            if (gapToNow >= 60) {
+                              gaps.push({
+                                start: minutesToTimeStr(lastEnd),
+                                end: minutesToTimeStr(currentMinutes),
+                                duration: gapToNow
+                              });
+                            }
+                          }
+                          
+                          // 合并记录和空白时间段，按开始时间排序
+                          type DisplayItem = 
+                            | { type: 'record'; data: TimeRecord }
+                            | { type: 'gap'; data: { start: string; end: string; duration: number } };
+                          
+                          const allItems: DisplayItem[] = [
+                            ...dayRecords.map(record => ({ type: 'record' as const, data: record })),
+                            ...gaps.map(gap => ({ type: 'gap' as const, data: gap }))
+                          ].sort((a, b) => {
+                            const aStart = a.type === 'record' ? a.data.startTime : a.data.start;
+                            const bStart = b.type === 'record' ? b.data.startTime : b.data.start;
+                            return aStart.localeCompare(bStart);
+                          });
+                          
+                          return allItems.map((item, idx) => {
+                            if (item.type === 'gap') {
+                              const gap = item.data;
+                              return (
+                                <div 
+                                  key={`gap-${idx}`}
+                                  onClick={() => {
+                                    setNewRecordDate(date);
+                                    setNewRecordStartTime(gap.start);
+                                    setNewRecordEndTime(gap.end);
+                                    setNewRecordName('');
+                                    setIsAddingRecord(true);
+                                  }}
+                                  className="bg-orange-50 rounded-2xl p-4 border-2 border-dashed border-orange-200 cursor-pointer hover:bg-orange-100 transition-all"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-orange-400">⏰</span>
+                                      <span className="text-sm text-orange-600 font-medium">
+                                        空白时段 · {Math.floor(gap.duration / 60)}小时{gap.duration % 60 > 0 ? `${gap.duration % 60}分钟` : ''}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-orange-400">{gap.start} - {gap.end}</span>
+                                      <Plus size={16} className="text-orange-400" />
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-orange-400 mt-1">点击补充这段时间在做什么</div>
+                                </div>
+                              );
+                            } else {
+                              const record = item.data;
+                              return (
+                                <div key={record.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                                  {editingRecord?.id === record.id ? (
+                                    // 编辑模式
+                                    <div className="space-y-3">
+                                      <div className="font-bold text-gray-700">{record.name}</div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-500 w-12">日期</label>
+                                        <input
+                                          type="date"
+                                          value={editDate}
+                                          onChange={(e) => setEditDate(e.target.value)}
+                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-500 w-12">开始</label>
+                                        <input
+                                          type="time"
+                                          value={editStartTime}
+                                          onChange={(e) => setEditStartTime(e.target.value)}
+                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-500 w-12">结束</label>
+                                        <input
+                                          type="time"
+                                          value={editEndTime}
+                                          onChange={(e) => setEditEndTime(e.target.value)}
+                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                        />
+                                      </div>
+                                      <div className="flex gap-2 pt-2">
+                                        <button
+                                          onClick={() => setEditingRecord(null)}
+                                          className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
+                                        >
+                                          取消
+                                        </button>
+                                        <button
+                                          onClick={handleSaveEdit}
+                                          className="flex-1 py-2 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600"
+                                        >
+                                          保存
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    // 显示模式
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-gray-700">{record.name}</span>
+                                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                            record.source === 'timer' 
+                                              ? 'bg-purple-100 text-purple-600' 
+                                              : 'bg-blue-100 text-blue-600'
+                                          }`}>
+                                            {record.source === 'timer' ? '计时器' : '导入'}
+                                          </span>
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                          {record.startTime} - {record.endTime}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleStartEdit(record)}
+                                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                        >
+                                          <Edit3 size={16} />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteRecord(record.id)}
+                                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                          });
+                        })()}
                       </div>
                     </div>
                   ));
@@ -7576,7 +7897,7 @@ END:VEVENT
                 <Button 
                   onClick={exportType === 'journal' ? exportJournalAsDoc : exportCalendarAsIcs}
                   className="mt-4"
-                  style={{ backgroundColor: exportType === 'journal' ? '#f472b6' : '#60a5fa' }}
+                  style={{ backgroundColor: exportType === 'journal' ? '#CFA0E9' : '#60a5fa' }}
                 >
                   <Download size={18} />
                   确认导出
@@ -7592,24 +7913,40 @@ END:VEVENT
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
           <div className="bg-white w-[95%] h-[90%] rounded-[2rem] shadow-2xl animate-scale-in flex flex-col overflow-hidden">
             {/* 悬浮置顶的已分配时间提示 */}
-            <div className="sticky top-0 z-10 bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-4 flex items-center justify-between">
+            <div 
+              className="sticky top-0 z-10 px-6 py-4 flex items-center justify-between"
+              style={{ 
+                background: 'linear-gradient(135deg, #FFF176 0%, #FFD54F 100%)',
+                boxShadow: '0 6px 20px rgba(255, 214, 0, 0.25)'
+              }}
+            >
               <div className="flex items-center gap-3">
                 <button 
                   onClick={() => setShowIdealTimeModal(false)}
-                  className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white hover:bg-white/30"
+                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
                 >
                   <ChevronLeft size={20} />
                 </button>
-                <h3 className="text-lg font-black text-white">理想时间配比</h3>
+                <h3 
+                  className="text-lg font-black text-white"
+                  style={{ textShadow: '0 1px 2px rgba(230, 160, 0, 0.2)' }}
+                >
+                  理想时间配比
+                </h3>
               </div>
               <div className="flex items-center gap-2">
-                <div className={`px-4 py-2 rounded-full font-black text-sm ${
-                  totalAllocatedTime === 24 
-                    ? 'bg-green-400 text-white' 
-                    : totalAllocatedTime > 24 
-                      ? 'bg-red-400 text-white' 
-                      : 'bg-white/90 text-purple-600'
-                }`}>
+                <div 
+                  className={`px-4 py-2 rounded-full font-black text-sm text-white`}
+                  style={{ 
+                    backgroundColor: totalAllocatedTime === 24 
+                      ? 'rgba(74, 222, 128, 0.8)' 
+                      : totalAllocatedTime > 24 
+                        ? 'rgba(248, 113, 113, 0.8)' 
+                        : 'rgba(255, 255, 255, 0.25)',
+                    backdropFilter: 'blur(4px)'
+                  }}
+                >
                   {totalAllocatedTime}h / 24h
                 </div>
               </div>
@@ -7741,7 +8078,12 @@ END:VEVENT
                       hobby: 1
                     });
                   }}
-                  className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 transition-all"
+                  className="flex-1 py-3 rounded-2xl font-bold hover:bg-gray-50 transition-all"
+                  style={{ 
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #FFF59D',
+                    color: '#FBC02D'
+                  }}
                 >
                   重置默认
                 </button>
@@ -7750,7 +8092,12 @@ END:VEVENT
                     setShowIdealTimeModal(false);
                     showToastMessage('时间配比已保存');
                   }}
-                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold hover:opacity-90 transition-all"
+                  className="flex-1 py-3 rounded-2xl text-white font-bold hover:opacity-90 transition-all"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #FFF176 0%, #FFD54F 100%)',
+                    boxShadow: '0 6px 20px rgba(255, 214, 0, 0.25)',
+                    textShadow: '0 1px 2px rgba(230, 160, 0, 0.2)'
+                  }}
                 >
                   保存设置
                 </button>
@@ -7826,7 +8173,22 @@ export default function App() {
   });
   const [planScheduleData, setPlanScheduleData] = useState<any>(() => {
     const saved = localStorage.getItem('planScheduleData');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      const data = JSON.parse(saved);
+      // 检查数据是否是今天生成的，如果不是则清除
+      if (data && data.schedule && data.schedule.length > 0) {
+        const firstItemDate = new Date(data.schedule[0].start);
+        const today = new Date();
+        if (firstItemDate.toDateString() !== today.toDateString()) {
+          // 数据不是今天的，清除
+          localStorage.removeItem('planScheduleData');
+          localStorage.setItem('planStep', 'setup');
+          return null;
+        }
+      }
+      return data;
+    }
+    return null;
   });
   const [planTasks, setPlanTasks] = useState<Array<{id: string, name: string, duration: number}>>(() => {
     const saved = localStorage.getItem('planTasks');
@@ -7848,10 +8210,10 @@ export default function App() {
   };
   
   const [planLifestyle, setPlanLifestyle] = useState(getDefaultLifestyle);
-  const [planMentalStatus, setPlanMentalStatus] = useState<'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry'>('normal');
+  const [planMentalStatus, setPlanMentalStatus] = useState<'energetic' | 'normal' | 'tired' | 'anxious' | 'nervous' | 'sad' | 'angry' | 'addicted'>('normal');
   const [planBodyStatus, setPlanBodyStatus] = useState<'good' | 'backPain' | 'headache' | 'periodPain' | 'wristPain'>('good');
   const [planNewTaskName, setPlanNewTaskName] = useState('');
-  const [planNewTaskDuration, setPlanNewTaskDuration] = useState(25);
+  const [planNewTaskDuration, setPlanNewTaskDuration] = useState(60);
 
   // 持久化planStep和planScheduleData到localStorage
   useEffect(() => {
@@ -7982,7 +8344,7 @@ export default function App() {
   const gradientMap: Record<string, string> = {
     plan: 'linear-gradient(to bottom, #E8F5E9, #E8F5E9)',
     timer: getTimerGradient(),
-    journal: 'linear-gradient(to bottom, #fdf2f8, #ffffff)',
+    journal: '#F9F6FD',
     review: 'linear-gradient(to bottom, #f0f9ff, #ffffff)',
     settings: 'linear-gradient(to bottom, #fefce8, #ffffff)',
   };
