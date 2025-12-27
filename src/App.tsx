@@ -9,6 +9,54 @@ import {
   Download, Upload, Trash2, Database, Search
 } from 'lucide-react';
 
+// 原始标签页标题
+const ORIGINAL_TITLE = '治愈时光';
+
+// 格式化时间为 mm:ss 或 hh:mm:ss
+const formatTimeForTitle = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+// 更新标签页标题
+const updateDocumentTitle = (
+  timerName: string | null,
+  timeValue: number,
+  mode: 'countdown' | 'countup' | 'pomodoro',
+  pomodoroPhase?: 'work' | 'break' | 'longBreak',
+  isRunning?: boolean
+) => {
+  if (!timerName || !isRunning) {
+    document.title = ORIGINAL_TITLE;
+    return;
+  }
+  
+  const timeStr = formatTimeForTitle(timeValue);
+  let prefix = '';
+  
+  if (mode === 'pomodoro') {
+    if (pomodoroPhase === 'work') {
+      prefix = '🍅 ';
+    } else if (pomodoroPhase === 'break') {
+      prefix = '☕ ';
+    } else {
+      prefix = '🌴 ';
+    }
+  } else if (mode === 'countdown') {
+    prefix = '⏳ ';
+  } else {
+    prefix = '⏱️ ';
+  }
+  
+  document.title = `${prefix}${timeStr} - ${timerName}`;
+};
+
 // 类型定义
 type CategoryId = 'work' | 'study' | 'sleep' | 'life' | 'rest' | 'entertainment' | 'health' | 'hobby' | 'uncategorized';
 type TabId = 'timer' | 'journal' | 'review' | 'plan' | 'settings';
@@ -149,6 +197,37 @@ const calculateCurrentTime = (
     const remaining = Math.max(0, totalDuration - elapsed);
     return { remainingTime: remaining, elapsedTime: elapsed, isCompleted: remaining <= 0 };
   }
+};
+
+// 移除emoji的辅助函数（用于名称比较）
+const removeEmoji = (str: string) => {
+  return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu, '').trim();
+};
+
+// 根据事项名称查找已有的分类（从 timeRecords 和 globalTimers 中查找）
+const findExistingCategory = (
+  name: string,
+  timeRecords: TimeRecord[],
+  globalTimers: Timer[]
+): CategoryId => {
+  const normalizedName = removeEmoji(name);
+  
+  // 先从 globalTimers 中查找（优先级更高，因为用户可能在专注页面手动分类过）
+  for (const timer of globalTimers) {
+    if (removeEmoji(timer.name) === normalizedName && timer.categoryId && timer.categoryId !== 'uncategorized') {
+      return timer.categoryId;
+    }
+  }
+  
+  // 再从 timeRecords 中查找
+  for (const record of timeRecords) {
+    if (removeEmoji(record.name) === normalizedName && record.categoryId && record.categoryId !== 'uncategorized') {
+      return record.categoryId;
+    }
+  }
+  
+  // 没找到则返回待分类
+  return 'uncategorized';
 };
 
 // 默认铃声文件路径
@@ -698,7 +777,7 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 const TimerView = ({ 
   selectedCategory: propSelectedCategory, 
   setSelectedCategory: propSetSelectedCategory,
-  timeRecords: _timeRecords,
+  timeRecords,
   setTimeRecords,
   globalTimers,
   setGlobalTimers,
@@ -882,6 +961,8 @@ const TimerView = ({
             const updatedTimer = { ...timer, status: 'running' as TimerStatus, remainingTime };
             setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
             setActiveTimer(updatedTimer);
+            // 自动切换到正在计时的分类
+            handleCategoryChange(timer.categoryId);
           }
         } else if (focusTimer.status === 'paused' && focusTimer.pausedAt !== null) {
           // 恢复暂停状态
@@ -897,6 +978,8 @@ const TimerView = ({
           };
           setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
           setActiveTimer(updatedTimer);
+          // 自动切换到正在计时的分类
+          handleCategoryChange(timer.categoryId);
         }
       }
     }
@@ -1097,6 +1180,21 @@ const TimerView = ({
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [activeTimer?.status, timerStartTimestamp, timerMode, timerDuration, pomodoroPhase, pomodoroConfig]);
+
+  // 更新标签页标题显示计时器状态
+  useEffect(() => {
+    if (activeTimer && activeTimer.status === 'running') {
+      const timeValue = timerMode === 'countup' ? elapsedTime : activeTimer.remainingTime;
+      updateDocumentTitle(activeTimer.name, timeValue, timerMode, pomodoroPhase, true);
+    } else {
+      updateDocumentTitle(null, 0, 'countdown', undefined, false);
+    }
+    
+    // 组件卸载时恢复原标题
+    return () => {
+      document.title = ORIGINAL_TITLE;
+    };
+  }, [activeTimer?.status, activeTimer?.name, activeTimer?.remainingTime, elapsedTime, timerMode, pomodoroPhase]);
 
   const theme = selectedCategory === 'uncategorized' 
     ? { primary: '#9ca3af', light: '#f3f4f6', text: '#6b7280' }
@@ -4746,7 +4844,7 @@ const PlanView = ({
   setNewTaskName,
   newTaskDuration,
   setNewTaskDuration,
-  timeRecords: _timeRecords,
+  timeRecords,
   setTimeRecords,
   globalTimers,
   setGlobalTimers
@@ -4790,6 +4888,10 @@ const PlanView = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
   
+  // 用于滚动到正在计时的任务
+  const activeTaskRef = useRef<HTMLDivElement>(null);
+  const hasScrolledToActiveTask = useRef(false);
+  
   // 计时器状态
   const [activeTimerId, setActiveTimerId] = useState<string | null>(null);
   const [remainingTime, setRemainingTime] = useState<number>(0);
@@ -4832,10 +4934,18 @@ const PlanView = ({
   // 编辑模式状态
   const [isEditMode, setIsEditMode] = useState(false);
   
+  // 新增事项弹窗状态（编辑模式下）
+  const [showAddScheduleItemModal, setShowAddScheduleItemModal] = useState(false);
+  const [newScheduleItemName, setNewScheduleItemName] = useState('');
+  const [newScheduleItemDuration, setNewScheduleItemDuration] = useState(30);
+  
   // 编辑任务状态
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskName, setEditTaskName] = useState('');
   const [editTaskDuration, setEditTaskDuration] = useState(25);
+  
+  // 新添加任务的飞入动画状态
+  const [flyingTaskId, setFlyingTaskId] = useState<string | null>(null);
   
   // 状态区块折叠状态
   // 折叠状态管理 - 统一控制四个状态区块
@@ -4899,6 +5009,8 @@ const PlanView = ({
               const formatDateStr = (date: Date) => {
                 return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
               };
+              // 查找该事项是否已有分类
+              const existingCategory = findExistingCategory(planTimer.taskName, timeRecords, globalTimers);
               const newRecord: TimeRecord = {
                 id: `plan_timer_restore_${Date.now()}`,
                 name: planTimer.taskName,
@@ -4906,7 +5018,7 @@ const PlanView = ({
                 startTime: formatTimeStr(startTime),
                 endTime: formatTimeStr(endTime),
                 source: 'timer',
-                categoryId: 'uncategorized',
+                categoryId: existingCategory,
                 createdAt: Date.now()
               };
               console.log('PlanView 恢复时保存记录:', newRecord);
@@ -4930,6 +5042,8 @@ const PlanView = ({
             setElapsedTime(elapsed);
             setRemainingTime(calcRemaining);
             setTimerStatus('running');
+            // 标记需要滚动到正在计时的任务
+            hasScrolledToActiveTask.current = false;
           }
         } else if (planTimer.status === 'paused' && planTimer.pausedAt !== null) {
           // 恢复暂停状态
@@ -4941,10 +5055,25 @@ const PlanView = ({
             setRemainingTime(planTimer.pausedAt);
           }
           setTimerStatus('paused');
+          // 标记需要滚动到正在计时的任务
+          hasScrolledToActiveTask.current = false;
         }
       }
     }
   }, []);
+
+  // 滚动到正在计时的任务
+  useEffect(() => {
+    if (activeTimerId && !hasScrolledToActiveTask.current && (timerStatus === 'running' || timerStatus === 'paused')) {
+      // 延迟执行，确保 DOM 已渲染
+      setTimeout(() => {
+        if (activeTaskRef.current) {
+          activeTaskRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          hasScrolledToActiveTask.current = true;
+        }
+      }, 300);
+    }
+  }, [activeTimerId, timerStatus]);
 
   // 保存计时器状态到localStorage
   useEffect(() => {
@@ -5118,6 +5247,22 @@ const PlanView = ({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [timerStatus, timerStartTimestamp, timerMode, countdownDuration, pomodoroPhase, pomodoroConfig]);
 
+  // 更新标签页标题显示计时器状态
+  useEffect(() => {
+    if (timerStatus === 'running') {
+      const timeValue = timerMode === 'countup' ? elapsedTime : remainingTime;
+      const taskName = currentTaskName || '计时中';
+      updateDocumentTitle(taskName, timeValue, timerMode, pomodoroPhase, true);
+    } else {
+      updateDocumentTitle(null, 0, 'countdown', undefined, false);
+    }
+    
+    // 组件卸载时恢复原标题
+    return () => {
+      document.title = ORIGINAL_TITLE;
+    };
+  }, [timerStatus, currentTaskName, remainingTime, elapsedTime, timerMode, pomodoroPhase]);
+
   // 打开计时模式选择弹窗
   const openTimerModeModal = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
     // 检查是否有正在进行的计时
@@ -5178,14 +5323,18 @@ const PlanView = ({
     setTimerStartTimestamp(Date.now()); // 持久化用时间戳
     setCurrentTaskName(pendingTimerTask.name);
     
-    // 添加计时器到全局计时器列表（待分类），按名称去重
-    const existingTimer = globalTimers.find(t => t.categoryId === 'uncategorized' && t.name === pendingTimerTask.name);
+    // 查找该事项是否已有分类
+    const existingCategory = findExistingCategory(pendingTimerTask.name, timeRecords, globalTimers);
+    
+    // 添加计时器到全局计时器列表，按名称去重（移除emoji后比较）
+    const normalizedName = removeEmoji(pendingTimerTask.name);
+    const existingTimer = globalTimers.find(t => removeEmoji(t.name) === normalizedName);
     if (!existingTimer) {
       const newTimer: Timer = {
         id: `plan_${Date.now()}`,
         name: pendingTimerTask.name,
         icon: '📋',
-        categoryId: 'uncategorized',
+        categoryId: existingCategory,
         duration: mode === 'countdown' ? countdownDuration : pendingTimerTask.duration,
         remainingTime: (mode === 'countdown' ? countdownDuration : pendingTimerTask.duration) * 60,
         status: 'running',
@@ -5227,6 +5376,9 @@ const PlanView = ({
       return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
     };
     
+    // 查找该事项是否已有分类
+    const existingCategory = findExistingCategory(taskName, timeRecords, globalTimers);
+    
     const newRecord: TimeRecord = {
       id: `plan_timer_${Date.now()}`,
       name: taskName,
@@ -5234,7 +5386,7 @@ const PlanView = ({
       startTime: formatTimeStr(startTime),
       endTime: formatTimeStr(endTime),
       source: 'timer',
-      categoryId: 'uncategorized',
+      categoryId: existingCategory,
       createdAt: Date.now()
     };
     
@@ -5455,6 +5607,30 @@ const PlanView = ({
     setScheduleData({ ...scheduleData, schedule: newSchedule });
   };
 
+  // 新增事项（编辑模式下）
+  const addScheduleItem = () => {
+    if (!scheduleData || !newScheduleItemName.trim()) return;
+    
+    // 创建新事项，添加到列表末尾
+    const newItem = {
+      id: `manual_${Date.now()}`,
+      name: newScheduleItemName.trim(),
+      duration: newScheduleItemDuration,
+      type: 'pomodoro',
+      start: 0, // 临时值，保存时会重新计算
+      end: 0,
+      advice: ''
+    };
+    
+    const newSchedule = [...scheduleData.schedule, newItem];
+    setScheduleData({ ...scheduleData, schedule: newSchedule });
+    
+    // 重置表单
+    setNewScheduleItemName('');
+    setNewScheduleItemDuration(30);
+    setShowAddScheduleItemModal(false);
+  };
+
   // 保存并重新计算时间线
   const saveScheduleChanges = () => {
     if (!scheduleData || scheduleData.schedule.length === 0) return;
@@ -5480,13 +5656,18 @@ const PlanView = ({
 
   const addTask = (name: string, duration: number = 25) => {
     if (name.trim()) {
+      const newTaskId = Date.now().toString();
       setTasks([...tasks, {
-        id: Date.now().toString(),
+        id: newTaskId,
         name: name.trim(),
         duration
       }]);
       setNewTaskName('');
       setNewTaskDuration(25);
+      
+      // 触发飞入动画
+      setFlyingTaskId(newTaskId);
+      setTimeout(() => setFlyingTaskId(null), 600);
     }
   };
 
@@ -5737,6 +5918,45 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             .replace(/,\s*}/g, '}')  // 移除尾随逗号
             .replace(/,\s*]/g, ']'); // 移除数组尾随逗号
           
+          // 尝试修复被截断的 JSON
+          // 计算括号平衡
+          let braceCount = 0;
+          let bracketCount = 0;
+          for (const char of cleanJson) {
+            if (char === '{') braceCount++;
+            if (char === '}') braceCount--;
+            if (char === '[') bracketCount++;
+            if (char === ']') bracketCount--;
+          }
+          
+          // 如果括号不平衡，尝试截断到最后一个完整的 schedule 项
+          if (braceCount > 0 || bracketCount > 0) {
+            console.log('检测到 JSON 不完整，尝试修复...');
+            // 找到 schedule 数组的开始位置
+            const scheduleStart = cleanJson.indexOf('"schedule"');
+            if (scheduleStart !== -1) {
+              // 找到最后一个完整的对象（以 } 结尾，后面跟着 , 或 ]）
+              const lastCompleteItem = cleanJson.lastIndexOf('},');
+              const lastCompleteItemAlt = cleanJson.lastIndexOf('}]');
+              const lastComplete = Math.max(lastCompleteItem, lastCompleteItemAlt);
+              
+              if (lastComplete > scheduleStart) {
+                // 截断到最后一个完整项
+                cleanJson = cleanJson.substring(0, lastComplete + 1);
+                // 补全括号
+                while (bracketCount > 0) {
+                  cleanJson += ']';
+                  bracketCount--;
+                }
+                while (braceCount > 0) {
+                  cleanJson += '}';
+                  braceCount--;
+                }
+                console.log('JSON 修复完成');
+              }
+            }
+          }
+          
           parsedSchedule = JSON.parse(cleanJson);
         } else {
           throw new Error('无法从AI响应中提取JSON');
@@ -5745,6 +5965,15 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         // 验证必要字段
         if (!parsedSchedule.schedule || !Array.isArray(parsedSchedule.schedule)) {
           throw new Error('AI响应缺少schedule字段');
+        }
+        
+        // 过滤掉不完整的 schedule 项
+        parsedSchedule.schedule = parsedSchedule.schedule.filter((item: any) => {
+          return item && item.name && item.start && item.end && typeof item.duration === 'number';
+        });
+        
+        if (parsedSchedule.schedule.length === 0) {
+          throw new Error('AI响应中没有有效的任务');
         }
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError);
@@ -5892,9 +6121,18 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         {/* 编辑模式提示 */}
         {isEditMode && (
           <div className="mx-6 mb-4 bg-blue-50 rounded-2xl p-3 border border-blue-100">
-            <p className="text-sm text-blue-600 font-medium">
-              📝 可通过点击上下箭头调整事项顺序、或者直接删除不想要的事项，保存后将自动重排时间
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-blue-600 font-medium flex-1">
+                📝 可调整顺序、删除事项，或新增事项
+              </p>
+              <button
+                onClick={() => setShowAddScheduleItemModal(true)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-bold rounded-full hover:bg-blue-600 transition-all"
+              >
+                <Plus size={14} />
+                新增
+              </button>
+            </div>
           </div>
         )}
 
@@ -5977,7 +6215,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 if (shouldInsertTimeline) timelineInserted = true;
                 
                 return (
-                  <div key={taskId} className="relative">
+                  <div key={taskId} className="relative" ref={isActive ? activeTaskRef : undefined}>
                     {/* 当前时间线 */}
                     {shouldInsertTimeline && (
                       <div className="flex items-center gap-3 py-2 mb-5">
@@ -6263,6 +6501,104 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           </div>
         )}
 
+        {/* 新增事项弹窗（编辑模式下） */}
+        {showAddScheduleItemModal && (
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setShowAddScheduleItemModal(false);
+              setNewScheduleItemName('');
+              setNewScheduleItemDuration(30);
+            }}
+          >
+            <div 
+              className="bg-white rounded-3xl p-6 w-full max-w-sm"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-black text-[#2D3436] mb-4 text-center">新增事项</h3>
+              
+              {/* 事项名称 */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 block mb-2">事项名称</label>
+                <input
+                  type="text"
+                  value={newScheduleItemName}
+                  onChange={(e) => setNewScheduleItemName(e.target.value)}
+                  placeholder="输入事项名称"
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-200"
+                  autoFocus
+                />
+              </div>
+              
+              {/* 时长选择 */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 block mb-2">预计时长</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="5"
+                    max="240"
+                    step="5"
+                    value={newScheduleItemDuration}
+                    onChange={(e) => setNewScheduleItemDuration(Number(e.target.value))}
+                    className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #60a5fa 0%, #3b82f6 100%)`,
+                      outline: 'none'
+                    }}
+                  />
+                  <span className="text-sm font-black text-blue-600 w-16 text-right">
+                    {newScheduleItemDuration >= 60 
+                      ? `${Math.floor(newScheduleItemDuration / 60)}h${newScheduleItemDuration % 60 > 0 ? newScheduleItemDuration % 60 + 'm' : ''}`
+                      : `${newScheduleItemDuration}min`
+                    }
+                  </span>
+                </div>
+              </div>
+              
+              {/* 快捷时长选择 */}
+              <div className="flex gap-2 flex-wrap mb-6">
+                {[15, 30, 45, 60, 90, 120].map(duration => (
+                  <button
+                    key={duration}
+                    onClick={() => setNewScheduleItemDuration(duration)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      newScheduleItemDuration === duration
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    {duration >= 60 ? `${duration / 60}h` : `${duration}min`}
+                  </button>
+                ))}
+              </div>
+              
+              {/* 操作按钮 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddScheduleItemModal(false);
+                    setNewScheduleItemName('');
+                    setNewScheduleItemDuration(30);
+                  }}
+                  className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-all"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={addScheduleItem}
+                  disabled={!newScheduleItemName.trim()}
+                  className="flex-1 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#3b82f6' }}
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 计时模式选择弹窗 */}
         {showTimerModeModal && (
           <div 
@@ -6541,7 +6877,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             {tasks.map((task, index) => (
               <div 
                 key={task.id} 
-                className={`flex items-center gap-3 py-3 ${index < tasks.length - 1 ? 'border-b border-teal-100' : ''}`}
+                className={`flex items-center gap-3 py-3 ${index < tasks.length - 1 ? 'border-b border-teal-100' : ''} ${
+                  flyingTaskId === task.id ? 'animate-fly-in' : ''
+                }`}
+                style={flyingTaskId === task.id ? {
+                  animation: 'flyIn 0.5s ease-out forwards'
+                } : {}}
               >
                 {editingTaskId === task.id ? (
                   // 编辑模式
@@ -6682,11 +7023,21 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               {[15, 30, 60, 120, 180, 240].map(duration => (
                 <button
                   key={duration}
-                  onClick={() => setNewTaskDuration(duration)}
+                  onClick={() => {
+                    if (newTaskName.trim()) {
+                      // 输入框有内容时，直接添加任务
+                      addTask(newTaskName, duration);
+                    } else {
+                      // 输入框为空时，只设置时长
+                      setNewTaskDuration(duration);
+                    }
+                  }}
                   className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                    newTaskDuration === duration
+                    newTaskDuration === duration && !newTaskName.trim()
                       ? 'bg-teal-500 text-white shadow-md'
-                      : 'bg-teal-50 text-teal-600 hover:bg-teal-100'
+                      : newTaskName.trim()
+                        ? 'bg-teal-100 text-teal-700 hover:bg-teal-500 hover:text-white hover:shadow-md'
+                        : 'bg-teal-50 text-teal-600 hover:bg-teal-100'
                   }`}
                 >
                   {duration >= 60 ? `${duration / 60}h` : `${duration}min`}
@@ -7152,6 +7503,7 @@ const SettingsView = ({
   timeRecords,
   setTimeRecords,
   journals,
+  setJournals,
   idealTimeAllocation,
   setIdealTimeAllocation,
   globalTimers,
@@ -7162,6 +7514,7 @@ const SettingsView = ({
   timeRecords: TimeRecord[];
   setTimeRecords: (records: TimeRecord[]) => void;
   journals: Journal[];
+  setJournals: React.Dispatch<React.SetStateAction<Journal[]>>;
   idealTimeAllocation: Record<string, number>;
   setIdealTimeAllocation: (allocation: Record<string, number>) => void;
   globalTimers: Timer[];
@@ -7170,6 +7523,7 @@ const SettingsView = ({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importType, setImportType] = useState<'calendar' | 'journal' | null>(null);
   const [showDataManageModal, setShowDataManageModal] = useState(false);
   const [showDataMenuModal, setShowDataMenuModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -7348,6 +7702,42 @@ const SettingsView = ({
     const a = document.createElement('a');
     a.href = url;
     a.download = `我的日记_${exportStartDate}_${exportEndDate}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToastMessage(`成功导出 ${filteredJournals.length} 篇日记`);
+    setShowExportModal(false);
+  };
+
+  // 导出日记为 JSON 格式（用于备份和重新导入）
+  const exportJournalAsJson = () => {
+    const startDate = new Date(exportStartDate);
+    const endDate = new Date(exportEndDate);
+    endDate.setHours(23, 59, 59, 999);
+
+    const filteredJournals = journals.filter(j => {
+      const journalDate = new Date(j.date);
+      return journalDate >= startDate && journalDate <= endDate;
+    });
+
+    if (filteredJournals.length === 0) {
+      showToastMessage('所选时间范围内没有日记');
+      return;
+    }
+
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      exportRange: { start: exportStartDate, end: exportEndDate },
+      journals: filteredJournals
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `日记备份_${exportStartDate}_${exportEndDate}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -7980,16 +8370,17 @@ END:VEVENT
         </div>
       )}
 
-      {/* 导入数据弹窗 - 简化版 */}
+      {/* 导入数据弹窗 */}
       {showImportModal && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
-          <div className="bg-white w-[90%] rounded-[2rem] p-6 shadow-2xl animate-scale-in">
+          <div className="bg-white w-[90%] rounded-[2rem] p-6 shadow-2xl animate-scale-in max-h-[85%] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-black text-[#2D2D2D]">导入日历数据</h3>
+              <h3 className="text-xl font-black text-[#2D2D2D]">导入数据</h3>
               <button 
                 onClick={() => {
                   setShowImportModal(false);
                   setImportText('');
+                  setImportType(null);
                 }}
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
@@ -7997,64 +8388,228 @@ END:VEVENT
               </button>
             </div>
 
-            {/* 上传文件 */}
-            <div className="mb-4">
-              <label className="text-sm font-bold text-gray-600 block mb-2">上传 ICS 文件</label>
-              <input
-                type="file"
-                accept=".ics,.txt"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="import-file"
-              />
-              <label 
-                htmlFor="import-file"
-                className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:border-gray-400 hover:text-gray-600 cursor-pointer transition-all"
-              >
-                <Upload size={18} />
-                点击选择文件
-              </label>
-            </div>
+            {/* 选择导入类型 */}
+            {!importType ? (
+              <div className="space-y-3">
+                <button
+                  onClick={() => setImportType('calendar')}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all flex items-center gap-4"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Calendar size={24} className="text-blue-500" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-gray-700">导入时间记录</div>
+                    <div className="text-xs text-gray-400">从 ICS 文件或文本导入</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setImportType('journal')}
+                  className="w-full p-4 rounded-2xl border-2 border-gray-100 hover:border-pink-200 hover:bg-pink-50 transition-all flex items-center gap-4"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-pink-100 flex items-center justify-center">
+                    <BookHeart size={24} className="text-pink-500" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-bold text-gray-700">导入日记</div>
+                    <div className="text-xs text-gray-400">从 JSON 文件导入</div>
+                  </div>
+                </button>
+              </div>
+            ) : importType === 'calendar' ? (
+              <>
+                {/* 返回按钮 */}
+                <div className="mb-4">
+                  <button 
+                    onClick={() => { setImportType(null); setImportText(''); }}
+                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    <ChevronLeft size={16} />
+                    <span>返回选择</span>
+                  </button>
+                </div>
 
-            {/* 或者分隔线 */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-xs text-gray-400">或者</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
-            </div>
+                {/* 上传文件 */}
+                <div className="mb-4">
+                  <label className="text-sm font-bold text-gray-600 block mb-2">上传 ICS 文件</label>
+                  <input
+                    type="file"
+                    accept=".ics,.txt"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="import-file"
+                  />
+                  <label 
+                    htmlFor="import-file"
+                    className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:border-gray-400 hover:text-gray-600 cursor-pointer transition-all"
+                  >
+                    <Upload size={18} />
+                    点击选择文件
+                  </label>
+                </div>
 
-            {/* 粘贴文本 */}
-            <div className="mb-4">
-              <label className="text-sm font-bold text-gray-600 block mb-2">粘贴日历数据</label>
-              <textarea
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder="格式：事件名｜开始时间｜结束时间&#10;例如：睡觉｜2025-12-20T00:45:00+08:00｜2025-12-20T15:30:00+08:00"
-                className="w-full h-24 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 resize-none"
-              />
-            </div>
+                {/* 或者分隔线 */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-1 h-px bg-gray-200"></div>
+                  <span className="text-xs text-gray-400">或者</span>
+                  <div className="flex-1 h-px bg-gray-200"></div>
+                </div>
 
-            {/* 操作按钮 */}
-            <div className="flex gap-3">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowImportModal(false);
-                  setImportText('');
-                }}
-                className="flex-1"
-              >
-                取消
-              </Button>
-              <Button 
-                onClick={handleImportText}
-                disabled={!importText.trim()}
-                className="flex-1"
-                style={{ backgroundColor: '#42D4A4' }}
-              >
-                导入
-              </Button>
-            </div>
+                {/* 粘贴文本 */}
+                <div className="mb-4">
+                  <label className="text-sm font-bold text-gray-600 block mb-2">粘贴日历数据</label>
+                  <textarea
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder="格式：事件名｜开始时间｜结束时间&#10;例如：睡觉｜2025-12-20T00:45:00+08:00｜2025-12-20T15:30:00+08:00"
+                    className="w-full h-24 bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 resize-none"
+                  />
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowImportModal(false);
+                      setImportText('');
+                      setImportType(null);
+                    }}
+                    className="flex-1"
+                  >
+                    取消
+                  </Button>
+                  <Button 
+                    onClick={handleImportText}
+                    disabled={!importText.trim()}
+                    className="flex-1"
+                    style={{ backgroundColor: '#42D4A4' }}
+                  >
+                    导入
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 返回按钮 */}
+                <div className="mb-4">
+                  <button 
+                    onClick={() => { setImportType(null); setImportText(''); }}
+                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    <ChevronLeft size={16} />
+                    <span>返回选择</span>
+                  </button>
+                </div>
+
+                {/* 上传 JSON 文件 */}
+                <div className="mb-4">
+                  <label className="text-sm font-bold text-gray-600 block mb-2">上传日记 JSON 文件</label>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        try {
+                          const content = event.target?.result as string;
+                          const data = JSON.parse(content);
+                          
+                          // 验证数据格式
+                          let journalsToImport: Journal[] = [];
+                          
+                          if (Array.isArray(data)) {
+                            // 直接是日记数组
+                            journalsToImport = data;
+                          } else if (data.journals && Array.isArray(data.journals)) {
+                            // 包含 journals 字段的对象
+                            journalsToImport = data.journals;
+                          } else {
+                            showToastMessage('无效的日记数据格式');
+                            return;
+                          }
+                          
+                          // 验证每条日记的格式
+                          const validJournals = journalsToImport.filter(j => 
+                            j && typeof j.date === 'number' && typeof j.content === 'string'
+                          ).map(j => ({
+                            id: j.id || `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                            date: j.date,
+                            mood: j.mood || null,
+                            content: j.content,
+                            images: Array.isArray(j.images) ? j.images : []
+                          }));
+                          
+                          if (validJournals.length === 0) {
+                            showToastMessage('未找到有效的日记数据');
+                            return;
+                          }
+                          
+                          // 合并日记（按日期去重，保留新导入的）
+                          const existingDates = new Set(journals.map(j => new Date(j.date).toDateString()));
+                          const newJournals = validJournals.filter(j => !existingDates.has(new Date(j.date).toDateString()));
+                          const updatedJournals = validJournals.filter(j => existingDates.has(new Date(j.date).toDateString()));
+                          
+                          // 更新已存在的日记
+                          let mergedJournals = journals.map(existing => {
+                            const updated = updatedJournals.find(j => new Date(j.date).toDateString() === new Date(existing.date).toDateString());
+                            return updated || existing;
+                          });
+                          
+                          // 添加新日记
+                          mergedJournals = [...mergedJournals, ...newJournals];
+                          
+                          setJournals(mergedJournals);
+                          
+                          const message = updatedJournals.length > 0 
+                            ? `导入成功！新增 ${newJournals.length} 篇，更新 ${updatedJournals.length} 篇`
+                            : `导入成功，共 ${newJournals.length} 篇日记`;
+                          showToastMessage(message);
+                          setShowImportModal(false);
+                          setImportType(null);
+                        } catch (err) {
+                          console.error('解析日记文件失败:', err);
+                          showToastMessage('文件解析失败，请确保是有效的 JSON 格式');
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                    id="import-journal-file"
+                  />
+                  <label 
+                    htmlFor="import-journal-file"
+                    className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:border-gray-400 hover:text-gray-600 cursor-pointer transition-all"
+                  >
+                    <Upload size={18} />
+                    点击选择 JSON 文件
+                  </label>
+                </div>
+
+                <p className="text-xs text-gray-400 mb-4">
+                  支持导入之前导出的日记 JSON 文件。同一天的日记会被更新覆盖。
+                </p>
+
+                {/* 操作按钮 */}
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowImportModal(false);
+                      setImportText('');
+                      setImportType(null);
+                    }}
+                    className="flex-1"
+                  >
+                    取消
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -8629,7 +9184,7 @@ END:VEVENT
                   </div>
                   <div className="text-left">
                     <div className="font-bold text-gray-700">导出日记</div>
-                    <div className="text-xs text-gray-400">导出为 DOC 格式</div>
+                    <div className="text-xs text-gray-400">DOC 格式（阅读用）或 JSON 格式（备份用）</div>
                   </div>
                 </button>
                 
@@ -8704,14 +9259,35 @@ END:VEVENT
                   ))}
                 </div>
 
-                <Button 
-                  onClick={exportType === 'journal' ? exportJournalAsDoc : exportCalendarAsIcs}
-                  className="mt-4"
-                  style={{ backgroundColor: exportType === 'journal' ? '#CFA0E9' : '#60a5fa' }}
-                >
-                  <Download size={18} />
-                  确认导出
-                </Button>
+                {exportType === 'journal' ? (
+                  <div className="flex gap-3 mt-4">
+                    <Button 
+                      onClick={exportJournalAsDoc}
+                      className="flex-1"
+                      style={{ backgroundColor: '#CFA0E9' }}
+                    >
+                      <Download size={18} />
+                      DOC 格式
+                    </Button>
+                    <Button 
+                      onClick={exportJournalAsJson}
+                      className="flex-1"
+                      style={{ backgroundColor: '#60a5fa' }}
+                    >
+                      <Download size={18} />
+                      JSON 备份
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    onClick={exportCalendarAsIcs}
+                    className="mt-4"
+                    style={{ backgroundColor: '#60a5fa' }}
+                  >
+                    <Download size={18} />
+                    确认导出
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -8928,10 +9504,19 @@ export default function App() {
   // 临时隐藏登录和新手引导，直接进入主界面
   // 原始值: 'login' (需要恢复时改回来)
   const [appState, setAppState] = useState<'login' | 'onboarding' | 'main'>('main');
-  const [activeTab, setActiveTab] = useState<TabId>('plan');
+  // 从 localStorage 恢复上次的页面，默认为 timer
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const saved = localStorage.getItem('activeTab');
+    return (saved as TabId) || 'timer';
+  });
   // 原始值: true (需要恢复时改回来)
   const [isFirstTime, setIsFirstTime] = useState(false); // 模拟首次使用
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>('work'); // 添加全局分类状态
+  
+  // 持久化 activeTab 到 localStorage
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
   
   // 铃声提示弹窗状态
   const [showSoundTip, setShowSoundTip] = useState(() => {
@@ -9214,7 +9799,7 @@ export default function App() {
         globalTimers={globalTimers}
         setGlobalTimers={setGlobalTimers}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} />;
     }
   };
