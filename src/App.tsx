@@ -832,7 +832,30 @@ const TimerView = ({
           );
           
           if (isCompleted) {
-            // 计时已完成，播放铃声
+            // 计时已完成，先保存记录再播放铃声
+            // 根据时间戳计算开始时间
+            const startTime = new Date(focusTimer.startTimestamp);
+            // 直接构造记录并保存，避免依赖状态
+            const endTime = new Date();
+            const formatTimeStr = (date: Date) => {
+              return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+            };
+            const formatDateStr = (date: Date) => {
+              return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+            };
+            const newRecord: TimeRecord = {
+              id: `timer_restore_${Date.now()}`,
+              name: timer.name,
+              date: formatDateStr(startTime),
+              startTime: formatTimeStr(startTime),
+              endTime: formatTimeStr(endTime),
+              source: 'timer',
+              categoryId: timer.categoryId,
+              createdAt: Date.now()
+            };
+            console.log('TimerView 恢复时保存记录:', newRecord);
+            setTimeRecords(prev => [...prev, newRecord]);
+            
             alarmPlayer.play(10000);
             setAlarmTimerId(timer.id);
             setIsAlarmPlaying(true);
@@ -852,6 +875,8 @@ const TimerView = ({
           } else {
             // 恢复运行状态
             setTimerStartTimestamp(focusTimer.startTimestamp);
+            // 关键修复：恢复 timerStartTime，用于后续保存记录
+            setTimerStartTime(new Date(focusTimer.startTimestamp));
             setElapsedTime(elapsed);
             
             const updatedTimer = { ...timer, status: 'running' as TimerStatus, remainingTime };
@@ -860,6 +885,8 @@ const TimerView = ({
           }
         } else if (focusTimer.status === 'paused' && focusTimer.pausedAt !== null) {
           // 恢复暂停状态
+          // 关键修复：恢复 timerStartTime
+          setTimerStartTime(new Date(focusTimer.startTimestamp));
           if (focusTimer.timerMode === 'countup') {
             setElapsedTime(focusTimer.pausedAt);
           }
@@ -880,6 +907,21 @@ const TimerView = ({
     if (activeTimer && (activeTimer.status === 'running' || activeTimer.status === 'paused')) {
       const persistentState = loadPersistentTimerState() || { focusTimer: null, planTimer: null };
       
+      // 计算正确的totalDuration
+      let totalDuration = 0;
+      if (timerMode === 'countup') {
+        totalDuration = 0;
+      } else if (timerMode === 'countdown') {
+        totalDuration = timerDuration * 60;
+      } else if (timerMode === 'pomodoro') {
+        // 番茄钟模式：根据当前阶段计算时长
+        totalDuration = pomodoroPhase === 'work' 
+          ? pomodoroConfig.workDuration * 60 
+          : pomodoroPhase === 'break' 
+          ? pomodoroConfig.breakDuration * 60 
+          : pomodoroConfig.longBreakDuration * 60;
+      }
+      
       const focusTimerState = {
         activeTimerId: activeTimer.id,
         timerMode,
@@ -888,7 +930,7 @@ const TimerView = ({
         pausedAt: activeTimer.status === 'paused' 
           ? (timerMode === 'countup' ? elapsedTime : activeTimer.remainingTime)
           : null,
-        totalDuration: timerMode === 'countup' ? 0 : timerDuration * 60,
+        totalDuration,
         pomodoroConfig,
         currentPomodoroRound,
         pomodoroPhase,
@@ -2783,9 +2825,6 @@ const JournalView = ({
         {journals.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center opacity-60">
-              <div className="w-24 h-24 rounded-[2rem] mb-4 flex items-center justify-center" style={{ backgroundColor: '#E6E6FA' }}>
-                <BookHeart size={40} style={{ color: '#CFA0E9' }} />
-              </div>
               <p className="text-[#2D2D2D] font-bold text-lg">记录美好时光</p>
               <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角开始写下今天的心情</p>
             </div>
@@ -4848,7 +4887,32 @@ const PlanView = ({
           );
           
           if (isCompleted) {
-            // 计时已完成，播放铃声
+            // 计时已完成，先保存记录再播放铃声
+            // 根据时间戳计算开始时间
+            const startTime = new Date(planTimer.startTimestamp);
+            if (planTimer.taskName) {
+              // 直接构造记录并保存，避免依赖状态
+              const endTime = new Date();
+              const formatTimeStr = (date: Date) => {
+                return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+              };
+              const formatDateStr = (date: Date) => {
+                return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+              };
+              const newRecord: TimeRecord = {
+                id: `plan_timer_restore_${Date.now()}`,
+                name: planTimer.taskName,
+                date: formatDateStr(startTime),
+                startTime: formatTimeStr(startTime),
+                endTime: formatTimeStr(endTime),
+                source: 'timer',
+                categoryId: 'uncategorized',
+                createdAt: Date.now()
+              };
+              console.log('PlanView 恢复时保存记录:', newRecord);
+              setTimeRecords(prev => [...prev, newRecord]);
+            }
+            
             alarmPlayer.play(10000);
             setIsAlarmPlaying(true);
             setTimeout(() => setIsAlarmPlaying(false), 10000);
@@ -4861,12 +4925,16 @@ const PlanView = ({
           } else {
             // 恢复运行状态
             setTimerStartTimestamp(planTimer.startTimestamp);
+            // 关键修复：恢复 timerStartTime，用于后续保存记录
+            setTimerStartTime(new Date(planTimer.startTimestamp));
             setElapsedTime(elapsed);
             setRemainingTime(calcRemaining);
             setTimerStatus('running');
           }
         } else if (planTimer.status === 'paused' && planTimer.pausedAt !== null) {
           // 恢复暂停状态
+          // 关键修复：恢复 timerStartTime
+          setTimerStartTime(new Date(planTimer.startTimestamp));
           if (planTimer.timerMode === 'countup') {
             setElapsedTime(planTimer.pausedAt);
           } else {
@@ -4883,6 +4951,21 @@ const PlanView = ({
     if (timerStatus === 'running' || timerStatus === 'paused') {
       const persistentState = loadPersistentTimerState() || { focusTimer: null, planTimer: null };
       
+      // 计算正确的totalDuration
+      let totalDuration = 0;
+      if (timerMode === 'countup') {
+        totalDuration = 0;
+      } else if (timerMode === 'countdown') {
+        totalDuration = countdownDuration * 60;
+      } else if (timerMode === 'pomodoro') {
+        // 番茄钟模式：根据当前阶段计算时长
+        totalDuration = pomodoroPhase === 'work' 
+          ? pomodoroConfig.workDuration * 60 
+          : pomodoroPhase === 'break' 
+          ? pomodoroConfig.breakDuration * 60 
+          : pomodoroConfig.longBreakDuration * 60;
+      }
+      
       const planTimerState = {
         activeTimerId,
         timerMode,
@@ -4891,7 +4974,7 @@ const PlanView = ({
         pausedAt: timerStatus === 'paused' 
           ? (timerMode === 'countup' ? elapsedTime : remainingTime)
           : null,
-        totalDuration: timerMode === 'countup' ? 0 : countdownDuration * 60,
+        totalDuration,
         pomodoroConfig,
         currentPomodoroRound,
         pomodoroPhase,
