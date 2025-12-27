@@ -777,7 +777,7 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
 const TimerView = ({ 
   selectedCategory: propSelectedCategory, 
   setSelectedCategory: propSetSelectedCategory,
-  timeRecords,
+  timeRecords: _timeRecords,
   setTimeRecords,
   globalTimers,
   setGlobalTimers,
