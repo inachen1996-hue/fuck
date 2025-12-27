@@ -1177,6 +1177,7 @@ const TimerView = ({
       createdAt: Date.now()
     };
     
+    console.log('TimerView saveTimeRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
   };
 
@@ -5126,11 +5127,14 @@ const PlanView = ({
   };
 
   // 保存计时记录到timeRecords
-  const saveTimeRecord = (startTimeOverride?: Date, taskNameOverride?: string) => {
-    const startTime = startTimeOverride || timerStartTime;
-    const taskName = taskNameOverride || currentTaskName;
+  const saveTimeRecord = (startTimeParam?: Date | null, taskNameParam?: string) => {
+    const startTime = startTimeParam;
+    const taskName = taskNameParam;
     
-    if (!startTime || !taskName) return;
+    if (!startTime || !taskName) {
+      console.log('saveTimeRecord: 缺少必要参数', { startTime, taskName });
+      return;
+    }
     
     const endTime = new Date();
     const formatTimeStr = (date: Date) => {
@@ -5151,6 +5155,7 @@ const PlanView = ({
       createdAt: Date.now()
     };
     
+    console.log('saveTimeRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
   };
 
@@ -5166,7 +5171,9 @@ const PlanView = ({
     if (!pendingSwitchTask) return;
     
     // 保存当前计时记录
-    saveTimeRecord();
+    if (timerStartTime && currentTaskName) {
+      saveTimeRecord(timerStartTime, currentTaskName);
+    }
     
     // 停止当前计时
     setTimerStatus('idle');
@@ -5274,7 +5281,7 @@ const PlanView = ({
     // 正计时、倒计时都保存，番茄钟只保存工作阶段
     if (timerStartTime && currentTaskName) {
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
-        saveTimeRecord();
+        saveTimeRecord(timerStartTime, currentTaskName);
       }
     }
     
@@ -5297,7 +5304,7 @@ const PlanView = ({
       // 当前是专注阶段，跳到休息
       // 保存工作阶段的记录
       if (timerStartTime && currentTaskName) {
-        saveTimeRecord();
+        saveTimeRecord(timerStartTime, currentTaskName);
       }
       
       if (currentPomodoroRound >= pomodoroConfig.rounds) {
@@ -8908,16 +8915,16 @@ export default function App() {
     localStorage.setItem('globalTimers', JSON.stringify(globalTimers));
   }, [globalTimers]);
 
-  // 全局日记数据
-  const [journals, setJournals] = useState<Journal[]>([
-    {
-      id: '1',
-      date: Date.now() - 86400000, // 昨天
-      mood: 'happy',
-      content: '今天完成了一个重要的项目，感觉很有成就感！虽然过程中遇到了一些困难，但最终都克服了。',
-      images: []
-    }
-  ]);
+  // 全局日记数据 - 持久化到localStorage
+  const [journals, setJournals] = useState<Journal[]>(() => {
+    const saved = localStorage.getItem('journals');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // 持久化journals到localStorage
+  useEffect(() => {
+    localStorage.setItem('journals', JSON.stringify(journals));
+  }, [journals]);
 
   // PlanView 持久化状态 - 切换tab时保留，并持久化到localStorage
   const [planStep, setPlanStep] = useState<'setup' | 'generating' | 'schedule'>(() => {
