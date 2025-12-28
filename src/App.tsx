@@ -419,7 +419,7 @@ const MACARON_COLORS = {
     timer: '#a78bfa',    // 香芋紫
     journal: '#CFA0E9',  // 淡紫色
     review: '#89CFF0',   // 天空蓝
-    plan: '#00B894',     // 翡翠绿（与生成AI规划按钮同色）
+    plan: '#B066F5',     // 紫色
     settings: '#fde047', // 柠檬黄
   },
   // 撞色配置
@@ -880,6 +880,9 @@ const TimerView = ({
   
   // 是否已恢复计时器状态
   const hasRestoredTimer = useRef(false);
+  
+  // 防止重复保存记录的标志
+  const lastSavedRecordKey = useRef<string | null>(null);
 
   // 从localStorage恢复计时器状态
   useEffect(() => {
@@ -1204,9 +1207,14 @@ const TimerView = ({
         text: '#D9455F'
       });
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+  // 格式化时间，正计时始终显示时分秒
+  const formatTime = (seconds: number, alwaysShowHours: boolean = false) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    if (alwaysShowHours || hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -1299,6 +1307,14 @@ const TimerView = ({
   
   // 保存计时记录到timeRecords
   const saveTimeRecord = (timer: Timer, startTime: Date, endTime: Date) => {
+    // 生成唯一键，防止重复保存
+    const recordKey = `${timer.id}_${startTime.getTime()}`;
+    if (lastSavedRecordKey.current === recordKey) {
+      console.log('TimerView saveTimeRecord: 跳过重复保存', recordKey);
+      return;
+    }
+    lastSavedRecordKey.current = recordKey;
+    
     const formatTimeStr = (date: Date) => {
       return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     };
@@ -1805,7 +1821,7 @@ const TimerView = ({
                         
                         {/* 计时显示 */}
                         <div className="text-2xl font-black text-[#2D3436] font-mono mb-1">
-                          {timerMode === 'countup' ? formatTime(elapsedTime) : formatTime(timer.remainingTime)}
+                          {timerMode === 'countup' ? formatTime(elapsedTime, true) : formatTime(timer.remainingTime)}
                         </div>
                         <p className="text-[10px] text-gray-500 mb-2">
                           {timer.status === 'running' ? 
@@ -3171,7 +3187,7 @@ const ReviewView = ({
   const [generatingProgress, setGeneratingProgress] = useState<Record<string, string>>({}); // 每个时间段的进度
   
   // 当前进度时间周期
-  const [progressPeriod, setProgressPeriod] = useState<'today' | 'week' | 'month'>('today');
+  const [progressPeriod, setProgressPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
   
   // 复盘历史记录 - 从localStorage加载
   const [reportHistory, setReportHistory] = useState<Array<{
@@ -3231,6 +3247,7 @@ const ReviewView = ({
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitIcon, setNewHabitIcon] = useState('✨');
   const [newHabitLinkedEvents, setNewHabitLinkedEvents] = useState<string[]>([]);
+  const [eventSearchQuery, setEventSearchQuery] = useState(''); // 事件搜索关键词
   
   // 习惯日历当前查看的月份 (每个习惯独立)
   const [habitCalendarMonth, setHabitCalendarMonth] = useState<Record<string, { year: number; month: number }>>({});
@@ -3468,9 +3485,69 @@ const ReviewView = ({
     
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在构建AI提示词...' }));
     
+    // 获取具体的时间记录详情（用于新提示词）
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    let startDateStr = '';
+    switch (currentPeriod) {
+      case 'yesterday': {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        startDateStr = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+        break;
+      }
+      case 'today':
+        startDateStr = todayStr;
+        break;
+      case 'week': {
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        startDateStr = `${monday.getFullYear()}-${(monday.getMonth() + 1).toString().padStart(2, '0')}-${monday.getDate().toString().padStart(2, '0')}`;
+        break;
+      }
+      case 'month':
+        startDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-01`;
+        break;
+      default:
+        startDateStr = todayStr;
+    }
+    const periodRecords = timeRecords.filter(r => r.date >= startDateStr && r.date <= todayStr);
+    
+    // 按分类整理具体事件
+    const eventsByCategory: Record<string, Array<{name: string, minutes: number, date: string, startTime: string, endTime: string}>> = {};
+    periodRecords.forEach(record => {
+      const start = record.startTime.split(':').map(Number);
+      const end = record.endTime.split(':').map(Number);
+      let minutes = end[0] * 60 + end[1] - start[0] * 60 - start[1];
+      if (minutes < 0) minutes += 24 * 60;
+      if (minutes === 0) minutes = 1;
+      
+      const category = record.categoryId || 'uncategorized';
+      if (!eventsByCategory[category]) {
+        eventsByCategory[category] = [];
+      }
+      eventsByCategory[category].push({
+        name: record.name,
+        minutes,
+        date: record.date,
+        startTime: record.startTime,
+        endTime: record.endTime
+      });
+    });
+    
+    // 生成具体事件列表文本
+    const eventDetailsText = Object.entries(eventsByCategory).map(([catId, events]) => {
+      const catLabel = timeCategories.find(c => c.id === catId)?.label || '待分类';
+      const totalMinutes = events.reduce((sum, e) => sum + e.minutes, 0);
+      const eventList = events.map(e => `    - "${e.name}" (${Math.floor(e.minutes / 60)}h${e.minutes % 60}m, ${e.date} ${e.startTime}-${e.endTime})`).join('\n');
+      return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
+    }).join('\n\n');
+    
     // 构建AI提示词
     const prompt = `# Role
-你不是一个只会读数的记账员，你是用户的**"首席人生战略官" (Chief Life Strategy Officer)**。你的核心能力是结合**行为心理学**与**资源配置理论**，对用户的时间数据进行全维度的战略审计。
+你是一位**注重细节的首席生活运营官 (Detail-Oriented Personal COO)**。你的核心竞争力是：**拒绝"大概印象"，坚持"穿透式审计"。** 你不看表面的分类标签，而是深入解读每一条具体的时间记录内容。
 
 # Input Data
 ## 用户数据
@@ -3481,50 +3558,67 @@ const ReviewView = ({
 ## 时间分配情况（实际 vs 理想）
 ${gaps.map(g => `- ${g.category}：实际${g.actual.toFixed(1)}h，理想${g.ideal.toFixed(1)}h，差距${g.diff > 0 ? '+' : ''}${g.diff.toFixed(1)}h`).join('\n')}
 
+## 具体时间记录详情（按分类）
+${eventDetailsText || '暂无具体时间记录'}
+
 ## 情绪记录
 ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood, count]) => `- ${moodMap[mood] || mood}：${count}次`).join('\n') : '暂无情绪记录'}
 
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Core Logic (核心分析逻辑·必须遵守)
-1. **解读"0数据"的潜台词：** 当看到睡眠/吃饭/休息数据为0时，**绝对禁止**说"你没记录"。**必须默认：** 用户进行了生理活动，但**心理带宽（Cognitive Bandwidth）已耗尽**，无力进行记录。这本身就是高压工作状态的最强证据。
-2. **存在即投票：** 用户把时间花在哪里（即使是看似不合理的加班），说明用户当下的潜意识认为哪里最重要。请分析这种"价值排序"背后的合理性与代价。
-3. **拒绝恐吓：** 在预测未来时，**不要**用生病/猝死来恐吓用户。要从**思维模式僵化、灵感枯竭、情绪麻木**等心理/职业发展维度进行客观预警。
+# Core Logic (核心分析逻辑·最高优先级)
+1. **🔍 强制解读具体事件 (Mandatory Event Decoding)：**
+   - **指令：** 在分析任何时间块时，**必须读取并引用**计时器中记录的**【具体事件名称/备注】**。
+   - **禁止：** 严禁只说"你花在生活上的时间太多"。
+   - **要求：** 必须说"你花在'生活'分类下的**'准备猫饭'**和**'收纳杂物'**上的时间较多"。只有看到具体事件，才能判断这到底是"必要的维护"还是"无意义的拖延"。
 
-# Analysis Framework (5大审计透镜)
-请依次通过以下5个维度扫描数据，判断用户的时间配置是否合理：
-1. **💰 投资回报 (ROI)：** 用户"重仓"的时间板块，边际收益还在增长吗？还是已经进入了"垃圾时间"的无效堆砌？
-2. **⚡️ 能量匹配 (Energy Fit)：** 顺势工作 vs 逆势工作。用户是在黄金时间做决策，还是在疲劳时间硬抗？
-3. **🧱 颗粒度 (Granularity)：** 时间是完整的"砖块"（深度流），还是破碎的"沙砾"（频繁切换导致耗损）？
-4. **🔄 代谢平衡 (Metabolism)：** 计算【消耗端（输出）】与【补给端（休息/灵感/发呆）】的比例。判断是否存在"灵感透支"。
-5. **🎭 角色一致性 (Role Alignment)：** 实际数据扮演的角色（如"救火队员"）与用户渴望的角色（如"创造者"）是否一致？
+2. **🏷️ 基于内容的价值重估 (Content-Based Valuation)：**
+   - 不要被 App 的预设分类误导。请根据**具体做的事**重新定义价值：
+   - *例子 A：* 分类是"工作"，但事件是"无意义地反复调整字体" -> 判定为**"伪工作/磨洋工"**。
+   - *例子 B：* 分类是"生活"，但事件是"为家人做营养餐" -> 判定为**"高价值的后勤保障"**。
+   - *例子 C：* 分类是"生活"，但事件是"修水管/照顾病号" -> 判定为**"不可抗力的突发维护"**。
+
+3. **⚖️ 运营成本视角：**
+   - 将所有非产出的琐事视为**"生活系统的运营成本"**。你的分析目标不是消灭这些时间（因为不可能），而是分析**"成本是否过高"**以及**"流程是否可以优化"**。
+
+# Analysis Framework (审计透镜)
+请依次扫描以下维度：
+1. **事件成分分析：** 在"生活"或"工作"的大类下，具体是由哪些细碎任务组成的？（如：是做饭占了大头，还是通勤占了大头？）
+2. **琐事颗粒度：** 这些具体事件是集中处理的，还是像碎片一样散落在全天，切碎了你的注意力？
+3. **隐形负担：** 是否有某些具体事项（如"清洗猫砂盆"或"整理文件"）出现的频率过高，暗示了流程上的低效？
 
 # Output Structure (严格按照此JSON格式输出)
 {
-  "executiveSummary": {
-    "patternDefinition": "用一个精准的隐喻定义当前的模式。例如：'靠肾上腺素驱动的短跑手'",
-    "coreConflict": "一针见血指出'以为的重点'和'实际数据展现的重点'之间的最大冲突"
+  "eventLevelBreakdown": {
+    "lifeChores": {
+      "mainTimeConsumers": ["具体事件名称1", "具体事件名称2"],
+      "cooEvaluation": "分析这些具体琐事的必要性。例如：'每日做饭'占据了2小时，这是高质量的自我投喂，但作为运营成本略高。"
+    },
+    "workOutput": {
+      "coreActions": ["具体事件名称"],
+      "cooEvaluation": "分析具体任务的含金量。例如：大部分时间集中在'核心代码编写'，而非'回消息'，含金量极高。"
+    }
   },
-  "fiveLensAudit": {
-    "roiAnalysis": "分析ROI。目前的重仓投入是否合理？是否存在'战术勤奋，战略懒惰'？",
-    "energyAndRhythm": "合并分析能量匹配度与颗粒度。工作流是否顺畅？是否存在大量碎片化的隐形损耗？",
-    "ecosystemBalance": "合并分析代谢平衡与角色。是不是变成了没有感情的执行机器？'创造者'身份是否被挤压？"
+  "operationalDiagnosis": {
+    "currentMode": "基于具体事件定义。例如：被'家务琐事'包围的'间歇性冲刺者'。",
+    "costBenefitAnalysis": "指出本周最大的时间开销（具体事件）是否带来了相应的价值（情绪价值或生存价值）？"
   },
-  "threeMonthProjection": {
-    "mindsetChange": "心态变化预测。例如：会对原本热爱的项目产生厌恶感，或陷入'为了做而做'的僵化状态",
-    "capabilityWarning": "能力预警。例如：创造力断崖式下跌，难以产生新的Idea"
-  },
-  "actionGuide": {
-    "threeThingsToProtect": "基于缺口，列出3个即便天塌下来也要守住的底线。如：每天20分钟无目的发呆",
-    "lazyRebalancing": "针对不爱记录、工作高压的特点，给出从源头调整时间分布的建议。不要让用户多记录，要让用户少做无效的事"
-  }
+  "processOptimization": [
+    {
+      "targetEvent": "某具体高耗时琐事",
+      "suggestion": "例如：针对'做饭耗时久'，建议'周末备菜法'或'简化食谱'。"
+    },
+    {
+      "targetEvent": "某具体工作习惯",
+      "suggestion": "例如：发现'找素材'时间分散，建议设立专门的'素材搜集时段'。"
+    }
+  ]
 }
 
 # Tone
-- **犀利、客观、有洞察力。**
-- **像麦肯锡顾问一样专业，像心理咨询师一样懂我。**
-- 使用**加粗**标记重点内容
+- **像拿着放大镜的审计师：** 精准、细致。
+- **基于事实说话：** 哪怕是批评或表扬，都要引用具体的事件名称作为证据。
 - 只返回JSON，不要其他内容`;
 
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
@@ -3542,7 +3636,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是用户的"首席人生战略官"(Chief Life Strategy Officer)。你结合行为心理学与资源配置理论，对用户的时间数据进行全维度的战略审计。你的风格犀利、客观、有洞察力，像麦肯锡顾问一样专业，像心理咨询师一样懂用户。请以JSON格式返回分析报告。'
+              content: '你是一位注重细节的首席生活运营官(Detail-Oriented Personal COO)。你的核心竞争力是：拒绝"大概印象"，坚持"穿透式审计"。你不看表面的分类标签，而是深入解读每一条具体的时间记录内容。你的风格精准、细致，基于事实说话，哪怕是批评或表扬，都要引用具体的事件名称作为证据。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -3655,12 +3749,18 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   // 根据时间周期获取记录
-  const getRecordsByPeriod = (period: 'today' | 'week' | 'month') => {
+  const getRecordsByPeriod = (period: 'today' | 'yesterday' | 'week' | 'month') => {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
     
     if (period === 'today') {
       return timeRecords.filter(r => r.date === todayStr);
+    } else if (period === 'yesterday') {
+      // 获取昨天的日期
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const yesterdayStr = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+      return timeRecords.filter(r => r.date === yesterdayStr);
     } else if (period === 'week') {
       // 获取本周一的日期
       const dayOfWeek = today.getDay();
@@ -3792,6 +3892,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     }
   });
   
+  // 按累计时间从多到少排序
+  pieData.sort((a, b) => b.minutes - a.minutes);
+  
   // 计算饼图路径 - 使用圆弧描边实现圆角效果
   const generatePieSlices = () => {
     if (pieData.length === 0) return [];
@@ -3892,13 +3995,14 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             <div className="flex mb-4">
               {[
                 { id: 'today', label: '今日' },
+                { id: 'yesterday', label: '昨日' },
                 { id: 'week', label: '本周' },
                 { id: 'month', label: '本月' }
               ].map(period => (
                 <button
                   key={period.id}
                   onClick={() => {
-                    setProgressPeriod(period.id as 'today' | 'week' | 'month');
+                    setProgressPeriod(period.id as 'today' | 'yesterday' | 'week' | 'month');
                     setSelectedCategory(null);
                   }}
                   className="flex-1 py-2 text-xs font-bold transition-all relative"
@@ -3920,7 +4024,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             {/* 时间分布饼图 */}
             <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6 border-2 border-sky-100">
               <h4 className="font-black text-sky-700 mb-4">
-                {progressPeriod === 'today' ? '今日' : progressPeriod === 'week' ? '本周' : '本月'}时间分布
+                {progressPeriod === 'today' ? '今日' : progressPeriod === 'yesterday' ? '昨日' : progressPeriod === 'week' ? '本周' : '本月'}时间分布
               </h4>
               
               {totalMinutes === 0 ? (
@@ -3929,7 +4033,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     <Clock size={32} className="text-gray-300" />
                   </div>
                   <p className="text-gray-400 text-sm">
-                    {progressPeriod === 'today' ? '今日' : progressPeriod === 'week' ? '本周' : '本月'}暂无时间记录
+                    {progressPeriod === 'today' ? '今日' : progressPeriod === 'yesterday' ? '昨日' : progressPeriod === 'week' ? '本周' : '本月'}暂无时间记录
                   </p>
                   <p className="text-gray-300 text-xs mt-1">使用计时器或导入日历数据后显示</p>
                 </div>
@@ -3961,6 +4065,56 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     // 按时间降序排序
                     mergedRecords.sort((a, b) => b.minutes - a.minutes);
                     
+                    // 预定义的颜色数组（用于区分不同事项）
+                    const itemColors = [
+                      catData.color,
+                      '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
+                      '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+                      '#BB8FCE', '#85C1E9', '#F8B500', '#00CED1'
+                    ];
+                    
+                    // 生成事项饼图路径
+                    const generateItemPieSlices = () => {
+                      if (mergedRecords.length === 0) return [];
+                      
+                      const slices: Array<{ path: string; color: string; name: string; percentage: number }> = [];
+                      let currentAngle = -90;
+                      const cx = 80, cy = 80, r = 54;
+                      
+                      mergedRecords.forEach((record, idx) => {
+                        const percentage = (record.minutes / catData.minutes) * 100;
+                        const angle = (percentage / 100) * 360;
+                        const gap = mergedRecords.length > 1 ? 2 : 0;
+                        const startAngle = currentAngle + gap / 2;
+                        const endAngle = currentAngle + angle - gap / 2;
+                        
+                        if (angle > 0.5) {
+                          const startRad = (startAngle * Math.PI) / 180;
+                          const endRad = (endAngle * Math.PI) / 180;
+                          
+                          const x1 = cx + r * Math.cos(startRad);
+                          const y1 = cy + r * Math.sin(startRad);
+                          const x2 = cx + r * Math.cos(endRad);
+                          const y2 = cy + r * Math.sin(endRad);
+                          
+                          const largeArc = angle > 180 ? 1 : 0;
+                          const path = `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
+                          
+                          slices.push({
+                            path,
+                            color: itemColors[idx % itemColors.length],
+                            name: record.name,
+                            percentage
+                          });
+                        }
+                        currentAngle += angle;
+                      });
+                      
+                      return slices;
+                    };
+                    
+                    const itemSlices = generateItemPieSlices();
+                    
                     return (
                       <div>
                         <div className="flex items-center gap-3 mb-4">
@@ -3978,6 +4132,35 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                           </div>
                         </div>
                         
+                        {/* 事项饼图 */}
+                        {mergedRecords.length > 0 && (
+                          <div className="flex justify-center mb-4">
+                            <div className="relative">
+                              <svg width="160" height="160" viewBox="0 0 160 160">
+                                {itemSlices.map((slice, idx) => (
+                                  <path
+                                    key={idx}
+                                    d={slice.path}
+                                    fill="none"
+                                    stroke={slice.color}
+                                    strokeWidth="20"
+                                    strokeLinecap="butt"
+                                    className="hover:opacity-80 transition-opacity"
+                                  />
+                                ))}
+                                {/* 中心圆 */}
+                                <circle cx="80" cy="80" r="38" fill="white" />
+                                <text x="80" y="76" textAnchor="middle" className="text-sm font-black fill-gray-700">
+                                  {mergedRecords.length}
+                                </text>
+                                <text x="80" y="92" textAnchor="middle" className="text-[10px] fill-gray-400">
+                                  个事项
+                                </text>
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="space-y-2">
                           {mergedRecords.length === 0 ? (
                             <p className="text-gray-400 text-sm text-center py-4">该分类下暂无记录</p>
@@ -3987,9 +4170,18 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                                 key={idx}
                                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
                               >
-                                <span className="text-sm font-medium text-gray-700">{record.name}</span>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold" style={{ color: catData.color }}>
+                                  <div 
+                                    className="w-3 h-3 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: itemColors[idx % itemColors.length] }}
+                                  />
+                                  <span className="text-sm font-medium text-gray-700">{record.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-400">
+                                    {((record.minutes / catData.minutes) * 100).toFixed(0)}%
+                                  </span>
+                                  <span className="text-sm font-bold" style={{ color: itemColors[idx % itemColors.length] }}>
                                     {record.minutes >= 60 
                                       ? `${Math.floor(record.minutes / 60)}h ${record.minutes % 60}m`
                                       : `${record.minutes}m`
@@ -4064,7 +4256,19 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   
                   {/* 图例 */}
                   <div className="space-y-3">
-                    {[...pieData].sort((a, b) => b.minutes - a.minutes).map(item => {
+                    {/* 按累计时间从多到少排序显示分类 */}
+                    {[...timeCategories]
+                      .map(cat => {
+                        const item = pieData.find(p => p.id === cat.id);
+                        return { ...cat, minutes: item?.minutes || 0 };
+                      })
+                      .sort((a, b) => b.minutes - a.minutes)
+                      .map(cat => {
+                      // 从 pieData 中查找该分类的数据，如果没有则使用默认值
+                      const item = pieData.find(p => p.id === cat.id);
+                      const minutes = item?.minutes || 0;
+                      const percentage = item?.percentage || 0;
+                      
                       // 计算理想时间（根据时间周期，使用已发生的天数）
                       const today = new Date();
                       let daysInPeriod = 1;
@@ -4076,30 +4280,30 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         // 本月已发生的天数
                         daysInPeriod = today.getDate();
                       }
-                      const idealHoursPerDay = idealTimeAllocation[item.id] || 0;
+                      const idealHoursPerDay = idealTimeAllocation[cat.id] || 0;
                       const idealMinutes = idealHoursPerDay * 60 * daysInPeriod;
-                      const progressPercent = idealMinutes > 0 ? Math.min((item.minutes / idealMinutes) * 100, 100) : 0;
+                      const progressPercent = idealMinutes > 0 ? Math.min((minutes / idealMinutes) * 100, 100) : 0;
                       
                       return (
                         <button
-                          key={item.id}
-                          onClick={() => setSelectedCategory(item.id)}
-                          className="w-full p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all text-left"
+                          key={cat.id}
+                          onClick={() => minutes > 0 && setSelectedCategory(cat.id)}
+                          className={`w-full p-3 rounded-xl bg-gray-50 transition-all text-left ${minutes > 0 ? 'hover:bg-gray-100 cursor-pointer' : 'opacity-60 cursor-default'}`}
                         >
                           <div className="flex items-center gap-3 mb-2">
                             <div 
                               className="w-3 h-3 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: item.color }}
+                              style={{ backgroundColor: cat.color }}
                             />
                             <div className="flex items-center gap-1 flex-1">
-                              <span className="text-sm">{item.icon}</span>
-                              <span className="text-sm font-bold text-gray-700">{item.label}</span>
-                              <span className="text-xs text-gray-400 ml-1">{item.percentage.toFixed(0)}%</span>
+                              <span className="text-sm">{cat.icon}</span>
+                              <span className="text-sm font-bold text-gray-700">{cat.label}</span>
+                              <span className="text-xs text-gray-400 ml-1">{percentage.toFixed(0)}%</span>
                             </div>
                             <span className="text-xs text-gray-500">
-                              {item.minutes >= 60 
-                                ? `${Math.floor(item.minutes / 60)}h ${item.minutes % 60}m`
-                                : `${item.minutes}m`
+                              {minutes >= 60 
+                                ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+                                : `${minutes}m`
                               }
                               {idealMinutes > 0 && (
                                 <span className="text-gray-400">
@@ -4111,20 +4315,18 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                                 </span>
                               )}
                             </span>
-                            <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
+                            {minutes > 0 && <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />}
                           </div>
-                          {/* 进度条 */}
-                          {idealMinutes > 0 && (
-                            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#F0F4F8' }}>
-                              <div 
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{ 
-                                  width: `${progressPercent}%`,
-                                  backgroundColor: item.color
-                                }}
-                              />
-                            </div>
-                          )}
+                          {/* 进度条 - 始终显示 */}
+                          <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#F0F4F8' }}>
+                            <div 
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ 
+                                width: `${progressPercent}%`,
+                                backgroundColor: cat.color
+                              }}
+                            />
+                          </div>
                         </button>
                       );
                     })}
@@ -4174,106 +4376,116 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 📊 战略诊断 */}
+                    {/* 🕵️ 现场级成分分析 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <Lightbulb size={18} className="text-purple-500" />
+                          <span className="text-lg">🕵️</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">📊 战略诊断</h4>
+                        <h4 className="font-black text-gray-800 text-lg">现场级成分分析</h4>
                       </div>
                       
-                      {/* 模式定义 */}
+                      {/* 生活/琐事板块 */}
                       <div className="mb-4">
-                        <h5 className="font-bold text-gray-700 mb-2">模式定义</h5>
+                        <h5 className="font-bold text-gray-700 mb-2">🏠 生活/琐事板块拆解</h5>
                         <div className="bg-purple-50 rounded-xl p-3">
+                          {viewingHistoryReport.eventLevelBreakdown?.lifeChores?.mainTimeConsumers && (
+                            <p className="text-xs text-purple-600 mb-2">
+                              主要耗时项：{Array.isArray(viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers) 
+                                ? viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers.map((item: string) => `【${item}】`).join('、')
+                                : viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers}
+                            </p>
+                          )}
                           <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.executiveSummary?.patternDefinition || viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                            __html: (viewingHistoryReport.eventLevelBreakdown?.lifeChores?.cooEvaluation || viewingHistoryReport.executiveSummary?.patternDefinition || viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
                           }} />
                         </div>
                       </div>
                       
-                      {/* 核心矛盾 */}
+                      {/* 工作/产出板块 */}
                       <div>
-                        <h5 className="font-bold text-gray-700 mb-2">核心矛盾</h5>
-                        <div className="space-y-2">
-                          <div className="bg-orange-50 rounded-xl p-3">
-                            <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                              __html: (viewingHistoryReport.executiveSummary?.coreConflict || viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                            }} />
-                          </div>
+                        <h5 className="font-bold text-gray-700 mb-2">💼 工作/产出板块拆解</h5>
+                        <div className="bg-orange-50 rounded-xl p-3">
+                          {viewingHistoryReport.eventLevelBreakdown?.workOutput?.coreActions && (
+                            <p className="text-xs text-orange-600 mb-2">
+                              核心动作：{Array.isArray(viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions) 
+                                ? viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions.map((item: string) => `【${item}】`).join('、')
+                                : viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions}
+                            </p>
+                          )}
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.eventLevelBreakdown?.workOutput?.cooEvaluation || viewingHistoryReport.executiveSummary?.coreConflict || viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                          }} />
                         </div>
                       </div>
                     </div>
 
-                    {/* 🧐 五维深度审计 */}
+                    {/* 📊 运营模式诊断 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🧐</span>
+                          <span className="text-lg">📊</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">五维深度审计</h4>
+                        <h4 className="font-black text-gray-800 text-lg">运营模式诊断</h4>
                       </div>
                       
                       <div className="space-y-3">
                         <div className="bg-amber-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-amber-600 mb-1">💰 关于投入产出</p>
+                          <p className="text-xs font-bold text-amber-600 mb-1">🎭 当前模式</p>
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fiveLensAudit?.roiAnalysis || viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                            __html: (viewingHistoryReport.operationalDiagnosis?.currentMode || viewingHistoryReport.fiveLensAudit?.roiAnalysis || viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                           }} />
                         </div>
                         <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">⚡️🧱 关于能量与节奏</p>
+                          <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 成本/收益分析</p>
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
-                          }} />
-                        </div>
-                        <div className="bg-rose-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-rose-600 mb-1">🔄🎭 关于身心生态</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fiveLensAudit?.ecosystemBalance || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
+                            __html: (viewingHistoryReport.operationalDiagnosis?.costBenefitAnalysis || viewingHistoryReport.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
                           }} />
                         </div>
                       </div>
                     </div>
 
-                    {/* 🛡️ 极简行动指南 */}
+                    {/* 🛠 流程优化建议 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🛡️</span>
+                          <span className="text-lg">🛠</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">极简行动指南</h4>
+                        <h4 className="font-black text-sky-800 text-lg">流程优化建议</h4>
                       </div>
                       
-                      {/* 三个月后的心理画像 */}
-                      <div className="mb-5">
-                        <h5 className="font-bold text-gray-700 mb-2">🔮 三个月后的心理画像</h5>
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.threeMonthProjection?.mindsetChange || viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
-                          }} />
-                        </div>
-                      </div>
-
-                      {/* 最需守护的三件事 */}
-                      <div className="mb-5">
-                        <h5 className="font-bold text-gray-700 mb-2">🛡️ 最需守护的三件事</h5>
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.actionGuide?.threeThingsToProtect || (viewingHistoryReport.advice?.protections || []).join('；') || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                          }} />
-                        </div>
-                      </div>
-
-                      {/* "懒人"调仓建议 */}
-                      <div>
-                        <h5 className="font-bold text-gray-700 mb-2">🔧 "懒人"调仓建议</h5>
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.actionGuide?.lazyRebalancing || viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                          }} />
-                        </div>
+                      <div className="space-y-3">
+                        {Array.isArray(viewingHistoryReport.processOptimization) ? (
+                          viewingHistoryReport.processOptimization.map((item: { targetEvent: string; suggestion: string }, index: number) => (
+                            <div key={index} className="bg-white/60 rounded-xl p-3">
+                              <p className="text-xs font-bold text-sky-600 mb-1">🎯 针对「{item.targetEvent}」</p>
+                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                                __html: (item.suggestion || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                              }} />
+                            </div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="bg-white/60 rounded-xl p-3">
+                              <p className="text-xs font-bold text-amber-600 mb-1">🔮 三个月后的心理画像</p>
+                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                                __html: (viewingHistoryReport.threeMonthProjection?.mindsetChange || viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                              }} />
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-3">
+                              <p className="text-xs font-bold text-sky-600 mb-1">🛡️ 最需守护的三件事</p>
+                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                                __html: (viewingHistoryReport.actionGuide?.threeThingsToProtect || (viewingHistoryReport.advice?.protections || []).join('；') || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                              }} />
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-3">
+                              <p className="text-xs font-bold text-sky-600 mb-1">🔧 "懒人"调仓建议</p>
+                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                                __html: (viewingHistoryReport.actionGuide?.lazyRebalancing || viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                              }} />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4363,119 +4575,110 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 📊 战略诊断 ===== */}
+                {/* ===== 🕵️ 现场级成分分析 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <Lightbulb size={18} className="text-purple-500" />
+                      <span className="text-lg">🕵️</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">📊 战略诊断</h4>
+                    <h4 className="font-black text-gray-800 text-lg">现场级成分分析</h4>
                   </div>
                   
-                  {/* 模式定义 */}
+                  {/* 生活/琐事板块 */}
                   <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">模式定义</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">🏠 生活/琐事板块拆解</h5>
                     <div className="bg-purple-50 rounded-xl p-3">
+                      {reportData.eventLevelBreakdown?.lifeChores?.mainTimeConsumers && (
+                        <p className="text-xs text-purple-600 mb-2">
+                          主要耗时项：{Array.isArray(reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers) 
+                            ? reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers.map((item: string) => `【${item}】`).join('、')
+                            : reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.executiveSummary?.patternDefinition || reportData.strategyAnalysis?.currentPattern || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                        __html: (reportData.eventLevelBreakdown?.lifeChores?.cooEvaluation || reportData.executiveSummary?.patternDefinition || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                   
-                  {/* 核心矛盾 */}
+                  {/* 工作/产出板块 */}
                   <div>
-                    <h5 className="font-bold text-gray-700 mb-2">核心矛盾</h5>
+                    <h5 className="font-bold text-gray-700 mb-2">💼 工作/产出板块拆解</h5>
                     <div className="bg-orange-50 rounded-xl p-3">
+                      {reportData.eventLevelBreakdown?.workOutput?.coreActions && (
+                        <p className="text-xs text-orange-600 mb-2">
+                          核心动作：{Array.isArray(reportData.eventLevelBreakdown.workOutput.coreActions) 
+                            ? reportData.eventLevelBreakdown.workOutput.coreActions.map((item: string) => `【${item}】`).join('、')
+                            : reportData.eventLevelBreakdown.workOutput.coreActions}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.executiveSummary?.coreConflict || reportData.strategyAnalysis?.unreasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                        __html: (reportData.eventLevelBreakdown?.workOutput?.cooEvaluation || reportData.executiveSummary?.coreConflict || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 🧐 五维深度审计 ===== */}
+                {/* ===== 📊 运营模式诊断 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🧐</span>
+                      <span className="text-lg">📊</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">五维深度审计</h4>
+                    <h4 className="font-black text-gray-800 text-lg">运营模式诊断</h4>
                   </div>
                   
                   <div className="space-y-3">
                     <div className="bg-amber-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-amber-600 mb-1">💰 关于投入产出</p>
+                      <p className="text-xs font-bold text-amber-600 mb-1">🎭 当前模式</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fiveLensAudit?.roiAnalysis || reportData.hiddenMeaning?.explicitValue || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                        __html: (reportData.operationalDiagnosis?.currentMode || reportData.fiveLensAudit?.roiAnalysis || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                       }} />
                     </div>
                     <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">⚡️🧱 关于能量与节奏</p>
+                      <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 成本/收益分析</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fiveLensAudit?.energyAndRhythm || reportData.rebalancing?.cutWaste || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
-                      }} />
-                    </div>
-                    <div className="bg-rose-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-rose-600 mb-1">🔄🎭 关于身心生态</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fiveLensAudit?.ecosystemBalance || reportData.hiddenMeaning?.implicitFear || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-rose-700">$1</strong>') 
+                        __html: (reportData.operationalDiagnosis?.costBenefitAnalysis || reportData.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 🔮 三个月后的心理画像 ===== */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-violet-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔮</span>
-                    </div>
-                    <h4 className="font-black text-gray-800 text-lg">三个月后的心理画像</h4>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div className="bg-violet-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-violet-600 mb-1">心态变化</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.threeMonthProjection?.mindsetChange || reportData.rebalancing?.threeMonthForecast || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-violet-700">$1</strong>') 
-                      }} />
-                    </div>
-                    <div className="bg-pink-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-pink-600 mb-1">能力预警</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.threeMonthProjection?.capabilityWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-pink-700">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ===== 🛡️ 极简行动指南 ===== */}
+                {/* ===== 🛠 流程优化建议 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🛡️</span>
+                      <span className="text-lg">🛠</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">极简行动指南</h4>
+                    <h4 className="font-black text-sky-800 text-lg">流程优化建议</h4>
                   </div>
 
-                  {/* 最需守护的三件事 */}
-                  <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">🛡️ 最需守护的三件事</h5>
-                    <div className="bg-white/60 rounded-xl p-3">
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.actionGuide?.threeThingsToProtect || reportData.rebalancing?.injectEnergy || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
-
-                  {/* "懒人"调仓建议 */}
-                  <div>
-                    <h5 className="font-bold text-gray-700 mb-2">🔧 "懒人"调仓建议</h5>
-                    <div className="bg-white/60 rounded-xl p-3">
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.actionGuide?.lazyRebalancing || reportData.strategyAnalysis?.reasonable || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-600">$1</strong>') 
-                      }} />
-                    </div>
+                  <div className="space-y-3">
+                    {Array.isArray(reportData.processOptimization) ? (
+                      reportData.processOptimization.map((item: { targetEvent: string; suggestion: string }, index: number) => (
+                        <div key={index} className="bg-white/60 rounded-xl p-3">
+                          <p className="text-xs font-bold text-sky-600 mb-1">🎯 针对「{item.targetEvent}」</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (item.suggestion || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                          }} />
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        <div className="bg-white/60 rounded-xl p-3">
+                          <p className="text-xs font-bold text-emerald-600 mb-1">🛡️ 最需守护的三件事</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (reportData.actionGuide?.threeThingsToProtect || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
+                          }} />
+                        </div>
+                        <div className="bg-white/60 rounded-xl p-3">
+                          <p className="text-xs font-bold text-sky-600 mb-1">🔧 "懒人"调仓建议</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (reportData.actionGuide?.lazyRebalancing || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-600">$1</strong>') 
+                          }} />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4547,6 +4750,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                             setNewHabitName(habit.name);
                             setNewHabitIcon(habit.icon);
                             setNewHabitLinkedEvents(habit.linkedEventNames);
+                            setEventSearchQuery('');
                             setShowAddHabitModal(true);
                           }}
                           className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
@@ -4662,6 +4866,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 setNewHabitName('');
                 setNewHabitIcon('✨');
                 setNewHabitLinkedEvents([]);
+                setEventSearchQuery('');
                 setShowAddHabitModal(true);
               }}
               className="w-full py-4 rounded-2xl border-2 border-dashed border-gray-300 text-gray-400 font-bold flex items-center justify-center gap-2 hover:border-sky-300 hover:text-sky-400 transition-all"
@@ -4739,12 +4944,42 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                 )}
                 
+                {/* 搜索框 */}
+                <div className="relative mb-2">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={eventSearchQuery}
+                    onChange={(e) => setEventSearchQuery(e.target.value)}
+                    placeholder="搜索事件名称..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-sky-300"
+                  />
+                  {eventSearchQuery && (
+                    <button
+                      onClick={() => setEventSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                
                 {/* 事件选择列表 */}
                 <div className="border border-gray-200 rounded-xl max-h-32 overflow-y-auto">
-                  {uniqueEventNames.length === 0 ? (
-                    <p className="text-xs text-gray-400 p-3 text-center">暂无可关联的事件</p>
-                  ) : (
-                    uniqueEventNames.map(name => (
+                  {(() => {
+                    const filteredEvents = uniqueEventNames.filter(name => 
+                      name.toLowerCase().includes(eventSearchQuery.toLowerCase())
+                    );
+                    
+                    if (uniqueEventNames.length === 0) {
+                      return <p className="text-xs text-gray-400 p-3 text-center">暂无可关联的事件</p>;
+                    }
+                    
+                    if (filteredEvents.length === 0) {
+                      return <p className="text-xs text-gray-400 p-3 text-center">未找到匹配的事件</p>;
+                    }
+                    
+                    return filteredEvents.map(name => (
                       <button
                         key={name}
                         onClick={() => {
@@ -4763,8 +4998,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                           <Check size={14} className="text-sky-500" />
                         )}
                       </button>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">任一关联事件有记录时，习惯自动标记为完成</p>
               </div>
@@ -4854,8 +5089,8 @@ const PlanView = ({
   setStep: (step: 'setup' | 'generating' | 'schedule') => void;
   scheduleData: any;
   setScheduleData: (data: any) => void;
-  tasks: Array<{id: string, name: string, duration: number}>;
-  setTasks: (tasks: Array<{id: string, name: string, duration: number}>) => void;
+  tasks: Array<{id: string, name: string, duration: number, categoryId?: CategoryId}>;
+  setTasks: React.Dispatch<React.SetStateAction<Array<{id: string, name: string, duration: number, categoryId?: CategoryId}>>>;
   bedtime: string;
   setBedtime: (bedtime: string) => void;
   lifestyle: {
@@ -4921,7 +5156,7 @@ const PlanView = ({
   
   // 计时模式选择弹窗
   const [showTimerModeModal, setShowTimerModeModal] = useState(false);
-  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string, hasPomodoroSlots?: boolean} | null>(null);
+  const [pendingTimerTask, setPendingTimerTask] = useState<{id: string, duration: number, name: string, hasPomodoroSlots?: boolean, categoryId?: CategoryId} | null>(null);
   const [selectedTimerTab, setSelectedTimerTab] = useState<'countup' | 'countdown' | 'pomodoro'>('countup');
   const [_showPomodoroSettings, setShowPomodoroSettings] = useState(false);
   const [_showCountdownSettings, setShowCountdownSettings] = useState(false);
@@ -4929,7 +5164,7 @@ const PlanView = ({
   
   // 切换计时确认弹窗
   const [showSwitchTimerConfirm, setShowSwitchTimerConfirm] = useState(false);
-  const [pendingSwitchTask, setPendingSwitchTask] = useState<{id: string, duration: number, name: string, pomodoroSlots?: any[]} | null>(null);
+  const [pendingSwitchTask, setPendingSwitchTask] = useState<{id: string, duration: number, name: string, pomodoroSlots?: any[], categoryId?: CategoryId} | null>(null);
   
   // 编辑模式状态
   const [isEditMode, setIsEditMode] = useState(false);
@@ -4965,6 +5200,9 @@ const PlanView = ({
 
   // 是否已恢复计时器状态
   const hasRestoredPlanTimer = useRef(false);
+  
+  // 防止重复保存记录的标志
+  const lastSavedPlanRecordKey = useRef<string | null>(null);
 
   // 从localStorage恢复计时器状态
   useEffect(() => {
@@ -5264,26 +5502,26 @@ const PlanView = ({
   }, [timerStatus, currentTaskName, remainingTime, elapsedTime, timerMode, pomodoroPhase]);
 
   // 打开计时模式选择弹窗
-  const openTimerModeModal = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+  const openTimerModeModal = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[], categoryId?: CategoryId) => {
     // 检查是否有正在进行的计时
     if (timerStatus === 'running' || timerStatus === 'paused') {
       // 如果点击的是当前正在计时的任务，不做任何操作
       if (activeTimerId === taskId) return;
       
       // 显示确认弹窗
-      setPendingSwitchTask({ id: taskId, duration, name: taskName, pomodoroSlots });
+      setPendingSwitchTask({ id: taskId, duration, name: taskName, pomodoroSlots, categoryId });
       setShowSwitchTimerConfirm(true);
       return;
     }
     
     // 没有正在进行的计时，直接打开模式选择弹窗
-    openTimerModeModalDirect(taskId, duration, taskName, pomodoroSlots);
+    openTimerModeModalDirect(taskId, duration, taskName, pomodoroSlots, categoryId);
   };
   
   // 直接打开计时模式选择弹窗（不检查当前计时状态）
-  const openTimerModeModalDirect = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+  const openTimerModeModalDirect = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[], categoryId?: CategoryId) => {
     const hasPomodoroSlots = pomodoroSlots && pomodoroSlots.length > 0;
-    setPendingTimerTask({ id: taskId, duration, name: taskName, hasPomodoroSlots });
+    setPendingTimerTask({ id: taskId, duration, name: taskName, hasPomodoroSlots, categoryId });
     // 设置默认倒计时时长为AI计划的时长
     setCountdownDuration(duration);
     setShowCountdownSettings(false);
@@ -5323,8 +5561,10 @@ const PlanView = ({
     setTimerStartTimestamp(Date.now()); // 持久化用时间戳
     setCurrentTaskName(pendingTimerTask.name);
     
-    // 查找该事项是否已有分类
-    const existingCategory = findExistingCategory(pendingTimerTask.name, timeRecords, globalTimers);
+    // 优先使用任务自带的分类，否则查找已有分类
+    const taskCategory = pendingTimerTask.categoryId && pendingTimerTask.categoryId !== 'uncategorized' 
+      ? pendingTimerTask.categoryId 
+      : findExistingCategory(pendingTimerTask.name, timeRecords, globalTimers);
     
     // 添加计时器到全局计时器列表，按名称去重（移除emoji后比较）
     const normalizedName = removeEmoji(pendingTimerTask.name);
@@ -5334,13 +5574,18 @@ const PlanView = ({
         id: `plan_${Date.now()}`,
         name: pendingTimerTask.name,
         icon: '📋',
-        categoryId: existingCategory,
+        categoryId: taskCategory,
         duration: mode === 'countdown' ? countdownDuration : pendingTimerTask.duration,
         remainingTime: (mode === 'countdown' ? countdownDuration : pendingTimerTask.duration) * 60,
         status: 'running',
         createdAt: Date.now()
       };
       setGlobalTimers([...globalTimers, newTimer]);
+    } else if (taskCategory !== 'uncategorized' && existingTimer.categoryId !== taskCategory) {
+      // 如果已有计时器但分类不同，更新分类
+      setGlobalTimers(globalTimers.map(t => 
+        t.id === existingTimer.id ? { ...t, categoryId: taskCategory } : t
+      ));
     }
     
     if (mode === 'countup') {
@@ -5368,6 +5613,14 @@ const PlanView = ({
       return;
     }
     
+    // 生成唯一键，防止重复保存
+    const recordKey = `${taskName}_${startTime.getTime()}`;
+    if (lastSavedPlanRecordKey.current === recordKey) {
+      console.log('PlanView saveTimeRecord: 跳过重复保存', recordKey);
+      return;
+    }
+    lastSavedPlanRecordKey.current = recordKey;
+    
     const endTime = new Date();
     const formatTimeStr = (date: Date) => {
       return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -5390,15 +5643,15 @@ const PlanView = ({
       createdAt: Date.now()
     };
     
-    console.log('saveTimeRecord: 保存记录', newRecord);
+    console.log('PlanView saveTimeRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
   };
 
   // 开始计时（旧方法保留兼容）
-  const startTimer = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[]) => {
+  const startTimer = (taskId: string, duration: number, taskName: string, pomodoroSlots?: any[], categoryId?: CategoryId) => {
     // 解锁音频（移动端需要在用户交互时触发）
     alarmPlayer.unlock();
-    openTimerModeModal(taskId, duration, taskName, pomodoroSlots);
+    openTimerModeModal(taskId, duration, taskName, pomodoroSlots, categoryId);
   };
   
   // 确认切换计时（停止当前计时，开始新计时）
@@ -5426,7 +5679,8 @@ const PlanView = ({
       pendingSwitchTask.id, 
       pendingSwitchTask.duration, 
       pendingSwitchTask.name, 
-      pendingSwitchTask.pomodoroSlots
+      pendingSwitchTask.pomodoroSlots,
+      pendingSwitchTask.categoryId
     );
     setPendingSwitchTask(null);
   };
@@ -5579,13 +5833,13 @@ const PlanView = ({
     }
   };
 
-  // 格式化剩余时间
-  const formatRemainingTime = (seconds: number) => {
+  // 格式化剩余时间，正计时始终显示时分秒
+  const formatRemainingTime = (seconds: number, alwaysShowHours: boolean = false) => {
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    if (hours > 0) {
-      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (alwaysShowHours || hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
@@ -5654,20 +5908,91 @@ const PlanView = ({
     setIsEditMode(false);
   };
 
-  const addTask = (name: string, duration: number = 25) => {
+  // AI 自动分类任务
+  const classifyTaskWithAI = async (taskName: string): Promise<CategoryId> => {
+    // 首先检查是否已有相同名称的任务分类
+    const existingCategory = findExistingCategory(taskName, timeRecords, globalTimers);
+    if (existingCategory !== 'uncategorized') {
+      return existingCategory;
+    }
+    
+    // 使用 AI 进行分类
+    try {
+      const response = await fetch('/api/deepseek', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: `你是一个任务分类助手。根据任务名称，将其分类到以下类别之一：
+- work: 工作相关（如开会、写报告、处理邮件等）
+- study: 学习相关（如看书、上课、做作业、背单词等）
+- sleep: 睡眠相关（如午睡、小憩等）
+- life: 生活相关（如做饭、打扫、购物、洗衣服等）
+- rest: 休息相关（如冥想、发呆、散步等）
+- entertainment: 娱乐相关（如看电影、玩游戏、刷视频等）
+- health: 健康相关（如运动、健身、看医生等）
+- hobby: 兴趣爱好（如画画、弹琴、摄影等）
+
+只返回分类ID，不要返回其他内容。如果无法确定，返回 uncategorized。`
+            },
+            {
+              role: 'user',
+              content: `请对以下任务进行分类：${taskName}`
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 50,
+          stream: false
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const category = data.choices?.[0]?.message?.content?.trim().toLowerCase() as CategoryId;
+        const validCategories: CategoryId[] = ['work', 'study', 'sleep', 'life', 'rest', 'entertainment', 'health', 'hobby'];
+        if (validCategories.includes(category)) {
+          return category;
+        }
+      }
+    } catch (error) {
+      console.error('AI分类失败:', error);
+    }
+    
+    return 'uncategorized';
+  };
+
+  const addTask = (name: string, duration: number = 25, categoryId?: CategoryId) => {
     if (name.trim()) {
       const newTaskId = Date.now().toString();
-      setTasks([...tasks, {
+      const newTask = {
         id: newTaskId,
         name: name.trim(),
-        duration
-      }]);
+        duration,
+        categoryId: categoryId || 'uncategorized' as CategoryId
+      };
+      
+      setTasks([...tasks, newTask]);
       setNewTaskName('');
       setNewTaskDuration(25);
       
       // 触发飞入动画
       setFlyingTaskId(newTaskId);
       setTimeout(() => setFlyingTaskId(null), 600);
+      
+      // 异步进行 AI 分类（如果没有指定分类）
+      if (!categoryId) {
+        classifyTaskWithAI(name.trim()).then(aiCategory => {
+          setTasks(prevTasks => prevTasks.map(t => 
+            t.id === newTaskId ? { ...t, categoryId: aiCategory } : t
+          ));
+        });
+      }
     }
   };
 
@@ -5675,13 +6000,13 @@ const PlanView = ({
     setTasks(tasks.filter(t => t.id !== id));
   };
 
-  const updateTask = (id: string, name: string, duration: number) => {
+  const updateTask = (id: string, name: string, duration: number, categoryId?: CategoryId) => {
     setTasks(tasks.map(t => 
-      t.id === id ? { ...t, name: name.trim(), duration } : t
+      t.id === id ? { ...t, name: name.trim(), duration, ...(categoryId !== undefined && { categoryId }) } : t
     ));
   };
 
-  const startEditTask = (task: {id: string, name: string, duration: number}) => {
+  const startEditTask = (task: {id: string, name: string, duration: number, categoryId?: CategoryId}) => {
     setEditingTaskId(task.id);
     setEditTaskName(task.name);
     setEditTaskDuration(task.duration);
@@ -5757,7 +6082,12 @@ const PlanView = ({
       const currentHour = currentTime.getHours();
       const currentMinute = currentTime.getMinutes();
       
-      const tasksText = tasks.map(task => `${task.name}(${task.duration}分钟)`).join('、');
+      const tasksText = tasks.map(task => {
+        const categoryLabel = task.categoryId && task.categoryId !== 'uncategorized' 
+          ? `[分类:${task.categoryId}]` 
+          : '';
+        return `${task.name}(${task.duration}分钟)${categoryLabel}`;
+      }).join('、');
       const lifestyleText = Object.entries(lifestyle)
         .filter(([_, value]) => !value)
         .map(([key, _]) => {
@@ -5829,23 +6159,39 @@ ${pomodoroInfo}
 6. 每个任务都要给出一条简短的执行建议（advice字段）
 7. 【重要】对于duration超过40分钟的任务，必须提供pomodoroSlots字段！这是强制要求，不能省略。pomodoroSlots是一个数组，包含多个番茄钟时间段，每个时间段包含workStart、workEnd、breakEnd、isLongBreak四个字段
 8. 任务名称必须保持用户输入的原始名称，不要添加"第x部分"、"Part x"等后缀
-${needsComfort ? `9. 由于用户当前精神状态不佳（${mentalDetailText}），请以专业心理医生的角色，在comfortSection字段中提供治愈内容。要求：
-   - words: 2-3句默读话语，必须使用第一人称"我"来写，让用户默读时产生沉浸感
-     例如："我允许自己感到疲惫"、"我值得被温柔对待"
-   - actionTip: 1条简短的行动建议，帮助用户通过具体行动改善状态
-     例如："起身倒杯温水，慢慢喝下"、"站起来伸展一下身体"
-   - breathingTip: 1条呼吸练习建议，帮助用户平复情绪
-     例如："深吸气4秒，屏住4秒，缓慢呼出6秒，重复3次"
-   - 基于认知行为疗法或正念疗法的原则
-   - 帮助用户接纳当前情绪，而不是否定它
-   - 语气温暖、专业、有力量` : ''}
+${needsComfort ? `9. 由于用户当前状态不佳（${mentalDetailText}），你需要扮演**神经行为与生理效能工程师**的角色，进行精准分诊并给出针对性阻断指令。
+
+【核心分诊逻辑·必须严格遵守】
+在给出建议前，必须先进行"状态定性"，严禁张冠李戴：
+
+**类型A：多巴胺陷阱 (Dopamine Trap)**
+- 触发词：沉迷、伪兴趣、无聊刷手机、拖延、不想动
+- 诊断：前额叶失控，大脑被低成本高刺激的多巴胺挟持
+- ❌ 错误解法：喝水、拉伸、深呼吸（大脑根本听不进去）
+- ✅ 正确解法（增加摩擦力）：切断信号源或环境隔离，如"手机屏幕调成黑白"、"把手机扔到视线外"
+
+**类型B：生理高唤醒/过载 (Physiological Overload)**
+- 触发词：焦虑、生气、紧张、惊恐、失眠
+- 诊断：交感神经飙升，杏仁核劫持
+- ✅ 正确解法（生理降温）：用"冷水泼脸"、"屏息"、"死挂"等物理手段强制降温
+
+**类型C：生理低唤醒/枯竭 (Physiological Depletion)**
+- 触发词：疲惫、浑身疼、眼睛酸、脑雾、姨妈痛
+- 诊断：能量耗尽，肌肉僵硬
+- ✅ 正确解法（物理修复）：局部热敷、特定肌肉拉伸、闭目养神
+
+在comfortSection字段中提供以下内容：
+- words: 针对性阻断指令，包含状态判定和立刻执行的动作。格式："【状态判定：xxx】具体指令..."
+- actionTip: 行为替换/环境重塑，防止复发的配套动作
+- breathingTip: 生效原理，一句话解释为什么这个方法有效
+- 语气精准打击，不要给沉迷的人推拿，不要给疼痛的人讲大道理` : ''}
 
 请以JSON格式返回，格式如下：
 {
   ${needsComfort ? `"comfortSection": {
-    "words": ["我允许自己...", "我值得...", "我正在..."],
-    "actionTip": "起身倒杯温水，慢慢喝下",
-    "breathingTip": "深吸气4秒，屏住4秒，缓慢呼出6秒，重复3次"
+    "words": ["【状态判定：多巴胺挟持】物理隔离法——立刻把手机扔到沙发的另一头，或者把屏幕亮度调到最低并开启黑白模式"],
+    "actionTip": "五分钟发呆测试：什么都不做，只盯着墙壁看。如果你觉得难受，说明你的多巴胺阈值太高了，忍受这种无聊就是治疗",
+    "breathingTip": "黑白屏幕剥夺了色彩刺激，让大脑瞬间觉得'没意思'，从而切断多巴胺渴求回路"
   },` : ''}
   "schedule": [
     {
@@ -6039,11 +6385,11 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         style={{ background: 'linear-gradient(180deg, #F0F5FF 0%, #FFFFFF 100%)' }}
       >
         {/* 背景装饰 */}
-        <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-teal-100 blur-2xl opacity-50"></div>
-        <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-orange-100 blur-xl opacity-40"></div>
+        <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-orange-50 blur-2xl opacity-50"></div>
+        <div className="absolute -left-10 bottom-20 w-32 h-32 rounded-full bg-amber-50 blur-xl opacity-40"></div>
         
         <div className="text-center z-10 flex flex-col items-center justify-center">
-          <h3 className="text-xl font-black text-teal-700 mb-2">AI 正在规划中...</h3>
+          <h3 className="text-xl font-black mb-2" style={{ color: '#B066F5' }}>AI 正在规划中...</h3>
           <p className="text-gray-500 text-sm mb-8">DeepSeek正在为你制定最佳时间安排</p>
           
           {/* 加载动画 */}
@@ -6051,8 +6397,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="w-2 h-2 bg-teal-400 rounded-full animate-bounce"
-                style={{ animationDelay: `${i * 0.2}s` }}
+                className="w-2 h-2 rounded-full animate-bounce"
+                style={{ backgroundColor: '#B066F5', animationDelay: `${i * 0.2}s` }}
               />
             ))}
           </div>
@@ -6083,7 +6429,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
   if (step === 'schedule' && scheduleData) {
     return (
-      <div className="flex flex-col h-full" style={{ background: 'linear-gradient(135deg, #F0FFF4 0%, #E6FFFA 100%)' }}>
+      <div className="flex flex-col h-full" style={{ background: 'linear-gradient(180deg, #FFFAF0 0%, #FFFFFF 100%)' }}>
         {/* 头部 */}
         <div className="px-6 pt-8 pb-4 flex justify-between items-center">
           <button 
@@ -6111,7 +6457,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             )}
             <button 
               onClick={generateSchedule}
-              className="text-[#42D4A4] font-bold p-2 -mr-2"
+              className="font-bold p-2 -mr-2"
+              style={{ color: '#B066F5' }}
             >
               <RefreshCw size={20} />
             </button>
@@ -6137,17 +6484,17 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         )}
 
         <div className="flex-1 overflow-y-auto px-6 pb-6">
-          {/* 安慰语句卡片 */}
+          {/* 神经效能干预卡片 */}
           {scheduleData.comfortSection && (
             <div className="rounded-3xl p-5 mb-6 relative overflow-hidden border border-white/50 shadow-sm" style={{ backgroundColor: '#FFF3E0' }}>
               <div className="absolute top-3 right-3 opacity-30">
                 <Heart size={32} className="text-[#FFAB91]" />
               </div>
               <div className="relative z-10">
-                {/* 默读话语 */}
+                {/* 针对性阻断 */}
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">💝</span>
-                  <h3 className="text-sm font-black text-[#5D4037]">在开始之前，请默读以下话语</h3>
+                  <span className="text-lg">⚡️</span>
+                  <h3 className="text-sm font-black text-[#5D4037]">针对性阻断</h3>
                 </div>
                 <div className="space-y-3 mb-4">
                   {scheduleData.comfortSection.words?.map((word: string, index: number) => (
@@ -6157,23 +6504,23 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                   ))}
                 </div>
                 
-                {/* 行动建议 */}
+                {/* 行为替换/环境重塑 */}
                 {scheduleData.comfortSection.actionTip && (
                   <div className="flex items-start gap-2 mb-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,171,145,0.2)' }}>
-                    <span className="text-base">🚶</span>
+                    <span className="text-base">🔄</span>
                     <div>
-                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">行动建议</h4>
+                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">行为替换</h4>
                       <p className="text-sm text-[#5D4037]">{scheduleData.comfortSection.actionTip}</p>
                     </div>
                   </div>
                 )}
                 
-                {/* 呼吸建议 */}
+                {/* 生效原理 */}
                 {scheduleData.comfortSection.breathingTip && (
                   <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,171,145,0.2)' }}>
-                    <span className="text-base">🌬️</span>
+                    <span className="text-base">🧠</span>
                     <div>
-                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">呼吸练习</h4>
+                      <h4 className="text-xs font-bold text-[#5D4037] mb-1">生效原理</h4>
                       <p className="text-sm text-[#5D4037]">{scheduleData.comfortSection.breathingTip}</p>
                     </div>
                   </div>
@@ -6196,21 +6543,31 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               return scheduleData.schedule.map((item: any, index: number) => {
                 const isActive = activeTimerId === (item.id || `task-${index}`);
                 const taskId = item.id || `task-${index}`;
-                // 修复跨天判断：如果任务结束时间小于开始时间，说明是跨天任务，不应该判断为已过期
-                // 同时，如果任务结束时间在凌晨（0-6点），且当前时间在晚上，也不应该判断为已过期
+                // 修复跨天判断：
+                // 1. 如果任务结束时间在凌晨（0-6点），且当前时间在晚上（18点后），不应该判断为已过期
+                // 2. 如果任务开始时间在晚上，结束时间在凌晨，说明是跨凌晨任务
+                // 3. 跨凌晨的任务在当天晚上和第二天凌晨都不应该置灰
+                const startHour = new Date(item.start).getHours();
                 const endHour = new Date(item.end).getHours();
                 const currentHour = new Date(now).getHours();
-                const isOvernightTask = endHour < 6 && currentHour >= 18; // 结束时间在凌晨，当前在晚上
+                
+                // 判断是否是跨凌晨任务（开始时间在晚上18点后，或结束时间在凌晨6点前）
+                const isOvernightTask = (startHour >= 18 && endHour < 6) || // 开始在晚上，结束在凌晨
+                                        (endHour < 6 && currentHour >= 18) || // 结束在凌晨，当前在晚上
+                                        (endHour < 6 && currentHour < 6); // 结束在凌晨，当前也在凌晨
+                
                 const isPast = !isOvernightTask && item.end < now;
                 const isLast = index === totalItems - 1;
                 
                 // 判断是否需要在此任务前插入时间线（跨天任务不参与时间线判断）
                 const prevItem = index > 0 ? scheduleData.schedule[index - 1] : null;
                 const prevEndHour = prevItem ? new Date(prevItem.end).getHours() : 0;
-                const prevIsOvernight = prevItem && prevEndHour < 6 && currentHour >= 18;
+                const prevStartHour = prevItem ? new Date(prevItem.start).getHours() : 0;
+                const prevIsOvernight = prevItem && ((prevStartHour >= 18 && prevEndHour < 6) || 
+                                                     (prevEndHour < 6 && currentHour >= 18) ||
+                                                     (prevEndHour < 6 && currentHour < 6));
                 const prevIsPast = prevItem && !prevIsOvernight && prevItem.end < now;
-                const startHour = new Date(item.start).getHours();
-                const itemIsOvernight = startHour < 6 && currentHour >= 18;
+                const itemIsOvernight = (startHour >= 18 && endHour < 6) || (startHour < 6 && currentHour >= 18) || (startHour < 6 && currentHour < 6);
                 const shouldInsertTimeline = !timelineInserted && !isPast && (prevItem ? prevIsPast : true) && !itemIsOvernight && item.start > now;
                 if (shouldInsertTimeline) timelineInserted = true;
                 
@@ -6219,9 +6576,9 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                     {/* 当前时间线 */}
                     {shouldInsertTimeline && (
                       <div className="flex items-center gap-3 py-2 mb-5">
-                        <div className="w-3 h-3 rounded-full bg-[#00B894] shadow-lg shadow-[#00B894]/50"></div>
-                        <div className="flex-1 h-[2px] bg-gradient-to-r from-[#00B894] to-transparent"></div>
-                        <span className="text-xs font-bold text-[#00B894] whitespace-nowrap">
+                        <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: '#B066F5', boxShadow: '0 0 10px rgba(176, 102, 245, 0.5)' }}></div>
+                        <div className="flex-1 h-[2px]" style={{ background: 'linear-gradient(to right, #B066F5, transparent)' }}></div>
+                        <span className="text-xs font-bold whitespace-nowrap" style={{ color: '#B066F5' }}>
                           现在 {new Date().getHours().toString().padStart(2, '0')}:{new Date().getMinutes().toString().padStart(2, '0')}
                         </span>
                       </div>
@@ -6229,12 +6586,13 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                     
                     <div 
                       className={`rounded-3xl shadow-sm border-2 transition-all overflow-hidden ${
-                        isActive ? 'border-green-400 shadow-lg' : isEditMode ? 'border-blue-200' : 'border-gray-50'
+                        isActive ? 'shadow-lg' : isEditMode ? 'border-blue-200' : 'border-gray-50'
                       } ${isPast && !isEditMode ? 'opacity-50' : ''}`}
+                      style={isActive ? { borderColor: '#B066F5' } : {}}
                     >
                   {/* 顶部时间横条 */}
-                  <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#E0F2F1' }}>
-                    <span className="text-sm font-bold" style={{ color: '#00695C' }}>
+                  <div className="px-4 py-2 flex items-center justify-between" style={{ backgroundColor: '#F8E8FF' }}>
+                    <span className="text-sm font-bold" style={{ color: '#5E35B1' }}>
                       🕒 {formatTime(item.start)} - {formatTime(item.end)}
                     </span>
                     {/* 编辑模式删除按钮 */}
@@ -6276,15 +6634,16 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
                   {/* 计时器显示 */}
                   {isActive && !isEditMode && (
-                    <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl">
+                    <div className="mb-4 p-4 rounded-2xl" style={{ background: 'linear-gradient(to right, #F8E8FF, #EEF2FF)' }}>
                       <div className="text-center">
                         {/* 模式标签 */}
                         <div className="flex justify-center mb-2">
                           <span className={`text-xs font-bold px-3 py-1 rounded-full ${
                             timerMode === 'countup' ? 'bg-blue-100 text-blue-600' :
                             timerMode === 'pomodoro' ? 'bg-red-100 text-red-600' :
-                            'bg-green-100 text-green-600'
-                          }`}>
+                            ''
+                          }`}
+                          style={timerMode === 'countdown' ? { backgroundColor: '#F8E8FF', color: '#B066F5' } : {}}>
                             {timerMode === 'countup' ? '⏱️ 正计时' :
                              timerMode === 'pomodoro' ? `🍅 番茄钟 · ${pomodoroPhase === 'work' ? '专注' : pomodoroPhase === 'break' ? '休息' : '长休息'}` :
                              '⏳ 倒计时'}
@@ -6299,7 +6658,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         )}
                         
                         <div className="text-4xl font-black text-[#2D3436] font-mono mb-2">
-                          {timerMode === 'countup' ? formatRemainingTime(elapsedTime) : formatRemainingTime(remainingTime)}
+                          {timerMode === 'countup' ? formatRemainingTime(elapsedTime, true) : formatRemainingTime(remainingTime)}
                         </div>
                         <p className="text-xs text-gray-500 mb-3">
                           {timerStatus === 'running' ? 
@@ -6320,7 +6679,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           ) : (
                             <button
                               onClick={resumeTimer}
-                              className="w-12 h-12 rounded-full bg-[#00B894] flex items-center justify-center text-white shadow-lg hover:bg-[#00a383] transition-all"
+                              className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+                              style={{ backgroundColor: '#B066F5' }}
                             >
                               <Play size={20} />
                             </button>
@@ -6370,11 +6730,20 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                     
                     {!isActive && !isEditMode && (
                       <button 
-                        onClick={() => startTimer(taskId, item.duration, item.name, item.pomodoroSlots)}
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all hover:scale-110"
-                        style={{ backgroundColor: '#00B894' }}
+                        onClick={() => {
+                          // 查找任务对应的分类
+                          const taskInList = tasks.find(t => t.name === item.name || removeEmoji(t.name) === removeEmoji(item.name));
+                          const categoryId = taskInList?.categoryId || findExistingCategory(item.name, timeRecords, globalTimers);
+                          startTimer(taskId, item.duration, item.name, item.pomodoroSlots, categoryId);
+                        }}
+                        className="rounded-[18px] px-[14px] py-[6px] text-[13px] font-bold transition-all hover:opacity-80"
+                        style={{ 
+                          backgroundColor: '#F8E8FF',
+                          border: '1px solid #B066F5',
+                          color: '#B066F5'
+                        }}
                       >
-                        <Play size={16} />
+                        开始计时
                       </button>
                     )}
                   </div>
@@ -6425,10 +6794,10 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 </button>
                 <Button 
                   onClick={saveScheduleChanges}
-                  className="w-[70%] shadow-[0_8px_0_0_#2BA890] hover:shadow-[0_6px_0_0_#2BA890] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
+                  className="w-[70%] shadow-[0_8px_0_0_#8B5CF6] hover:shadow-[0_6px_0_0_#8B5CF6] hover:translate-y-[2px] active:shadow-none active:translate-y-[8px]"
                   style={{ 
-                    background: 'linear-gradient(135deg, #42E695 0%, #3BB2B8 100%)',
-                    boxShadow: '0 10px 25px rgba(66, 230, 149, 0.4)',
+                    background: 'linear-gradient(135deg, #B066F5 0%, #9575CD 100%)',
+                    boxShadow: '0 10px 25px rgba(176, 102, 245, 0.4)',
                     color: '#FFFFFF' 
                   }}
                 >
@@ -6455,7 +6824,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                   setStep('setup');
                 }}
                 variant="outline"
-                style={{ borderColor: '#42D4A4', color: '#42D4A4' }}
+                style={{ borderColor: '#B066F5', color: '#B066F5' }}
               >
                 <Edit3 size={20} />
                 重新让AI规划今日安排
@@ -6492,7 +6861,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 <button
                   onClick={confirmSwitchTimer}
                   className="flex-1 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
-                  style={{ backgroundColor: '#00B894' }}
+                  style={{ backgroundColor: '#B066F5' }}
                 >
                   切换任务
                 </button>
@@ -6643,7 +7012,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 <button
                   onClick={() => setTimerMode('countdown')}
                   className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all ${
-                    timerMode === 'countdown' ? 'bg-white text-[#009688] shadow-sm' : 'text-gray-500'
+                    timerMode === 'countdown' ? 'bg-white text-[#B066F5] shadow-sm' : 'text-gray-500'
                   }`}
                 >
                   ⏳ 倒计时
@@ -6680,15 +7049,15 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 
                 {/* 倒计时内容 */}
                 {timerMode === 'countdown' && (
-                  <div className="p-4 rounded-2xl" style={{ backgroundColor: '#E0F2F1' }}>
+                  <div className="p-4 rounded-2xl" style={{ backgroundColor: '#F8E8FF' }}>
                     <div className="text-center mb-4">
                       <div className="text-4xl mb-2">⏳</div>
-                      <div className="font-bold text-lg" style={{ color: '#009688' }}>倒计时模式</div>
+                      <div className="font-bold text-lg" style={{ color: '#B066F5' }}>倒计时模式</div>
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">倒计时时长</span>
-                        <span className="text-lg font-bold text-[#009688]">{countdownDuration} 分钟</span>
+                        <span className="text-lg font-bold" style={{ color: '#B066F5' }}>{countdownDuration} 分钟</span>
                       </div>
                       <input
                         type="range"
@@ -6697,9 +7066,9 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         value={countdownDuration}
                         onChange={(e) => setCountdownDuration(Number(e.target.value))}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full h-2 bg-[#B2DFDB] rounded-full appearance-none cursor-pointer accent-[#009688]"
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer"
                         style={{
-                          background: `linear-gradient(to right, #009688 0%, #009688 ${(countdownDuration / 180) * 100}%, #B2DFDB ${(countdownDuration / 180) * 100}%, #B2DFDB 100%)`
+                          background: `linear-gradient(to right, #B066F5 0%, #B066F5 ${(countdownDuration / 180) * 100}%, #E0AAFF ${(countdownDuration / 180) * 100}%, #E0AAFF 100%)`
                         }}
                       />
                       <div className="flex justify-between text-xs text-gray-400">
@@ -6709,7 +7078,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       <button
                         onClick={() => confirmStartTimer('countdown')}
                         className="w-full mt-2 py-3 rounded-xl text-white font-bold text-sm hover:opacity-90 transition-all"
-                        style={{ backgroundColor: '#009688' }}
+                        style={{ backgroundColor: '#B066F5' }}
                       >
                         开始计时
                       </button>
@@ -6835,17 +7204,17 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
   }
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #F0FFF4 0%, #E6FFFA 100%)' }}>
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'linear-gradient(180deg, #FFFAF0 0%, #FFFFFF 100%)' }}>
       {/* 背景装饰 */}
-      <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-teal-100 blur-2xl opacity-50"></div>
-      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-orange-100 blur-xl opacity-40"></div>
+      <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-orange-50 blur-2xl opacity-50"></div>
+      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-amber-50 blur-xl opacity-40"></div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
         {/* 头部 - 随页面滚动 */}
         <div className="pt-8 pb-4 flex justify-between items-end">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-black text-[#2D3436] mb-2">
+              <h2 className="text-2xl font-black mb-4" style={{ color: '#5D4E68', fontWeight: 700 }}>
                 {(() => {
                   const now = new Date();
                   const month = now.getMonth() + 1;
@@ -6855,9 +7224,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                   return `${month}月${date}日 · ${weekday}`;
                 })()}
               </h2>
-              <div className="w-2 h-2 rounded-full bg-orange-200 ring-2 ring-teal-200"></div>
             </div>
-            <p className="text-sm text-gray-500 font-medium">
+            <p className="font-medium" style={{ color: '#9C8DA5', fontSize: '14px' }}>
               {(() => {
                 const hour = new Date().getHours();
                 if (hour >= 5 && hour < 12) {
@@ -6871,13 +7239,131 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             </p>
           </div>
         </div>
+
+        {/* 七彩分类进度条 */}
+        {tasks.length > 0 && (
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-gray-500">任务分类时间分布</span>
+              <span className="text-xs text-gray-400">
+                共 {tasks.reduce((sum, t) => sum + t.duration, 0)} 分钟
+              </span>
+            </div>
+            {/* 进度条 */}
+            <div className="h-3 rounded-full overflow-hidden flex bg-gray-100">
+              {(() => {
+                const categoryTotals: Record<string, number> = {};
+                const totalDuration = tasks.reduce((sum, t) => sum + t.duration, 0);
+                
+                tasks.forEach(task => {
+                  const catId = task.categoryId || 'uncategorized';
+                  categoryTotals[catId] = (categoryTotals[catId] || 0) + task.duration;
+                });
+                
+                const categoryColors: Record<string, string> = {
+                  work: '#FF8CA1',
+                  study: '#FFD23F',
+                  sleep: '#6CB6FF',
+                  life: '#B589F6',
+                  rest: '#42D4A4',
+                  entertainment: '#FF9F1C',
+                  health: '#22d3ee',
+                  hobby: '#f472b6',
+                  uncategorized: '#9ca3af'
+                };
+                
+                const categoryLabels: Record<string, string> = {
+                  work: '工作',
+                  study: '学习',
+                  sleep: '睡眠',
+                  life: '生活',
+                  rest: '休息',
+                  entertainment: '娱乐',
+                  health: '健康',
+                  hobby: '兴趣',
+                  uncategorized: '待分类'
+                };
+                
+                // 按累计时间从多到少排序
+                const sortedCategories = Object.entries(categoryTotals)
+                  .sort(([, a], [, b]) => b - a);
+                
+                return sortedCategories.map(([catId, duration]) => {
+                  const percentage = totalDuration > 0 ? (duration / totalDuration) * 100 : 0;
+                  return (
+                    <div
+                      key={catId}
+                      className="h-full transition-all duration-500"
+                      style={{
+                        width: `${percentage}%`,
+                        backgroundColor: categoryColors[catId] || '#9ca3af',
+                        minWidth: percentage > 0 ? '4px' : '0'
+                      }}
+                      title={`${categoryLabels[catId] || catId}: ${duration}分钟 (${percentage.toFixed(1)}%)`}
+                    />
+                  );
+                });
+              })()}
+            </div>
+            {/* 图例 */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {(() => {
+                const categoryTotals: Record<string, number> = {};
+                tasks.forEach(task => {
+                  const catId = task.categoryId || 'uncategorized';
+                  categoryTotals[catId] = (categoryTotals[catId] || 0) + task.duration;
+                });
+                
+                const categoryColors: Record<string, string> = {
+                  work: '#FF8CA1',
+                  study: '#FFD23F',
+                  sleep: '#6CB6FF',
+                  life: '#B589F6',
+                  rest: '#42D4A4',
+                  entertainment: '#FF9F1C',
+                  health: '#22d3ee',
+                  hobby: '#f472b6',
+                  uncategorized: '#9ca3af'
+                };
+                
+                const categoryLabels: Record<string, string> = {
+                  work: '工作',
+                  study: '学习',
+                  sleep: '睡眠',
+                  life: '生活',
+                  rest: '休息',
+                  entertainment: '娱乐',
+                  health: '健康',
+                  hobby: '兴趣',
+                  uncategorized: '待分类'
+                };
+                
+                // 按累计时间从多到少排序
+                const sortedCategories = Object.entries(categoryTotals)
+                  .sort(([, a], [, b]) => b - a);
+                
+                return sortedCategories.map(([catId, duration]) => (
+                  <div key={catId} className="flex items-center gap-1">
+                    <div 
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: categoryColors[catId] || '#9ca3af' }}
+                    />
+                    <span className="text-[10px] text-gray-500">
+                      {categoryLabels[catId] || catId} {duration}min
+                    </span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
         {/* 添加任务 */}
         <div className="bg-white/80 backdrop-blur-sm rounded-[2rem] p-5 shadow-sm mb-6">
           <div className="mb-4">
             {tasks.map((task, index) => (
               <div 
                 key={task.id} 
-                className={`flex items-center gap-3 py-3 ${index < tasks.length - 1 ? 'border-b border-teal-100' : ''} ${
+                className={`flex items-center gap-3 py-3 ${index < tasks.length - 1 ? 'border-b' : ''} ${
                   flyingTaskId === task.id ? 'animate-fly-in' : ''
                 }`}
                 style={flyingTaskId === task.id ? {
@@ -6892,7 +7378,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         type="text"
                         value={editTaskName}
                         onChange={(e) => setEditTaskName(e.target.value)}
-                        className="w-full bg-white rounded-lg px-3 py-2 text-sm outline-none border-2 border-teal-200 focus:ring-2 focus:ring-teal-300"
+                        className="w-full bg-white rounded-lg px-3 py-2 text-sm outline-none border-2 focus:ring-2"
+                        style={{ borderColor: '#E0AAFF' }}
                         placeholder="任务名称"
                         onKeyPress={(e) => {
                           if (e.key === 'Enter') {
@@ -6904,7 +7391,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         autoFocus
                       />
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-teal-600 whitespace-nowrap">时长</span>
+                        <span className="text-xs font-bold whitespace-nowrap" style={{ color: '#B066F5' }}>时长</span>
                         <input
                           type="range"
                           min="1"
@@ -6913,11 +7400,11 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           onChange={(e) => setEditTaskDuration(Number(e.target.value))}
                           className="flex-1 h-1 rounded-lg appearance-none cursor-pointer"
                           style={{
-                            background: `linear-gradient(to right, #A8E6CF 0%, #42E2B8 100%)`,
+                            background: `linear-gradient(to right, #E0AAFF 0%, #B066F5 100%)`,
                             outline: 'none'
                           }}
                         />
-                        <span className="text-xs font-bold text-teal-700 w-16 text-right">
+                        <span className="text-xs font-bold w-16 text-right" style={{ color: '#B066F5' }}>
                           {editTaskDuration >= 60 
                             ? `${Math.floor(editTaskDuration / 60)}h${editTaskDuration % 60 > 0 ? editTaskDuration % 60 + 'm' : ''}`
                             : `${editTaskDuration}min`
@@ -6928,7 +7415,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                     <div className="flex gap-1">
                       <button 
                         onClick={saveEditTask}
-                        className="text-teal-500 hover:text-teal-700 p-1 transition-colors"
+                        className="p-1 transition-colors hover:opacity-80"
+                        style={{ color: '#B066F5' }}
                         title="保存"
                       >
                         <Check size={16} />
@@ -6945,26 +7433,63 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 ) : (
                   // 显示模式
                   <>
-                    <div className="flex-1 flex items-center gap-3">
-                      <span className="text-lg font-semibold text-[#2D3436]">{task.name}</span>
-                      <span className="px-2 py-1 bg-[#CFF5E7] text-[#009688] text-xs font-medium rounded-full">
-                        {task.duration >= 60 
-                          ? `${Math.floor(task.duration / 60)}h${task.duration % 60 > 0 ? task.duration % 60 + 'm' : ''}`
-                          : `${task.duration}min`
-                        }
-                      </span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg font-semibold text-[#2D3436]">{task.name}</span>
+                        <span className="text-sm font-bold" style={{ color: '#B066F5' }}>
+                          {task.duration >= 60 
+                            ? `${Math.floor(task.duration / 60)}h${task.duration % 60 > 0 ? task.duration % 60 + 'm' : ''}`
+                            : `${task.duration}min`
+                          }
+                        </span>
+                      </div>
+                      {/* 分类选择器 */}
+                      <div className="flex items-center gap-1 mt-2 flex-wrap">
+                        {[
+                          { id: 'work', label: '工作', color: '#FF8CA1' },
+                          { id: 'study', label: '学习', color: '#FFD23F' },
+                          { id: 'life', label: '生活', color: '#B589F6' },
+                          { id: 'rest', label: '休息', color: '#42D4A4' },
+                          { id: 'entertainment', label: '娱乐', color: '#FF9F1C' },
+                          { id: 'health', label: '健康', color: '#22d3ee' },
+                          { id: 'hobby', label: '兴趣', color: '#f472b6' },
+                        ].map(cat => {
+                          const isSelected = task.categoryId === cat.id;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => updateTask(task.id, task.name, task.duration, cat.id as CategoryId)}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
+                                isSelected 
+                                  ? 'text-white shadow-sm' 
+                                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                              }`}
+                              style={isSelected ? { backgroundColor: cat.color } : {}}
+                            >
+                              {cat.label}
+                            </button>
+                          );
+                        })}
+                        {(!task.categoryId || task.categoryId === 'uncategorized') && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-500 animate-pulse">
+                            AI分类中...
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       <button 
                         onClick={() => startEditTask(task)}
-                        className="text-teal-400 hover:text-teal-600 p-1 transition-colors"
+                        className="p-1 transition-colors hover:opacity-80"
+                        style={{ color: '#B066F5' }}
                         title="编辑"
                       >
                         <Edit3 size={16} />
                       </button>
                       <button 
                         onClick={() => removeTask(task.id)}
-                        className="text-teal-300 hover:text-red-400 p-1 transition-colors"
+                        className="p-1 transition-colors hover:text-red-400"
+                        style={{ color: '#E0AAFF' }}
                         title="删除"
                       >
                         <X size={16} />
@@ -6982,8 +7507,11 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               value={newTaskName}
               onChange={(e) => setNewTaskName(e.target.value)}
               placeholder="输入今天想做的事，AI 帮你规划行程～"
-              className="w-full rounded-xl px-4 py-3 text-base outline-none border-2 border-teal-200 focus:ring-2 focus:ring-teal-300 shadow-sm resize-none"
-              style={{ background: 'rgba(255, 255, 255, 0.6)' }}
+              className="w-full rounded-xl px-4 py-3 text-base outline-none border focus:ring-2 shadow-sm resize-none"
+              style={{ 
+                borderColor: '#E0AAFF',
+                backgroundColor: '#FFFFFF'
+              }}
               rows={2}
               onKeyPress={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && newTaskName.trim()) {
@@ -6995,7 +7523,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             
             {/* 时长选择 */}
             <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-teal-600 whitespace-nowrap">预计时长</span>
+              <span className="text-sm font-bold whitespace-nowrap" style={{ color: '#B066F5' }}>预计时长</span>
               <div className="flex-1 flex items-center gap-2">
                 <input
                   type="range"
@@ -7005,11 +7533,11 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                   onChange={(e) => setNewTaskDuration(Number(e.target.value))}
                   className="flex-1 h-2 rounded-lg appearance-none cursor-pointer"
                   style={{
-                    background: `linear-gradient(to right, #A8E6CF 0%, #42E2B8 100%)`,
+                    background: `linear-gradient(to right, #E0AAFF 0%, #B066F5 100%)`,
                     outline: 'none'
                   }}
                 />
-                <span className="text-sm font-black text-teal-700 w-20 text-right">
+                <span className="text-sm font-black w-20 text-right" style={{ color: '#B066F5' }}>
                   {newTaskDuration >= 60 
                     ? `${Math.floor(newTaskDuration / 60)}h${newTaskDuration % 60 > 0 ? newTaskDuration % 60 + 'm' : ''}`
                     : `${newTaskDuration}min`
@@ -7020,29 +7548,36 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
             {/* 快捷时长选择 */}
             <div className="flex gap-2 flex-wrap">
-              {[15, 30, 60, 120, 180, 240].map(duration => (
-                <button
-                  key={duration}
-                  onClick={() => {
-                    if (newTaskName.trim()) {
-                      // 输入框有内容时，直接添加任务
-                      addTask(newTaskName, duration);
-                    } else {
-                      // 输入框为空时，只设置时长
-                      setNewTaskDuration(duration);
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                    newTaskDuration === duration && !newTaskName.trim()
-                      ? 'bg-teal-500 text-white shadow-md'
-                      : newTaskName.trim()
-                        ? 'bg-teal-100 text-teal-700 hover:bg-teal-500 hover:text-white hover:shadow-md'
-                        : 'bg-teal-50 text-teal-600 hover:bg-teal-100'
-                  }`}
-                >
-                  {duration >= 60 ? `${duration / 60}h` : `${duration}min`}
-                </button>
-              ))}
+              {[15, 30, 60, 120, 180, 240].map(duration => {
+                const isSelected = newTaskDuration === duration && !newTaskName.trim();
+                return (
+                  <button
+                    key={duration}
+                    onClick={() => {
+                      if (newTaskName.trim()) {
+                        // 输入框有内容时，直接添加任务
+                        addTask(newTaskName, duration);
+                      } else {
+                        // 输入框为空时，只设置时长
+                        setNewTaskDuration(duration);
+                      }
+                    }}
+                    className="px-3 py-1 rounded-full text-xs font-bold transition-all border"
+                    style={isSelected ? {
+                      backgroundColor: '#B066F5',
+                      color: '#FFFFFF',
+                      borderColor: '#B066F5',
+                      boxShadow: '0 4px 10px rgba(176, 102, 245, 0.3)'
+                    } : {
+                      backgroundColor: '#FFFFFF',
+                      color: '#B066F5',
+                      borderColor: '#E0AAFF'
+                    }}
+                  >
+                    {duration >= 60 ? `${duration / 60}h` : `${duration}min`}
+                  </button>
+                );
+              })}
             </div>
 
             {/* 添加按钮 */}
@@ -7053,8 +7588,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                 }
               }}
               disabled={!newTaskName.trim()}
-              className="w-full h-12 rounded-xl flex items-center justify-center text-white font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#55EFC4' }}
+              className="w-full h-12 rounded-xl flex items-center justify-center font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed border-2"
+              style={{ 
+                borderColor: '#E0AAFF',
+                backgroundColor: '#F8E8FF',
+                color: '#B066F5'
+              }}
             >
               <Plus size={20} className="mr-2" />
               添加任务
@@ -7063,9 +7602,9 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         </div>
 
         {/* 状态设置（折叠组） */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6 border-2 border-teal-100">
+        <div className="bg-white rounded-3xl p-5 shadow-sm mb-6">
           <h3 className="font-black text-[#2D3436] flex items-center gap-2">
-            <Brain size={20} className="text-teal-500" />
+            <Brain size={20} style={{ color: '#B066F5' }} />
             状态设置
           </h3>
           
@@ -7076,7 +7615,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
               </p>
               <button 
                 onClick={() => setIsStatusSectionExpanded(true)}
-                className="inline-flex items-center gap-1 text-xs text-teal-500 font-bold hover:text-teal-600 transition-colors"
+                className="inline-flex items-center gap-1 text-xs font-bold transition-colors hover:opacity-80"
+                style={{ color: '#B066F5' }}
               >
                 展开设置
                 <ChevronRight size={14} className="rotate-90" />
@@ -7107,9 +7647,14 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       })}
                       className={`p-3 rounded-2xl border-2 transition-all ${
                         lifestyle[item.key as keyof typeof lifestyle]
-                          ? 'bg-green-50 border-green-200 text-green-700'
+                          ? 'border-2'
                           : 'bg-gray-50 border-gray-200 text-gray-500'
                       }`}
+                      style={lifestyle[item.key as keyof typeof lifestyle] ? {
+                        backgroundColor: '#F8E8FF',
+                        borderColor: '#E0AAFF',
+                        color: '#B066F5'
+                      } : {}}
                     >
                       <div className="text-lg mb-1">{item.icon}</div>
                       <div className="text-xs font-bold">{item.label}</div>
@@ -7289,8 +7834,8 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           disabled={tasks.length === 0 || isGenerating}
           className="font-bold"
           style={{ 
-            background: 'linear-gradient(135deg, #42E695 0%, #3BB2B8 100%)',
-            boxShadow: '0 10px 25px rgba(66, 230, 149, 0.4)',
+            background: 'linear-gradient(135deg, #B066F5 0%, #9B4DE0 100%)',
+            boxShadow: '0 10px 25px rgba(176, 102, 245, 0.4)',
             color: '#FFFFFF'
           }}
         >
@@ -8091,6 +8636,28 @@ END:VEVENT
                 <h3 className="font-semibold" style={{ color: '#5D4037' }}>数据管理</h3>
                 <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
                   共 {timeRecords.length} 条记录
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 获取最新版本 - 用于主屏幕 Web App 模式 */}
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <RefreshCw size={24} style={{ color: '#FFA000' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>获取最新版本</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  重新加载应用获取最新内容
                 </p>
               </div>
             </div>
@@ -9116,37 +9683,51 @@ END:VEVENT
               return (
                 <div className="flex-1 overflow-y-auto space-y-3">
                   {uniqueEvents.map((event: any) => {
+                    const currentCategory = event.categoryId || 'uncategorized';
+                    const currentCatInfo = currentCategory === 'uncategorized' 
+                      ? { icon: '📁', label: '待分类', color: '#9ca3af' }
+                      : timeCategories.find(c => c.id === currentCategory) || { icon: '📁', label: '待分类', color: '#9ca3af' };
+                    
                     return (
                       <div key={event.normalizedName} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-gray-700">{event.normalizedName}</span>
-                          </div>
-                          <select
-                            value={event.categoryId || 'uncategorized'}
-                            onChange={(e) => {
-                              const newCategoryId = e.target.value as CategoryId;
-                              const normalizedName = event.normalizedName;
-                              
-                              // 更新所有同名的timeRecords（移除emoji后比较）
-                              setTimeRecords(timeRecords.map(r => 
-                                removeEmoji(r.name) === normalizedName ? { ...r, categoryId: newCategoryId } : r
-                              ));
-                              
-                              // 更新所有同名的globalTimers（移除emoji后比较）
-                              setGlobalTimers(prev => prev.map(t => 
-                                removeEmoji(t.name) === normalizedName ? { ...t, categoryId: newCategoryId } : t
-                              ));
-                            }}
-                            className="bg-white border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:border-purple-300"
-                          >
-                            <option value="uncategorized">📁 待分类</option>
-                            {timeCategories.map(cat => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.icon} {cat.label}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-gray-700">{event.normalizedName}</span>
+                          <span className="text-xs text-gray-400">
+                            当前：{currentCatInfo.icon} {currentCatInfo.label}
+                          </span>
+                        </div>
+                        
+                        {/* 分类选择按钮列表 */}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {timeCategories.map(cat => (
+                            <button
+                              key={cat.id}
+                              onClick={() => {
+                                const newCategoryId = cat.id as CategoryId;
+                                const normalizedName = event.normalizedName;
+                                
+                                setTimeRecords(timeRecords.map(r => 
+                                  removeEmoji(r.name) === normalizedName ? { ...r, categoryId: newCategoryId } : r
+                                ));
+                                
+                                setGlobalTimers(prev => prev.map(t => 
+                                  removeEmoji(t.name) === normalizedName ? { ...t, categoryId: newCategoryId } : t
+                                ));
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                currentCategory === cat.id
+                                  ? 'ring-2'
+                                  : 'hover:opacity-80'
+                              }`}
+                              style={{ 
+                                backgroundColor: currentCategory === cat.id ? cat.color + '30' : cat.color + '15',
+                                color: cat.color,
+                                boxShadow: currentCategory === cat.id ? `0 0 0 2px ${cat.color}` : 'none'
+                              }}
+                            >
+                              {cat.icon} {cat.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     );
@@ -9620,7 +10201,7 @@ export default function App() {
     }
     return null;
   });
-  const [planTasks, setPlanTasks] = useState<Array<{id: string, name: string, duration: number}>>(() => {
+  const [planTasks, setPlanTasks] = useState<Array<{id: string, name: string, duration: number, categoryId?: CategoryId}>>(() => {
     const saved = localStorage.getItem('planTasks');
     return saved ? JSON.parse(saved) : [];
   });
