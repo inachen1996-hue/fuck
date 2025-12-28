@@ -6097,6 +6097,11 @@ const PlanView = ({
   };
 
   const generateSchedule = async () => {
+    // 如果有正在进行的计时，先停止并保存记录
+    if (timerStatus === 'running' || timerStatus === 'paused') {
+      stopTimer();
+    }
+    
     setIsGenerating(true);
     setStep('generating');
     setGeneratingStatus('准备发送请求...');
@@ -6458,7 +6463,13 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
         {/* 头部 */}
         <div className="px-6 pt-8 pb-4 flex justify-between items-center">
           <button 
-            onClick={() => setStep('setup')}
+            onClick={() => {
+              // 如果有正在进行的计时，先停止并保存记录
+              if (timerStatus === 'running' || timerStatus === 'paused') {
+                stopTimer();
+              }
+              setStep('setup');
+            }}
             className="text-gray-400 hover:text-gray-600 p-2 -ml-2"
           >
             <ChevronLeft size={24} />
@@ -6833,6 +6844,10 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             ) : (
               <Button 
                 onClick={() => {
+                  // 如果有正在进行的计时，先停止并保存记录
+                  if (timerStatus === 'running' || timerStatus === 'paused') {
+                    stopTimer();
+                  }
                   // 用当前scheduleData中的任务更新tasks，保留用户的修改
                   if (scheduleData?.schedule) {
                     const updatedTasks = scheduleData.schedule
