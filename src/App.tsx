@@ -782,7 +782,9 @@ const TimerView = ({
   globalTimers,
   setGlobalTimers,
   categories,
-  setCategories
+  setCategories,
+  idealTimeAllocation,
+  setIdealTimeAllocation
 }: {
   selectedCategory?: CategoryId;
   setSelectedCategory?: (category: CategoryId) => void;
@@ -792,6 +794,8 @@ const TimerView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
+  idealTimeAllocation: Record<string, number>;
+  setIdealTimeAllocation: (allocation: Record<string, number>) => void;
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryId>(propSelectedCategory || 'work');
   // 同步外部传入的selectedCategory
@@ -1220,13 +1224,19 @@ const TimerView = ({
 
   const addCategory = () => {
     if (newCategoryName.trim()) {
+      const newCategoryId = `custom_${Date.now()}`;
       const newCategory: Category = {
-        id: `custom_${Date.now()}`,
+        id: newCategoryId,
         label: newCategoryName.trim(),
         color: newCategoryColor,
         isCustom: true
       };
       setCategories([...categories, newCategory]);
+      // 同时在理想时间配比中添加该分类，默认1小时
+      setIdealTimeAllocation({
+        ...idealTimeAllocation,
+        [newCategoryId]: 1
+      });
       setNewCategoryName('');
       setNewCategoryColor('#FF8CA1');
       setShowNewCategoryModal(false);
@@ -2503,6 +2513,10 @@ const TimerView = ({
                               handleCategoryChange(remainingCategories[0].id as CategoryId);
                             }
                             setCategories(categories.filter(c => c.id !== cat.id));
+                            // 同时从理想时间配比中移除该分类
+                            const newAllocation = { ...idealTimeAllocation };
+                            delete newAllocation[cat.id];
+                            setIdealTimeAllocation(newAllocation);
                           }}
                           className="w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                         >
@@ -2567,13 +2581,19 @@ const TimerView = ({
               <Button 
                 onClick={() => {
                   if (newCategoryName.trim()) {
+                    const newCategoryId = `custom_${Date.now()}`;
                     const newCategory: Category = {
-                      id: `custom_${Date.now()}`,
+                      id: newCategoryId,
                       label: newCategoryName.trim(),
                       color: newCategoryColor,
                       isCustom: true
                     };
                     setCategories([...categories, newCategory]);
+                    // 同时在理想时间配比中添加该分类，默认1小时
+                    setIdealTimeAllocation({
+                      ...idealTimeAllocation,
+                      [newCategoryId]: 1
+                    });
                     setNewCategoryName('');
                     setNewCategoryColor('#FF8CA1');
                     // 滚动到底部显示新添加的分类
@@ -3172,7 +3192,8 @@ const ReviewView = ({
   setTimeRecords,
   globalTimers: _globalTimers,
   setGlobalTimers,
-  idealTimeAllocation 
+  idealTimeAllocation,
+  categories
 }: { 
   journals: Journal[]; 
   timeRecords: TimeRecord[];
@@ -3180,6 +3201,7 @@ const ReviewView = ({
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   idealTimeAllocation: Record<string, number>;
+  categories: Category[];
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
@@ -3310,17 +3332,18 @@ const ReviewView = ({
     }));
   };
 
-  // 时间分类配置
-  const timeCategories = [
-    { id: 'work', label: '工作', color: '#FF8CA1', icon: '💼' },
-    { id: 'study', label: '学习', color: '#FFD23F', icon: '📚' },
-    { id: 'sleep', label: '睡眠', color: '#6CB6FF', icon: '😴' },
-    { id: 'life', label: '生活', color: '#B589F6', icon: '🏠' },
-    { id: 'rest', label: '休息', color: '#42D4A4', icon: '☕' },
-    { id: 'entertainment', label: '娱乐', color: '#FF9F1C', icon: '🎮' },
-    { id: 'health', label: '健康', color: '#22d3ee', icon: '🏃' },
-    { id: 'hobby', label: '兴趣', color: '#f472b6', icon: '🎨' }
-  ];
+  // 时间分类配置 - 合并预定义分类和自定义分类
+  const defaultCategoryIcons: Record<string, string> = {
+    work: '💼', study: '📚', sleep: '😴', life: '🏠', 
+    rest: '☕', entertainment: '🎮', health: '🏃', hobby: '🎨'
+  };
+  
+  const timeCategories = categories.map(cat => ({
+    id: cat.id,
+    label: cat.label,
+    color: cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af',
+    icon: defaultCategoryIcons[cat.id] || '📁'
+  }));
 
   // 心情映射
   const moodMap: Record<string, string> = {
@@ -5082,7 +5105,8 @@ const PlanView = ({
   timeRecords,
   setTimeRecords,
   globalTimers,
-  setGlobalTimers
+  setGlobalTimers,
+  categories
 }: { 
   pomodoroSettings: PomodoroSettings;
   step: 'setup' | 'generating' | 'schedule';
@@ -5119,6 +5143,7 @@ const PlanView = ({
   setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
+  categories: Category[];
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
@@ -7445,16 +7470,9 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       </div>
                       {/* 分类选择器 */}
                       <div className="flex items-center gap-1 mt-2 flex-wrap">
-                        {[
-                          { id: 'work', label: '工作', color: '#FF8CA1' },
-                          { id: 'study', label: '学习', color: '#FFD23F' },
-                          { id: 'life', label: '生活', color: '#B589F6' },
-                          { id: 'rest', label: '休息', color: '#42D4A4' },
-                          { id: 'entertainment', label: '娱乐', color: '#FF9F1C' },
-                          { id: 'health', label: '健康', color: '#22d3ee' },
-                          { id: 'hobby', label: '兴趣', color: '#f472b6' },
-                        ].map(cat => {
+                        {categories.map(cat => {
                           const isSelected = task.categoryId === cat.id;
+                          const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
                           return (
                             <button
                               key={cat.id}
@@ -7464,7 +7482,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                                   ? 'text-white shadow-sm' 
                                   : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                               }`}
-                              style={isSelected ? { backgroundColor: cat.color } : {}}
+                              style={isSelected ? { backgroundColor: catColor } : {}}
                             >
                               {cat.label}
                             </button>
@@ -8052,7 +8070,8 @@ const SettingsView = ({
   idealTimeAllocation,
   setIdealTimeAllocation,
   globalTimers,
-  setGlobalTimers
+  setGlobalTimers,
+  categories
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -8064,6 +8083,7 @@ const SettingsView = ({
   setIdealTimeAllocation: (allocation: Record<string, number>) => void;
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
+  categories: Category[];
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
@@ -8081,17 +8101,18 @@ const SettingsView = ({
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
   
-  // 时间分类配置
-  const timeCategories = [
-    { id: 'work', label: '工作', color: '#FF8CA1', icon: '💼' },
-    { id: 'study', label: '学习', color: '#FFD23F', icon: '📚' },
-    { id: 'rest', label: '休息', color: '#42D4A4', icon: '☕' },
-    { id: 'sleep', label: '睡眠', color: '#6CB6FF', icon: '😴' },
-    { id: 'life', label: '生活', color: '#B589F6', icon: '🏠' },
-    { id: 'entertainment', label: '娱乐', color: '#FF9F1C', icon: '🎮' },
-    { id: 'health', label: '健康', color: '#22d3ee', icon: '🏃' },
-    { id: 'hobby', label: '兴趣', color: '#f472b6', icon: '🎨' }
-  ];
+  // 时间分类配置 - 合并预定义分类和自定义分类
+  const defaultCategoryIcons: Record<string, string> = {
+    work: '💼', study: '📚', sleep: '😴', life: '🏠', 
+    rest: '☕', entertainment: '🎮', health: '🏃', hobby: '🎨'
+  };
+  
+  const timeCategories = categories.map(cat => ({
+    id: cat.id,
+    label: cat.label,
+    color: cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af',
+    icon: defaultCategoryIcons[cat.id] || '📁'
+  }));
   
   // 计算已分配时间
   const totalAllocatedTime = Object.values(idealTimeAllocation).reduce((sum, val) => sum + val, 0);
@@ -10259,17 +10280,25 @@ export default function App() {
     localStorage.setItem('planBodyStatus', planBodyStatus);
   }, [planBodyStatus]);
 
-  // 全局理想时间配比状态
-  const [idealTimeAllocation, setIdealTimeAllocation] = useState<Record<string, number>>({
-    work: 8,
-    study: 2,
-    rest: 1,
-    sleep: 7,
-    life: 2,
-    entertainment: 2,
-    health: 1,
-    hobby: 1
+  // 全局理想时间配比状态 - 持久化到localStorage
+  const [idealTimeAllocation, setIdealTimeAllocation] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('idealTimeAllocation');
+    return saved ? JSON.parse(saved) : {
+      work: 8,
+      study: 2,
+      rest: 1,
+      sleep: 7,
+      life: 2,
+      entertainment: 2,
+      health: 1,
+      hobby: 1
+    };
   });
+
+  // 持久化idealTimeAllocation到localStorage
+  useEffect(() => {
+    localStorage.setItem('idealTimeAllocation', JSON.stringify(idealTimeAllocation));
+  }, [idealTimeAllocation]);
 
   // 全局计时器完成检测 - 在任何页面都能播放铃声
   useEffect(() => {
@@ -10352,9 +10381,9 @@ export default function App() {
 
   const renderView = () => {
     switch (activeTab) {
-      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} />;
+      case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -10379,9 +10408,10 @@ export default function App() {
         setTimeRecords={setTimeRecords}
         globalTimers={globalTimers}
         setGlobalTimers={setGlobalTimers}
+        categories={categories}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} />;
-      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} />;
+      default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
 
