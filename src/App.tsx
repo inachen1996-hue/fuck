@@ -74,6 +74,7 @@ interface Journal {
   mood: string | null;
   content: string;
   images: string[];
+  updatedAt?: number; // 编辑时间
 }
 
 interface CurrentJournal {
@@ -1889,7 +1890,13 @@ const TimerView = ({
                           {timer.icon}
                         </div>
                         <div className="flex items-center justify-center gap-2.5 w-full px-1">
-                          <h4 className="text-sm font-bold text-[#2D2D2D] truncate">{timer.name}</h4>
+                          <h4 className="text-sm font-bold text-[#2D2D2D] text-center leading-tight" style={{ 
+                            wordBreak: 'break-all',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                          }}>{timer.name}</h4>
                           <Play size={12} fill={theme.primary} style={{ color: theme.primary, flexShrink: 0 }} />
                         </div>
                       </div>
@@ -2712,22 +2719,24 @@ const JournalView = ({
     if (!currentJournal.content.trim()) return;
     
     const journalDate = dateStrToTimestamp(editingJournalDate);
+    const now = Date.now();
     
     if (editingJournalId) {
       // 编辑现有日记
       setJournals(journals.map(j => 
         j.id === editingJournalId 
-          ? { ...j, date: journalDate, mood: currentJournal.mood, content: currentJournal.content, images: currentJournal.images }
+          ? { ...j, date: journalDate, mood: currentJournal.mood, content: currentJournal.content, images: currentJournal.images, updatedAt: now }
           : j
       ));
     } else {
       // 新增日记
-      const newJournal = {
+      const newJournal: Journal = {
         id: Date.now().toString(),
         date: journalDate,
         mood: currentJournal.mood,
         content: currentJournal.content,
-        images: currentJournal.images
+        images: currentJournal.images,
+        updatedAt: now
       };
       setJournals([newJournal, ...journals]);
     }
@@ -2991,7 +3000,9 @@ const JournalView = ({
                   <div className="space-y-3 ml-1">
                     {dateJournals.map(journal => {
                       const mood = moods.find(m => m.id === journal.mood);
-                      const timeStr = new Date(journal.date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                      // 优先显示编辑时间，否则显示创建时间
+                      const displayTime = journal.updatedAt || journal.date;
+                      const timeStr = new Date(displayTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
                       const isThisSwiped = swipedJournalId === journal.id;
                       const swipeOffset = isSwiping && isThisSwiped ? Math.min(0, touchCurrentX - touchStartX) : (isThisSwiped ? -80 : 0);
                       
@@ -8184,6 +8195,7 @@ const SettingsView = ({
   const [newRecordDate, setNewRecordDate] = useState('');
   const [newRecordStartTime, setNewRecordStartTime] = useState('');
   const [newRecordEndTime, setNewRecordEndTime] = useState('');
+  const [newRecordCategoryId, setNewRecordCategoryId] = useState<string>('uncategorized');
 
   const showToastMessage = (msg: string) => {
     setToastMessage(msg);
@@ -8572,6 +8584,7 @@ END:VEVENT
       startTime: newRecordStartTime,
       endTime: newRecordEndTime,
       source: 'manual',
+      categoryId: newRecordCategoryId as CategoryId,
       createdAt: Date.now()
     };
     
@@ -8588,6 +8601,7 @@ END:VEVENT
     setNewRecordDate('');
     setNewRecordStartTime('');
     setNewRecordEndTime('');
+    setNewRecordCategoryId('uncategorized');
     showToastMessage('添加成功');
   };
 
@@ -8599,6 +8613,7 @@ END:VEVENT
     setNewRecordDate(todayStr);
     setNewRecordStartTime(currentTime);
     setNewRecordEndTime(currentTime);
+    setNewRecordCategoryId('uncategorized');
     setIsAddingRecord(true);
   };
 
@@ -9283,6 +9298,27 @@ END:VEVENT
                     />
                   </div>
                   <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 w-12">分类</label>
+                    <div className="flex-1 flex flex-wrap gap-1">
+                      {categories.map(cat => {
+                        const isSelected = newRecordCategoryId === cat.id;
+                        const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => setNewRecordCategoryId(cat.id)}
+                            className={`px-2 py-1 rounded-full text-xs font-bold transition-all ${
+                              isSelected ? 'text-white' : 'bg-gray-100 text-gray-500'
+                            }`}
+                            style={isSelected ? { backgroundColor: catColor } : {}}
+                          >
+                            {cat.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-500 w-12">日期</label>
                     <input
                       type="date"
@@ -9959,7 +9995,7 @@ END:VEVENT
             <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
               <div className="h-3 bg-gray-200 rounded-full overflow-hidden flex">
                 {timeCategories.map(cat => {
-                  const hours = idealTimeAllocation[cat.id];
+                  const hours = idealTimeAllocation[cat.id] ?? 0;
                   const percentage = (hours / 24) * 100;
                   return percentage > 0 ? (
                     <div 
@@ -9990,7 +10026,7 @@ END:VEVENT
             {/* 分类列表 */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {timeCategories.map(cat => {
-                const hours = idealTimeAllocation[cat.id];
+                const hours = idealTimeAllocation[cat.id] ?? 0;
                 const maxAvailable = 24 - totalAllocatedTime + hours;
                 
                 return (
