@@ -4,7 +4,7 @@ import {
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
   Edit3, X, Camera, ChevronLeft, Check,
-  RefreshCw, Brain, Lightbulb,
+  RefreshCw, Brain,
   ListTodo, Moon, Utensils,
   Download, Upload, Trash2, Database, Search
 } from 'lucide-react';
