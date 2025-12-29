@@ -3204,7 +3204,14 @@ const ReviewView = ({
   globalTimers: _globalTimers,
   setGlobalTimers,
   idealTimeAllocation,
-  categories
+  categories,
+  // 从App传入的生成状态
+  generatingPeriods,
+  setGeneratingPeriods,
+  generatingProgress,
+  setGeneratingProgress,
+  reportHistory,
+  setReportHistory
 }: { 
   journals: Journal[]; 
   timeRecords: TimeRecord[];
@@ -3213,34 +3220,34 @@ const ReviewView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   idealTimeAllocation: Record<string, number>;
   categories: Category[];
-}) => {
-  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
-  const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
-  const [generatingPeriods, setGeneratingPeriods] = useState<Set<string>>(new Set()); // 支持多个时间段同时生成
-  const [generatingProgress, setGeneratingProgress] = useState<Record<string, string>>({}); // 每个时间段的进度
-  
-  // 当前进度时间周期
-  const [progressPeriod, setProgressPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
-  
-  // 复盘历史记录 - 从localStorage加载
-  const [reportHistory, setReportHistory] = useState<Array<{
+  // 从App传入的生成状态类型
+  generatingPeriods: Set<string>;
+  setGeneratingPeriods: React.Dispatch<React.SetStateAction<Set<string>>>;
+  generatingProgress: Record<string, string>;
+  setGeneratingProgress: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  reportHistory: Array<{
     id: string;
     period: 'yesterday' | 'today' | 'week' | 'month' | 'history';
     periodLabel: string;
     dateRange: string;
     createdAt: number;
     report: any;
-  }>>(() => {
-    const saved = localStorage.getItem('aiReportHistory');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  }>;
+  setReportHistory: React.Dispatch<React.SetStateAction<Array<{
+    id: string;
+    period: 'yesterday' | 'today' | 'week' | 'month' | 'history';
+    periodLabel: string;
+    dateRange: string;
+    createdAt: number;
+    report: any;
+  }>>>;
+}) => {
+  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
+  const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
+  
+  // 当前进度时间周期
+  const [progressPeriod, setProgressPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
+  
   const [viewingHistoryReport, setViewingHistoryReport] = useState<any>(null);
   
   // 根据当前时间段获取对应的报告
@@ -3248,11 +3255,6 @@ const ReviewView = ({
     const historyItem = reportHistory.find(h => h.period === aiPeriod);
     return historyItem?.report || null;
   }, [reportHistory, aiPeriod]);
-
-  // 保存reportHistory到localStorage
-  useEffect(() => {
-    localStorage.setItem('aiReportHistory', JSON.stringify(reportHistory));
-  }, [reportHistory]);
 
   // 习惯追踪状态
   const [trackedHabits, setTrackedHabits] = useState<Array<{
@@ -8085,6 +8087,311 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
   );
 };
 
+// AI精力诊断独立页面组件
+const AIChatPage = ({
+  onClose,
+  timeRecords,
+  journals,
+  idealTimeAllocation,
+  categories,
+  aiChatMessages,
+  setAiChatMessages,
+  aiChatInput,
+  setAiChatInput,
+  aiChatLoading,
+  setAiChatLoading
+}: {
+  onClose: () => void;
+  timeRecords: TimeRecord[];
+  journals: Journal[];
+  idealTimeAllocation: Record<string, number>;
+  categories: Category[];
+  aiChatMessages: Array<{role: 'user' | 'assistant'; content: string}>;
+  setAiChatMessages: React.Dispatch<React.SetStateAction<Array<{role: 'user' | 'assistant'; content: string}>>>;
+  aiChatInput: string;
+  setAiChatInput: React.Dispatch<React.SetStateAction<string>>;
+  aiChatLoading: boolean;
+  setAiChatLoading: React.Dispatch<React.SetStateAction<boolean>>;
+}) => {
+  // 时间分类配置
+  const defaultCategoryIcons: Record<string, string> = {
+    work: '💼', study: '📚', sleep: '😴', life: '🏠', 
+    rest: '☕', entertainment: '🎮', health: '🏃', hobby: '🎨'
+  };
+  
+  const timeCategories = categories.map(cat => ({
+    id: cat.id,
+    label: cat.label,
+    color: cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af',
+    icon: defaultCategoryIcons[cat.id] || '📁'
+  }));
+
+  // 清理 Markdown 格式的函数
+  const cleanMarkdown = (text: string): string => {
+    return text
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^\s*[\*\-]\s+/gm, '• ')
+      .replace(/^\s*\d+\.\s+/gm, (match) => match.trim() + ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  // AI对话发送消息
+  const sendAIChatMessage = async () => {
+    if (!aiChatInput.trim() || aiChatLoading) return;
+    
+    const userMessage = aiChatInput.trim();
+    setAiChatInput('');
+    setAiChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setAiChatLoading(true);
+    
+    try {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+      
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgoStr = `${sevenDaysAgo.getFullYear()}-${(sevenDaysAgo.getMonth() + 1).toString().padStart(2, '0')}-${sevenDaysAgo.getDate().toString().padStart(2, '0')}`;
+      const recentRecords = timeRecords.filter(r => r.date >= sevenDaysAgoStr && r.date <= todayStr);
+      
+      const recordsByDate: Record<string, Array<{name: string, minutes: number, categoryId?: string}>> = {};
+      recentRecords.forEach(record => {
+        const start = record.startTime.split(':').map(Number);
+        const end = record.endTime.split(':').map(Number);
+        let minutes = end[0] * 60 + end[1] - start[0] * 60 - start[1];
+        if (minutes < 0) minutes += 24 * 60;
+        if (minutes === 0) minutes = 1;
+        
+        if (!recordsByDate[record.date]) {
+          recordsByDate[record.date] = [];
+        }
+        recordsByDate[record.date].push({ name: record.name, minutes, categoryId: record.categoryId });
+      });
+      
+      const dataSummary = Object.entries(recordsByDate).map(([date, records]) => {
+        const totalMinutes = records.reduce((sum, r) => sum + r.minutes, 0);
+        const byCategory: Record<string, number> = {};
+        records.forEach(r => {
+          const cat = r.categoryId || 'uncategorized';
+          byCategory[cat] = (byCategory[cat] || 0) + r.minutes;
+        });
+        return `${date}: 总计${(totalMinutes / 60).toFixed(1)}小时\n  事件: ${records.map(r => `${r.name}(${r.minutes}分钟)`).join(', ')}\n  分类统计: ${Object.entries(byCategory).map(([cat, mins]) => `${timeCategories.find(c => c.id === cat)?.label || '待分类'}${(mins / 60).toFixed(1)}h`).join(', ')}`;
+      }).join('\n\n');
+      
+      const recentJournals = journals.filter(j => {
+        const journalDate = new Date(j.date);
+        return journalDate >= sevenDaysAgo;
+      }).slice(0, 5);
+      
+      const journalSummary = recentJournals.map(j => {
+        const date = new Date(j.date);
+        const moodMap: Record<string, string> = { happy: '😊开心', calm: '😌平静', sad: '😔难过', excited: '🤩兴奋', tired: '😴疲惫' };
+        return `${date.getMonth() + 1}月${date.getDate()}日 心情:${j.mood ? moodMap[j.mood] || j.mood : '未记录'}\n  ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`;
+      }).join('\n\n');
+      
+      const sleepRecords = recentRecords.filter(r => r.categoryId === 'sleep');
+      const sleepByDate: Record<string, number> = {};
+      sleepRecords.forEach(r => {
+        const start = r.startTime.split(':').map(Number);
+        const end = r.endTime.split(':').map(Number);
+        let minutes = end[0] * 60 + end[1] - start[0] * 60 - start[1];
+        if (minutes < 0) minutes += 24 * 60;
+        sleepByDate[r.date] = (sleepByDate[r.date] || 0) + minutes;
+      });
+      
+      const sleepSummary = Object.entries(sleepByDate).map(([date, mins]) => `${date}: ${(mins / 60).toFixed(1)}小时`).join(', ') || '暂无睡眠记录';
+      
+      const systemPrompt = `你是一位"精力状态鉴别诊断专家"。当用户感到"不想动"时，你的任务是基于客观数据进行鉴别诊断，帮用户区分：这到底是"生理/认知枯竭"（需要休息），还是"心理阻抗/假性疲劳"（需要行动）。
+
+【用户数据】
+最近7天时间记录：
+${dataSummary || '暂无时间记录'}
+
+最近日记：
+${journalSummary || '暂无日记'}
+
+睡眠情况：${sleepSummary}
+
+理想时间配比：${Object.entries(idealTimeAllocation).map(([cat, hours]) => `${timeCategories.find(c => c.id === cat)?.label || cat}${hours}h`).join('、')}
+
+【诊断逻辑】
+1. 生理枯竭判定：睡眠<6小时、有疼痛记录、48小时内高强度输出 → 真累
+2. 认知枯竭判定：大量决策任务后出现"读不进去字"、"卡顿忘事" → 决策疲劳
+3. 假性疲劳判定：对工作喊累但刷手机精力充沛 → 心理阻抗
+
+【回复要求】
+1. 使用纯文本格式，不要使用任何Markdown语法（不要用#、*、**、##等符号）
+2. 用emoji和换行来组织内容，让回复清晰易读
+3. 回复结构：
+   - ⚖️ 诊断结论：明确说是"真累"还是"假累"还是"混合状态"
+   - 📊 证据：引用具体数据支撑结论
+   - 🧪 验真测试（可选）：如果不确定，给一个简单测试方法
+   - 💊 建议：针对性的行动建议
+4. 语气理性坚定，简洁有力，不要啰嗦`;
+
+      const response = await fetch('/api/deepseek', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...aiChatMessages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices[0].message.content;
+      
+      setAiChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
+    } catch (error) {
+      console.error('AI对话失败:', error);
+      setAiChatMessages(prev => [...prev, { role: 'assistant', content: '抱歉，AI响应失败，请稍后重试。' }]);
+    } finally {
+      setAiChatLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: '#F5F5F5' }}>
+      {/* 头部 */}
+      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-gray-100" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+        <button 
+          onClick={onClose}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100"
+        >
+          <ChevronLeft size={24} />
+        </button>
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+            <span className="text-sm font-black" style={{ color: '#FFA000' }}>AI</span>
+          </div>
+          <div>
+            <h3 className="font-bold text-[#2D2D2D]">AI精力诊断</h3>
+            <p className="text-xs text-gray-400">基于你的数据分析精力状态</p>
+          </div>
+        </div>
+      </div>
+      
+      {/* 对话区域 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {aiChatMessages.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+              <span className="text-xl font-black" style={{ color: '#FFA000' }}>AI</span>
+            </div>
+            <h4 className="font-bold text-gray-700 mb-2">你好，我是精力诊断专家</h4>
+            <p className="text-sm text-gray-500 mb-4">
+              我会根据你的时间记录和日记数据，<br/>帮你分析是"真累"还是"假累"
+            </p>
+            <div className="space-y-2">
+              <button 
+                onClick={() => {
+                  setAiChatInput('我感觉很累，不想动，是不是懒？');
+                  setTimeout(() => sendAIChatMessage(), 100);
+                }}
+                className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
+              >
+                💭 我感觉很累，不想动，是不是懒？
+              </button>
+              <button 
+                onClick={() => {
+                  setAiChatInput('帮我分析一下最近的精力状态');
+                  setTimeout(() => sendAIChatMessage(), 100);
+                }}
+                className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
+              >
+                📊 帮我分析一下最近的精力状态
+              </button>
+              <button 
+                onClick={() => {
+                  setAiChatInput('我最近睡眠怎么样？');
+                  setTimeout(() => sendAIChatMessage(), 100);
+                }}
+                className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
+              >
+                😴 我最近睡眠怎么样？
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {aiChatMessages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl ${
+                  msg.role === 'user' 
+                    ? 'bg-amber-500 text-white rounded-br-md' 
+                    : 'bg-white text-gray-700 rounded-bl-md shadow-sm'
+                }`}>
+                  <p className="text-sm whitespace-pre-wrap">{msg.role === 'assistant' ? cleanMarkdown(msg.content) : msg.content}</p>
+                </div>
+              </div>
+            ))}
+            {aiChatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white text-gray-700 p-3 rounded-2xl rounded-bl-md shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {/* 输入区域 */}
+      <div className="bg-white p-4 border-t border-gray-100" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={aiChatInput}
+            onChange={(e) => setAiChatInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendAIChatMessage()}
+            placeholder="输入你的问题..."
+            className="flex-1 h-12 px-4 bg-gray-100 rounded-2xl outline-none text-sm"
+            disabled={aiChatLoading}
+          />
+          <button
+            onClick={sendAIChatMessage}
+            disabled={!aiChatInput.trim() || aiChatLoading}
+            className="w-12 h-12 rounded-2xl flex items-center justify-center text-white disabled:opacity-50 transition-all"
+            style={{ backgroundColor: '#FFA000' }}
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+        {aiChatMessages.length > 0 && (
+          <button
+            onClick={() => setAiChatMessages([])}
+            className="w-full mt-2 text-xs text-gray-400 hover:text-gray-600"
+          >
+            清空对话
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // 设置视图
 const SettingsView = ({ 
   pomodoroSettings, 
@@ -8097,7 +8404,8 @@ const SettingsView = ({
   setIdealTimeAllocation,
   globalTimers,
   setGlobalTimers,
-  categories
+  categories,
+  onOpenAIChat
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -8110,6 +8418,7 @@ const SettingsView = ({
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
+  onOpenAIChat: () => void;
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
@@ -8126,6 +8435,35 @@ const SettingsView = ({
   const [importText, setImportText] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
+  const [showLayoutModal, setShowLayoutModal] = useState(false);
+  
+  // 获取当前布局大小
+  const getCurrentLayoutSize = (): 'large' | 'small' => {
+    const saved = localStorage.getItem('layoutSize');
+    return (saved === 'large' || saved === 'small') ? saved : 'small';
+  };
+  
+  const [layoutSize, setLayoutSize] = useState<'large' | 'small'>(getCurrentLayoutSize);
+  
+  // 应用布局大小
+  const applyLayoutSize = (size: 'large' | 'small') => {
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+      // 大布局：缩小显示，看到更多内容；小布局：正常显示，字体更大
+      const scale = size === 'large' ? 0.85 : 1.0;
+      viewport.setAttribute('content', `width=device-width, initial-scale=${scale}, maximum-scale=${scale}, user-scalable=no, viewport-fit=cover`);
+    }
+    localStorage.setItem('layoutSize', size);
+    setLayoutSize(size);
+  };
+  
+  // 组件挂载时应用保存的布局
+  useEffect(() => {
+    const saved = getCurrentLayoutSize();
+    if (saved === 'large') {
+      applyLayoutSize('large');
+    }
+  }, []);
   
   // 时间分类配置 - 合并预定义分类和自定义分类
   const defaultCategoryIcons: Record<string, string> = {
@@ -8630,6 +8968,28 @@ END:VEVENT
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
         {/* 功能入口统一容器 */}
         <div className="bg-white rounded-[20px] overflow-hidden" style={{ boxShadow: '0 8px 24px rgba(255, 193, 7, 0.15)' }}>
+          {/* AI精力诊断对话 */}
+          <button 
+            onClick={onOpenAIChat}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <span className="text-base font-black" style={{ color: '#FFA000' }}>AI</span>
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>AI精力诊断</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  分析你是真累还是假累
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
           {/* AI计划番茄钟管理入口 */}
           <button 
             onClick={() => setShowPomodoroModal(true)}
@@ -8745,8 +9105,117 @@ END:VEVENT
               {alarmPlayer.isUnlocked() ? '已启用' : '未启用'}
             </div>
           </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 页面布局选择 */}
+          <button 
+            onClick={() => setShowLayoutModal(true)}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)' }}>
+                <Smartphone size={24} style={{ color: '#1976D2' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>页面布局</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  调整页面显示大小
+                </p>
+              </div>
+            </div>
+            <div className="px-3 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: '#E3F2FD', color: '#1976D2' }}>
+              {layoutSize === 'large' ? '大布局' : '小布局'}
+            </div>
+          </button>
         </div>
       </div>
+
+      {/* 页面布局选择弹窗 */}
+      {showLayoutModal && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-white w-[85%] rounded-[2rem] p-6 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-black text-[#2D2D2D]">选择页面布局</h3>
+              <button 
+                onClick={() => setShowLayoutModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-500 mb-4">
+              选择适合你的页面显示大小
+            </p>
+            
+            <div className="space-y-3">
+              {/* 小布局选项 */}
+              <button 
+                onClick={() => {
+                  applyLayoutSize('small');
+                  setShowLayoutModal(false);
+                  showToastMessage('已切换到小布局');
+                }}
+                className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all border-2 ${
+                  layoutSize === 'small' 
+                    ? 'bg-blue-50 border-blue-400' 
+                    : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  layoutSize === 'small' ? 'bg-blue-400' : 'bg-gray-300'
+                }`}>
+                  <span className="text-2xl">📱</span>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`text-sm font-bold ${layoutSize === 'small' ? 'text-blue-700' : 'text-gray-700'}`}>
+                    小布局（默认）
+                  </span>
+                  <p className="text-xs text-gray-400 mt-0.5">字体更大，适合阅读</p>
+                </div>
+                {layoutSize === 'small' && (
+                  <div className="w-6 h-6 bg-blue-400 rounded-full flex items-center justify-center">
+                    <Check size={14} className="text-white" />
+                  </div>
+                )}
+              </button>
+              
+              {/* 大布局选项 */}
+              <button 
+                onClick={() => {
+                  applyLayoutSize('large');
+                  setShowLayoutModal(false);
+                  showToastMessage('已切换到大布局');
+                }}
+                className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all border-2 ${
+                  layoutSize === 'large' 
+                    ? 'bg-blue-50 border-blue-400' 
+                    : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  layoutSize === 'large' ? 'bg-blue-400' : 'bg-gray-300'
+                }`}>
+                  <span className="text-2xl">🖥️</span>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`text-sm font-bold ${layoutSize === 'large' ? 'text-blue-700' : 'text-gray-700'}`}>
+                    大布局
+                  </span>
+                  <p className="text-xs text-gray-400 mt-0.5">显示更多内容，字体较小</p>
+                </div>
+                {layoutSize === 'large' && (
+                  <div className="w-6 h-6 bg-blue-400 rounded-full flex items-center justify-center">
+                    <Check size={14} className="text-white" />
+                  </div>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 数据管理菜单弹窗 */}
       {showDataMenuModal && (
@@ -10171,12 +10640,29 @@ export default function App() {
     localStorage.setItem('activeTab', activeTab);
   }, [activeTab]);
   
+  // 应用启动时恢复布局设置
+  useEffect(() => {
+    const savedLayout = localStorage.getItem('layoutSize');
+    if (savedLayout === 'large') {
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (viewport) {
+        viewport.setAttribute('content', 'width=device-width, initial-scale=0.85, maximum-scale=0.85, user-scalable=no, viewport-fit=cover');
+      }
+    }
+  }, []);
+  
   // 铃声提示弹窗状态
   const [showSoundTip, setShowSoundTip] = useState(() => {
     // 检查是否已经显示过提示
     const hasShown = localStorage.getItem('soundTipShown');
     return !hasShown;
   });
+  
+  // AI精力诊断页面状态（独立页面，不显示tab栏）
+  const [showAIChatPage, setShowAIChatPage] = useState(false);
+  const [aiChatMessages, setAiChatMessages] = useState<Array<{role: 'user' | 'assistant'; content: string}>>([]);
+  const [aiChatInput, setAiChatInput] = useState('');
+  const [aiChatLoading, setAiChatLoading] = useState(false);
   
   // 全局分类数据 - 持久化到localStorage
   const [categories, setCategories] = useState<Category[]>(() => {
@@ -10351,6 +10837,33 @@ export default function App() {
     localStorage.setItem('idealTimeAllocation', JSON.stringify(idealTimeAllocation));
   }, [idealTimeAllocation]);
 
+  // ========== AI复盘报告生成状态（提升到App级别，防止切换tab时中断） ==========
+  const [reviewGeneratingPeriods, setReviewGeneratingPeriods] = useState<Set<string>>(new Set());
+  const [reviewGeneratingProgress, setReviewGeneratingProgress] = useState<Record<string, string>>({});
+  const [reviewReportHistory, setReviewReportHistory] = useState<Array<{
+    id: string;
+    period: 'yesterday' | 'today' | 'week' | 'month' | 'history';
+    periodLabel: string;
+    dateRange: string;
+    createdAt: number;
+    report: any;
+  }>>(() => {
+    const saved = localStorage.getItem('aiReportHistory');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // 保存reviewReportHistory到localStorage
+  useEffect(() => {
+    localStorage.setItem('aiReportHistory', JSON.stringify(reviewReportHistory));
+  }, [reviewReportHistory]);
+
   // 全局计时器完成检测 - 在任何页面都能播放铃声
   useEffect(() => {
     const checkTimerCompletion = () => {
@@ -10434,7 +10947,7 @@ export default function App() {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -10461,7 +10974,7 @@ export default function App() {
         setGlobalTimers={setGlobalTimers}
         categories={categories}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
@@ -10527,125 +11040,144 @@ export default function App() {
 
   return (
     <>
-      {/* 独立的超大背景层 - 120vh高度往上溢出覆盖刘海 */}
-      <div 
-        className="fixed left-0 w-full -z-10"
-        style={{ 
-          background: currentGradient, 
-          height: '120vh',
-          top: '-10vh',
-          backgroundAttachment: 'fixed',
-          transition: 'background 0.5s ease'
-        }} 
-      />
-      
-      {/* 内容层 - 背景透明 */}
-      <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
-      <div className="flex-1 overflow-y-auto pb-24">
-        {renderView()}
-      </div>
-      
-      {/* 底部导航栏 - 直接矩形，无圆角 */}
-      <div 
-        className="fixed bottom-0 left-0 right-0 h-24 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
-      >
-        <div className="flex h-full items-center justify-around px-4">
-            {tabs.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className="flex flex-col items-center justify-center w-16 h-full relative group"
-                >
-                  {/* 选中时的脉冲光晕 */}
-                  {isActive && (
-                    <span 
-                      className="absolute top-2 w-10 h-10 rounded-full opacity-40 animate-ping"
-                      style={{ backgroundColor: tab.color + '30' }}
-                    />
-                  )}
-                  <div 
-                    className={`p-3 rounded-2xl transition-all duration-500 !border-0 !ring-0 !shadow-none !outline-none ${
-                      isActive 
-                        ? 'bg-white -translate-y-3 scale-110' 
-                        : 'hover:bg-white/40'
-                    }`}
-                    style={{ boxShadow: 'none', border: 'none', outline: 'none' }}
-                  >
-                    <Icon 
-                      size={24} 
-                      className="transition-colors duration-300"
-                      style={{ color: isActive ? tab.color : '#94a3b8' }}
-                      strokeWidth={isActive ? 2.5 : 2}
-                    />
-                  </div>
-                  <span 
-                    className={`text-[11px] font-bold mt-1 transition-all duration-300 ${
-                      isActive ? '-translate-y-2' : 'translate-y-0'
-                    }`}
-                    style={{ color: isActive ? tab.color : '#94a3b8' }}
-                  >
-                    {tab.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 铃声启用提示弹窗 */}
-        {showSoundTip && (
+      {/* AI精力诊断独立页面 */}
+      {showAIChatPage ? (
+        <AIChatPage 
+          onClose={() => setShowAIChatPage(false)}
+          timeRecords={timeRecords}
+          journals={journals}
+          idealTimeAllocation={idealTimeAllocation}
+          categories={categories}
+          aiChatMessages={aiChatMessages}
+          setAiChatMessages={setAiChatMessages}
+          aiChatInput={aiChatInput}
+          setAiChatInput={setAiChatInput}
+          aiChatLoading={aiChatLoading}
+          setAiChatLoading={setAiChatLoading}
+        />
+      ) : (
+        <>
+          {/* 独立的超大背景层 - 120vh高度往上溢出覆盖刘海 */}
           <div 
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4"
-            onClick={() => {
-              setShowSoundTip(false);
-              localStorage.setItem('soundTipShown', 'true');
-            }}
+            className="fixed left-0 w-full -z-10"
+            style={{ 
+              background: currentGradient, 
+              height: '120vh',
+              top: '-10vh',
+              backgroundAttachment: 'fixed',
+              transition: 'background 0.5s ease'
+            }} 
+          />
+          
+          {/* 内容层 - 背景透明 */}
+          <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
+          <div className="flex-1 overflow-y-auto pb-24">
+            {renderView()}
+          </div>
+          
+          {/* 底部导航栏 - 直接矩形，无圆角 */}
+          <div 
+            className="fixed bottom-0 left-0 right-0 h-24 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
           >
-            <div 
-              className="bg-white rounded-3xl p-6 w-full max-w-sm animate-scale-in"
-              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="text-center mb-4">
-                <div className="text-5xl mb-3">🔔</div>
-                <h3 className="text-xl font-black text-[#2D3436] mb-2">启用铃声提醒</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">
-                  为了在计时结束时提醒你，请点击下方按钮启用铃声。
-                  <br />
-                  <span className="text-pink-500 font-bold">手机用户必须点击！</span>
-                </p>
+            <div className="flex h-full items-center justify-around px-4">
+                {tabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className="flex flex-col items-center justify-center w-16 h-full relative group"
+                    >
+                      {/* 选中时的脉冲光晕 */}
+                      {isActive && (
+                        <span 
+                          className="absolute top-2 w-10 h-10 rounded-full opacity-40 animate-ping"
+                          style={{ backgroundColor: tab.color + '30' }}
+                        />
+                      )}
+                      <div 
+                        className={`p-3 rounded-2xl transition-all duration-500 !border-0 !ring-0 !shadow-none !outline-none ${
+                          isActive 
+                            ? 'bg-white -translate-y-3 scale-110' 
+                            : 'hover:bg-white/40'
+                        }`}
+                        style={{ boxShadow: 'none', border: 'none', outline: 'none' }}
+                      >
+                        <Icon 
+                          size={24} 
+                          className="transition-colors duration-300"
+                          style={{ color: isActive ? tab.color : '#94a3b8' }}
+                          strokeWidth={isActive ? 2.5 : 2}
+                        />
+                      </div>
+                      <span 
+                        className={`text-[11px] font-bold mt-1 transition-all duration-300 ${
+                          isActive ? '-translate-y-2' : 'translate-y-0'
+                        }`}
+                        style={{ color: isActive ? tab.color : '#94a3b8' }}
+                      >
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              
-              <button
-                onClick={async () => {
-                  await alarmPlayer.unlock();
-                  setShowSoundTip(false);
-                  localStorage.setItem('soundTipShown', 'true');
-                }}
-                className="w-full py-4 rounded-2xl text-white font-bold text-base hover:opacity-90 transition-all mb-3"
-                style={{ backgroundColor: '#FF6B6B' }}
-              >
-                🔊 启用铃声
-              </button>
-              
-              <button
+            </div>
+
+            {/* 铃声启用提示弹窗 */}
+            {showSoundTip && (
+              <div 
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4"
                 onClick={() => {
                   setShowSoundTip(false);
                   localStorage.setItem('soundTipShown', 'true');
                 }}
-                className="w-full py-3 text-gray-400 font-medium text-sm"
               >
-                稍后再说
-              </button>
-            </div>
+                <div 
+                  className="bg-white rounded-3xl p-6 w-full max-w-sm animate-scale-in"
+                  style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="text-center mb-4">
+                    <div className="text-5xl mb-3">🔔</div>
+                    <h3 className="text-xl font-black text-[#2D3436] mb-2">启用铃声提醒</h3>
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      为了在计时结束时提醒你，请点击下方按钮启用铃声。
+                      <br />
+                      <span className="text-pink-500 font-bold">手机用户必须点击！</span>
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={async () => {
+                      await alarmPlayer.unlock();
+                      setShowSoundTip(false);
+                      localStorage.setItem('soundTipShown', 'true');
+                    }}
+                    className="w-full py-4 rounded-2xl text-white font-bold text-base hover:opacity-90 transition-all mb-3"
+                    style={{ backgroundColor: '#FF6B6B' }}
+                  >
+                    🔊 启用铃声
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setShowSoundTip(false);
+                      localStorage.setItem('soundTipShown', 'true');
+                    }}
+                    className="w-full py-3 text-gray-400 font-medium text-sm"
+                  >
+                    稍后再说
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </>
   );
 }
