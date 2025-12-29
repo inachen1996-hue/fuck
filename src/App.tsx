@@ -258,8 +258,11 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
 let audioElement: HTMLAudioElement | null = null;
 let audioUnlocked = false;
 let stopTimeoutId: number | null = null;
+let audioContext: AudioContext | null = null;
+let audioBuffer: AudioBuffer | null = null;
+let currentSource: AudioBufferSourceNode | null = null;
 
-// 铃声播放器 - 简化版，专注于移动端兼容性
+// 铃声播放器 - 优化移动端兼容性（双引擎：HTML5 Audio + Web Audio API）
 const alarmPlayer = {
   // 获取或创建 audio 元素
   getAudio(): HTMLAudioElement {
@@ -269,78 +272,211 @@ const alarmPlayer = {
       audioElement.volume = 1.0;
       audioElement.preload = 'auto';
       audioElement.src = DEFAULT_ALARM_SOUND;
+      audioElement.setAttribute('playsinline', 'true');
+      audioElement.setAttribute('webkit-playsinline', 'true');
       // 添加到 DOM（某些浏览器需要）
       audioElement.style.display = 'none';
       document.body.appendChild(audioElement);
+      
+      // 预加载音频
+      audioElement.load();
+      
+      // 监听播放结束事件（用于调试）
+      audioElement.addEventListener('ended', () => {
+        console.log('音频播放结束');
+      });
+      
+      audioElement.addEventListener('error', (e) => {
+        console.error('音频加载错误:', e);
+      });
     }
     return audioElement;
   },
   
-  // 解锁音频 - 必须在用户点击事件中直接调用（静默解锁，不播放声音）
-  async unlock(): Promise<boolean> {
-    // 如果已经解锁，直接返回
-    if (audioUnlocked) {
-      return true;
-    }
-    
-    const audio = this.getAudio();
-    audio.src = DEFAULT_ALARM_SOUND;
-    
+  // 初始化 Web Audio API（作为备选方案）
+  async initWebAudio(): Promise<boolean> {
     try {
-      // 关键：在用户交互中直接调用 play()，但静音播放
-      audio.currentTime = 0;
-      audio.volume = 0; // 静音
-      audio.muted = true; // 双重保险
-      audio.loop = false; // 确保不循环
+      if (!audioContext) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioContext = new AudioContextClass();
+        }
+      }
       
-      await audio.play();
-      
-      // 立即停止
-      audio.pause();
-      audio.currentTime = 0;
-      audio.loop = true; // 恢复循环设置
-      
-      // 恢复音量设置
-      audio.volume = 1.0;
-      audio.muted = false;
-      
-      // 标记为已解锁
-      audioUnlocked = true;
-      console.log('音频解锁成功！');
+      if (audioContext && !audioBuffer) {
+        // 加载音频文件到 buffer
+        const response = await fetch(DEFAULT_ALARM_SOUND);
+        const arrayBuffer = await response.arrayBuffer();
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        console.log('Web Audio API 初始化成功');
+      }
       
       return true;
     } catch (err) {
-      console.error('音频解锁失败:', err);
-      // 尝试静音播放
-      try {
-        audio.muted = true;
-        audio.volume = 0;
-        audio.loop = false;
-        await audio.play();
-        audio.pause();
-        audio.currentTime = 0;
-        audio.loop = true;
-        audio.muted = false;
-        audio.volume = 1.0;
-        audioUnlocked = true;
-        console.log('静音解锁成功');
-        return true;
-      } catch (e) {
-        console.error('静音解锁也失败:', e);
-        return false;
-      }
+      console.error('Web Audio API 初始化失败:', err);
+      return false;
     }
   },
   
-  // 播放铃声
-  async play(duration: number = 10000) {
+  // 解锁音频 - 必须在用户点击事件中直接调用
+  // 关键：iOS Safari 要求 play() 必须在用户交互的同步调用栈中
+  unlock(): boolean {
+    const audio = this.getAudio();
+    
+    try {
+      // 确保音频源正确
+      if (!audio.src.includes('MP3') && !audio.src.includes('mp3')) {
+        audio.src = DEFAULT_ALARM_SOUND;
+        audio.load();
+      }
+      
+      // 关键：同步调用 play()，不使用 await
+      audio.currentTime = 0;
+      audio.volume = 0.01; // 极小音量而不是0，某些浏览器会忽略0音量的播放
+      audio.muted = false;
+      audio.loop = false;
+      
+      // 直接调用 play()，不等待 Promise
+      const playPromise = audio.play();
+      
+      // 处理 Promise（但不阻塞）
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          // 播放成功后停止
+          setTimeout(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.loop = true;
+            audio.volume = 1.0;
+          }, 100);
+          
+          audioUnlocked = true;
+          console.log('HTML5 Audio 解锁成功！');
+        }).catch((err) => {
+          console.error('HTML5 Audio 解锁失败:', err);
+          audioUnlocked = false;
+        });
+      }
+      
+      // 同时尝试解锁 Web Audio API
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+          console.log('Web Audio API 已恢复');
+        }).catch(err => {
+          console.error('Web Audio API 恢复失败:', err);
+        });
+      }
+      
+      // 初始化 Web Audio API（异步，不阻塞）
+      this.initWebAudio();
+      
+      // 立即标记为已解锁（乐观更新）
+      audioUnlocked = true;
+      return true;
+    } catch (err) {
+      console.error('音频解锁异常:', err);
+      return false;
+    }
+  },
+  
+  // 异步解锁（用于需要等待结果的场景）
+  async unlockAsync(): Promise<boolean> {
+    const audio = this.getAudio();
+    
+    try {
+      if (!audio.src.includes('MP3') && !audio.src.includes('mp3')) {
+        audio.src = DEFAULT_ALARM_SOUND;
+        audio.load();
+      }
+      
+      audio.currentTime = 0;
+      audio.volume = 0.01;
+      audio.muted = false;
+      audio.loop = false;
+      
+      await audio.play();
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      audio.pause();
+      audio.currentTime = 0;
+      audio.loop = true;
+      audio.volume = 1.0;
+      
+      audioUnlocked = true;
+      
+      // 同时初始化 Web Audio API
+      await this.initWebAudio();
+      
+      console.log('音频异步解锁成功！');
+      return true;
+    } catch (err) {
+      console.error('音频异步解锁失败:', err);
+      return false;
+    }
+  },
+  
+  // 使用 Web Audio API 播放（备选方案）
+  playWithWebAudio(duration: number = 10000): boolean {
+    if (!audioContext || !audioBuffer) {
+      console.log('Web Audio API 未初始化');
+      return false;
+    }
+    
+    try {
+      // 确保 AudioContext 处于运行状态
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
+      // 停止之前的播放
+      if (currentSource) {
+        try {
+          currentSource.stop();
+        } catch (e) {
+          // 忽略已停止的错误
+        }
+      }
+      
+      // 创建新的音频源
+      currentSource = audioContext.createBufferSource();
+      currentSource.buffer = audioBuffer;
+      currentSource.loop = true;
+      currentSource.connect(audioContext.destination);
+      currentSource.start(0);
+      
+      console.log('Web Audio API 开始播放');
+      
+      // 设置自动停止
+      setTimeout(() => {
+        if (currentSource) {
+          try {
+            currentSource.stop();
+            currentSource = null;
+          } catch (e) {
+            // 忽略
+          }
+        }
+      }, duration);
+      
+      return true;
+    } catch (err) {
+      console.error('Web Audio API 播放失败:', err);
+      return false;
+    }
+  },
+  
+  // 播放铃声（双引擎尝试）
+  play(duration: number = 10000) {
+    console.log('尝试播放铃声, 已解锁:', audioUnlocked);
+    
     // 先清理之前的状态
     if (stopTimeoutId) {
       clearTimeout(stopTimeoutId);
       stopTimeoutId = null;
     }
     
-    // 振动
+    // 振动（移动端）
     if ('vibrate' in navigator) {
       const pattern = [200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200];
       navigator.vibrate(pattern);
@@ -348,18 +484,34 @@ const alarmPlayer = {
     
     const audio = this.getAudio();
     
-    // 重新设置音频属性
-    audio.src = DEFAULT_ALARM_SOUND;
+    // 确保音频源正确
+    if (!audio.src.includes('MP3') && !audio.src.includes('mp3')) {
+      audio.src = DEFAULT_ALARM_SOUND;
+      audio.load();
+    }
+    
+    // 设置播放属性
     audio.currentTime = 0;
     audio.volume = 1.0;
+    audio.muted = false;
     audio.loop = true;
     
-    // 尝试播放
-    try {
-      await audio.play();
-      console.log('铃声开始播放');
-    } catch (err) {
-      console.error('播放失败:', err);
+    // 尝试使用 HTML5 Audio 播放
+    const playPromise = audio.play();
+    let html5Success = false;
+    
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        html5Success = true;
+        console.log('HTML5 Audio 铃声开始播放');
+      }).catch((err) => {
+        console.error('HTML5 Audio 播放失败:', err);
+        // HTML5 Audio 失败，尝试 Web Audio API
+        if (!html5Success) {
+          console.log('尝试使用 Web Audio API 播放...');
+          this.playWithWebAudio(duration);
+        }
+      });
     }
     
     // 设置自动停止
@@ -370,10 +522,20 @@ const alarmPlayer = {
   
   // 停止播放
   stop() {
-    // 停止 audio 元素
+    // 停止 HTML5 Audio
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;
+    }
+    
+    // 停止 Web Audio API
+    if (currentSource) {
+      try {
+        currentSource.stop();
+        currentSource = null;
+      } catch (e) {
+        // 忽略已停止的错误
+      }
     }
     
     if (stopTimeoutId) {
@@ -389,14 +551,58 @@ const alarmPlayer = {
     console.log('铃声已停止');
   },
   
+  // 测试播放（用于设置页面验证铃声是否正常）
+  testPlay(): boolean {
+    console.log('测试播放铃声');
+    
+    const audio = this.getAudio();
+    
+    // 确保音频源正确
+    if (!audio.src.includes('MP3') && !audio.src.includes('mp3')) {
+      audio.src = DEFAULT_ALARM_SOUND;
+      audio.load();
+    }
+    
+    audio.currentTime = 0;
+    audio.volume = 1.0;
+    audio.muted = false;
+    audio.loop = false; // 测试时不循环
+    
+    const playPromise = audio.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        console.log('测试播放成功');
+        // 2秒后停止
+        setTimeout(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }, 2000);
+      }).catch((err) => {
+        console.error('测试播放失败:', err);
+        // 尝试 Web Audio API
+        this.playWithWebAudio(2000);
+      });
+    }
+    
+    return true;
+  },
+  
   // 检查是否正在播放
   isPlaying() {
-    return audioElement && !audioElement.paused;
+    const html5Playing = audioElement && !audioElement.paused;
+    const webAudioPlaying = currentSource !== null;
+    return html5Playing || webAudioPlaying;
   },
   
   // 检查是否已解锁
   isUnlocked() {
     return audioUnlocked;
+  },
+  
+  // 重置解锁状态
+  resetUnlock() {
+    audioUnlocked = false;
   }
 };
 
@@ -9080,8 +9286,8 @@ END:VEVENT
 
           {/* 启用铃声 */}
           <button 
-            onClick={async () => {
-              const success = await alarmPlayer.unlock();
+            onClick={() => {
+              const success = alarmPlayer.unlock();
               if (success) {
                 showToastMessage('🔔 铃声已启用！');
               } else {
@@ -9104,6 +9310,32 @@ END:VEVENT
             <div className="px-3 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: alarmPlayer.isUnlocked() ? '#E8F5E9' : '#FFF3E0', color: alarmPlayer.isUnlocked() ? '#4CAF50' : '#FF9800' }}>
               {alarmPlayer.isUnlocked() ? '已启用' : '未启用'}
             </div>
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* 测试铃声 */}
+          <button 
+            onClick={() => {
+              alarmPlayer.unlock(); // 先确保解锁
+              alarmPlayer.testPlay();
+              showToastMessage('🔊 正在播放测试铃声...');
+            }}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)' }}>
+                <span className="text-2xl">🔊</span>
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>测试铃声</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  点击播放2秒测试音，验证铃声是否正常
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={20} style={{ color: '#4CAF50' }} />
           </button>
 
           {/* 分割线 */}
@@ -11152,8 +11384,8 @@ export default function App() {
                   </div>
                   
                   <button
-                    onClick={async () => {
-                      await alarmPlayer.unlock();
+                    onClick={() => {
+                      alarmPlayer.unlock();
                       setShowSoundTip(false);
                       localStorage.setItem('soundTipShown', 'true');
                     }}
