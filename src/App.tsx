@@ -8412,9 +8412,9 @@ const AIChatPage = ({
       
       const sleepSummary = Object.entries(sleepByDate).map(([date, mins]) => `${date}: ${(mins / 60).toFixed(1)}小时`).join(', ') || '暂无睡眠记录';
       
-      const systemPrompt = `你是一位"精力状态鉴别诊断专家"。当用户感到"不想动"时，你的任务是基于客观数据进行鉴别诊断，帮用户区分：这到底是"生理/认知枯竭"（需要休息），还是"心理阻抗/假性疲劳"（需要行动）。
+      const systemPrompt = `你是一位敏锐且务实的"解困策略师"。你的核心任务是帮助用户从当前的负面状态（疲惫、沉迷、焦虑、无力）中"解脱"。你需要结合用户的数据（作为背景线索）和用户的描述（作为当前痛点），提供一个"懂你且有效"的破局方案。
 
-【用户数据】
+【用户数据背景】
 最近7天时间记录：
 ${dataSummary || '暂无时间记录'}
 
@@ -8425,20 +8425,32 @@ ${journalSummary || '暂无日记'}
 
 理想时间配比：${Object.entries(idealTimeAllocation).map(([cat, hours]) => `${timeCategories.find(c => c.id === cat)?.label || cat}${hours}h`).join('、')}
 
-【诊断逻辑】
-1. 生理枯竭判定：睡眠<6小时、有疼痛记录、48小时内高强度输出 → 真累
-2. 认知枯竭判定：大量决策任务后出现"读不进去字"、"卡顿忘事" → 决策疲劳
-3. 假性疲劳判定：对工作喊累但刷手机精力充沛 → 心理阻抗
+【绝对禁止】
+1. 禁止"廉价共情"：不要只说"抱抱你"、"没关系的"、"允许自己这样"。用户需要改变现状的方案，不是单纯的安慰。
+2. 禁止"冷血诊断"：不要像医生一样列出"诊断结论：心理阻抗"。不要用数据来审判用户。
+3. 禁止"模板化结构"：严禁使用 ## 1. 分析 ## 2. 建议 这种机械的分段。对话要自然流动，像真人专家一样。
+4. 禁止使用任何Markdown语法（不要用#、*、**、##、-等符号）
 
-【回复要求】
-1. 使用纯文本格式，不要使用任何Markdown语法（不要用#、*、**、##等符号）
-2. 用emoji和换行来组织内容，让回复清晰易读
-3. 回复结构：
-   - ⚖️ 诊断结论：明确说是"真累"还是"假累"还是"混合状态"
-   - 📊 证据：引用具体数据支撑结论
-   - 🧪 验真测试（可选）：如果不确定，给一个简单测试方法
-   - 💊 建议：针对性的行动建议
-4. 语气理性坚定，简洁有力，不要啰嗦`;
+【分析逻辑】
+1. 寻找"卡点"而非"错处"：
+   - 如果数据矛盾（如"喊累"但"玩了很久游戏"），不仅要看数据，更要听懂用户的痛苦
+   - 解读逻辑：这不是用户在撒谎，而是"能量虽然有，但无法注入到工作中"。通常是因为任务难度过高（畏难）或反馈链路太长（枯燥）
+2. 验证生理底色：如果用户有生理痛/睡眠不足，必须将此作为"不可抗力背景"提出来
+
+【回复三步走】
+用自然、流畅、有逻辑力的段落进行回复，可以用emoji点缀但不要过度：
+
+第一步 - 精准"翻译"现状：用一两句话，基于数据和描述，精准点破用户现在的处境。目标是让用户感觉"对！就是这种感觉！"
+
+第二步 - 提供"解脱"杠杆：不要给"大建议"（如"去工作"），要给"状态切换动作"。这个动作必须能切断当前的负面回路：
+- 针对沉迷/多巴胺陷阱：建议物理阻断（如"离开房间"、"洗冷水脸"）
+- 针对畏难/假性疲劳：建议降级启动（如"不要求做完，只做最无脑的那一步"）
+- 针对生理枯竭：建议彻底关机（如"设定20分钟闹钟，允许自己彻底瘫痪，但不许看手机"）
+
+第三步 - 行动邀请：以一个低门槛的邀请结尾，如"我们不谈之后的工作，现在只试着做这一个动作，好吗？"
+
+【语气要求】
+像一个懂你的朋友在跟你说话，温暖但不腻歪，直接但不冷漠。回复要简洁有力，不要啰嗦。`;
 
       const response = await fetch('/api/deepseek', {
         method: 'POST',
@@ -8502,37 +8514,37 @@ ${journalSummary || '暂无日记'}
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
               <span className="text-xl font-black" style={{ color: '#FFA000' }}>AI</span>
             </div>
-            <h4 className="font-bold text-gray-700 mb-2">你好，我是精力诊断专家</h4>
+            <h4 className="font-bold text-gray-700 mb-2">你好，我是你的解困策略师</h4>
             <p className="text-sm text-gray-500 mb-4">
-              我会根据你的时间记录和日记数据，<br/>帮你分析是"真累"还是"假累"
+              告诉我你现在的状态，<br/>我帮你找到破局的方法
             </p>
             <div className="space-y-2">
               <button 
                 onClick={() => {
-                  setAiChatInput('我感觉很累，不想动，是不是懒？');
+                  setAiChatInput('我很累但一直在刷手机停不下来，感觉自己废了');
                   setTimeout(() => sendAIChatMessage(), 100);
                 }}
                 className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
               >
-                💭 我感觉很累，不想动，是不是懒？
+                📱 我很累但一直在刷手机停不下来
               </button>
               <button 
                 onClick={() => {
-                  setAiChatInput('帮我分析一下最近的精力状态');
+                  setAiChatInput('有个任务一直拖着不想做，越拖越焦虑');
                   setTimeout(() => sendAIChatMessage(), 100);
                 }}
                 className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
               >
-                📊 帮我分析一下最近的精力状态
+                😰 有个任务一直拖着不想做
               </button>
               <button 
                 onClick={() => {
-                  setAiChatInput('我最近睡眠怎么样？');
+                  setAiChatInput('感觉整个人很丧，什么都不想干');
                   setTimeout(() => sendAIChatMessage(), 100);
                 }}
                 className="w-full p-3 bg-amber-50 rounded-xl text-sm text-amber-700 text-left hover:bg-amber-100 transition-all"
               >
-                😴 我最近睡眠怎么样？
+                😔 感觉整个人很丧，什么都不想干
               </button>
             </div>
           </div>
@@ -8598,6 +8610,665 @@ ${journalSummary || '暂无日记'}
   );
 };
 
+// 数据源独立页面组件
+const DataSourcePage = ({
+  onClose,
+  timeRecords,
+  setTimeRecords,
+  categories,
+  showToastMessage
+}: {
+  onClose: () => void;
+  timeRecords: TimeRecord[];
+  setTimeRecords: (records: TimeRecord[]) => void;
+  categories: Category[];
+  showToastMessage: (msg: string) => void;
+}) => {
+  const [dataSearchQuery, setDataSearchQuery] = useState('');
+  const [isAddingRecord, setIsAddingRecord] = useState(false);
+  const [newRecordName, setNewRecordName] = useState('');
+  const [newRecordDate, setNewRecordDate] = useState('');
+  const [newRecordStartTime, setNewRecordStartTime] = useState('');
+  const [newRecordEndTime, setNewRecordEndTime] = useState('');
+  const [newRecordCategoryId, setNewRecordCategoryId] = useState('uncategorized');
+  const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+  const [deletingDate, setDeletingDate] = useState<string | null>(null); // 正在确认删除的日期
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false); // 多选模式
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set()); // 已选中的日期
+
+  // 开始新增记录
+  const startAddRecord = () => {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    setNewRecordDate(todayStr);
+    setNewRecordStartTime(currentTime);
+    setNewRecordEndTime(currentTime);
+    setNewRecordCategoryId('uncategorized');
+    setIsAddingRecord(true);
+  };
+
+  // 添加记录
+  const handleAddRecord = () => {
+    if (!newRecordName.trim() || !newRecordDate || !newRecordStartTime || !newRecordEndTime) {
+      showToastMessage('请填写完整信息');
+      return;
+    }
+
+    const newRecord: TimeRecord = {
+      id: `manual-${Date.now()}`,
+      name: newRecordName.trim(),
+      date: newRecordDate,
+      startTime: newRecordStartTime,
+      endTime: newRecordEndTime,
+      source: 'manual',
+      categoryId: newRecordCategoryId as CategoryId,
+      createdAt: Date.now()
+    };
+
+    setTimeRecords([...timeRecords, newRecord]);
+    setIsAddingRecord(false);
+    setNewRecordName('');
+    setNewRecordDate('');
+    setNewRecordStartTime('');
+    setNewRecordEndTime('');
+    setNewRecordCategoryId('uncategorized');
+    showToastMessage('添加成功');
+  };
+
+  // 开始编辑
+  const handleStartEdit = (record: TimeRecord) => {
+    setEditingRecord(record);
+    setEditName(record.name);
+    setEditDate(record.date);
+    setEditStartTime(record.startTime);
+    setEditEndTime(record.endTime);
+  };
+
+  // 保存编辑
+  const handleSaveEdit = () => {
+    if (!editingRecord) return;
+    
+    setTimeRecords(timeRecords.map(r => 
+      r.id === editingRecord.id 
+        ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime }
+        : r
+    ));
+    setEditingRecord(null);
+    showToastMessage('修改成功');
+  };
+
+  // 删除记录
+  const handleDeleteRecord = (id: string) => {
+    setTimeRecords(timeRecords.filter(r => r.id !== id));
+    showToastMessage('删除成功');
+  };
+
+  // 按天删除所有记录
+  const handleDeleteByDate = (date: string) => {
+    const count = timeRecords.filter(r => r.date === date).length;
+    setTimeRecords(timeRecords.filter(r => r.date !== date));
+    setDeletingDate(null);
+    showToastMessage(`已删除 ${count} 条记录`);
+  };
+
+  // 切换日期选中状态
+  const toggleDateSelection = (date: string) => {
+    const newSelected = new Set(selectedDates);
+    if (newSelected.has(date)) {
+      newSelected.delete(date);
+    } else {
+      newSelected.add(date);
+    }
+    setSelectedDates(newSelected);
+  };
+
+  // 批量删除选中的日期
+  const handleDeleteSelectedDates = () => {
+    const count = timeRecords.filter(r => selectedDates.has(r.date)).length;
+    setTimeRecords(timeRecords.filter(r => !selectedDates.has(r.date)));
+    setSelectedDates(new Set());
+    setIsMultiSelectMode(false);
+    showToastMessage(`已删除 ${selectedDates.size} 天共 ${count} 条记录`);
+  };
+
+  // 退出多选模式
+  const exitMultiSelectMode = () => {
+    setIsMultiSelectMode(false);
+    setSelectedDates(new Set());
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-[#F5F5F5] z-[200]">
+      {/* 头部 */}
+      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-gray-100" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+        <button 
+          onClick={isMultiSelectMode ? exitMultiSelectMode : onClose}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100"
+        >
+          <ChevronLeft size={24} />
+        </button>
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: isMultiSelectMode ? 'linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%)' : 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)' }}>
+            {isMultiSelectMode ? (
+              <Trash2 size={20} style={{ color: '#E53935' }} />
+            ) : (
+              <Database size={20} style={{ color: '#1976D2' }} />
+            )}
+          </div>
+          <div>
+            <h3 className="font-bold text-[#2D2D2D]">
+              {isMultiSelectMode ? `已选 ${selectedDates.size} 天` : '查看数据源'}
+            </h3>
+            <p className="text-xs text-gray-400">
+              {isMultiSelectMode ? '点击日期选择要删除的天数' : '查看和编辑时间记录'}
+            </p>
+          </div>
+        </div>
+        {isMultiSelectMode ? (
+          <button 
+            onClick={handleDeleteSelectedDates}
+            disabled={selectedDates.size === 0}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+              selectedDates.size > 0 
+                ? 'bg-red-500 text-white hover:bg-red-600' 
+                : 'bg-gray-200 text-gray-400'
+            }`}
+          >
+            删除
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsMultiSelectMode(true)}
+              className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100"
+              title="批量删除"
+            >
+              <Trash2 size={18} />
+            </button>
+            <button 
+              onClick={startAddRecord}
+              className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200"
+              title="添加记录"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 搜索框 */}
+      <div className="bg-white px-4 py-3 border-b border-gray-100">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={dataSearchQuery}
+            onChange={(e) => setDataSearchQuery(e.target.value)}
+            placeholder="搜索事项名称..."
+            className="w-full bg-gray-100 rounded-xl pl-9 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-300 transition-all"
+          />
+          {dataSearchQuery && (
+            <button
+              onClick={() => setDataSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+        {/* 新增数据表单 */}
+        {isAddingRecord && (
+          <div className="bg-green-50 rounded-2xl p-4 border-2 border-green-200 mb-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">名称</label>
+                <input
+                  type="text"
+                  value={newRecordName}
+                  onChange={(e) => setNewRecordName(e.target.value)}
+                  placeholder="输入事项名称..."
+                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">分类</label>
+                <div className="flex-1 flex flex-wrap gap-1">
+                  {categories.map(cat => {
+                    const isSelected = newRecordCategoryId === cat.id;
+                    const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setNewRecordCategoryId(cat.id)}
+                        className={`px-2 py-1 rounded-full text-xs font-bold transition-all ${
+                          isSelected ? 'text-white' : 'bg-gray-100 text-gray-500'
+                        }`}
+                        style={isSelected ? { backgroundColor: catColor } : {}}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">日期</label>
+                <input
+                  type="date"
+                  value={newRecordDate}
+                  onChange={(e) => setNewRecordDate(e.target.value)}
+                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">开始</label>
+                <input
+                  type="time"
+                  value={newRecordStartTime}
+                  onChange={(e) => setNewRecordStartTime(e.target.value)}
+                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 w-12">结束</label>
+                <input
+                  type="time"
+                  value={newRecordEndTime}
+                  onChange={(e) => setNewRecordEndTime(e.target.value)}
+                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setIsAddingRecord(false)}
+                  className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleAddRecord}
+                  className="flex-1 py-2 text-sm font-bold text-white bg-green-500 rounded-xl hover:bg-green-600"
+                >
+                  添加
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {timeRecords.length === 0 && !isAddingRecord ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-20">
+            <Database size={48} className="text-gray-300 mb-4" />
+            <p className="text-gray-400 text-sm">暂无数据记录</p>
+            <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
+          </div>
+        ) : (
+          <div 
+            ref={(el) => {
+              if (el && timeRecords.length > 0 && !hasInitialScrolled && !dataSearchQuery) {
+                setHasInitialScrolled(true);
+                const now = new Date();
+                const sortedRecords = [...timeRecords].sort((a, b) => {
+                  const aDateTime = `${a.date} ${a.startTime}`;
+                  const bDateTime = `${b.date} ${b.startTime}`;
+                  return aDateTime.localeCompare(bDateTime);
+                });
+                
+                let closestIndex = 0;
+                let minDiff = Infinity;
+                sortedRecords.forEach((record, index) => {
+                  const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
+                  const diff = Math.abs(recordDateTime - now.getTime());
+                  if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = index;
+                  }
+                });
+                
+                const closestDate = sortedRecords[closestIndex]?.date;
+                const dateElement = el.querySelector(`[data-date="${closestDate}"]`);
+                if (dateElement) {
+                  setTimeout(() => {
+                    dateElement.scrollIntoView({ block: 'start' });
+                  }, 100);
+                }
+              }
+            }}
+          >
+            {(() => {
+              const filteredRecords = dataSearchQuery 
+                ? timeRecords.filter(r => r.name.toLowerCase().includes(dataSearchQuery.toLowerCase()))
+                : timeRecords;
+              
+              if (filteredRecords.length === 0 && dataSearchQuery) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <Search size={48} className="text-gray-300 mb-4" />
+                    <p className="text-gray-400 text-sm">未找到匹配的记录</p>
+                    <p className="text-gray-300 text-xs mt-1">尝试其他关键词</p>
+                  </div>
+                );
+              }
+              
+              const sortedRecords = [...filteredRecords].sort((a, b) => {
+                const aDateTime = `${a.date} ${a.startTime}`;
+                const bDateTime = `${b.date} ${b.startTime}`;
+                return aDateTime.localeCompare(bDateTime);
+              });
+              
+              const groupedByDate: Record<string, TimeRecord[]> = {};
+              sortedRecords.forEach(record => {
+                if (!groupedByDate[record.date]) {
+                  groupedByDate[record.date] = [];
+                }
+                groupedByDate[record.date].push(record);
+              });
+              
+              const dates = Object.keys(groupedByDate).sort();
+              
+              return dates.map(date => (
+                <div key={date} data-date={date} className="mb-4">
+                  <div 
+                    className={`sticky top-0 bg-[#F5F5F5]/95 backdrop-blur-sm py-2 z-10 flex items-center justify-between ${
+                      isMultiSelectMode ? 'cursor-pointer' : ''
+                    } ${selectedDates.has(date) ? 'bg-red-50/95' : ''}`}
+                    onClick={isMultiSelectMode ? () => toggleDateSelection(date) : undefined}
+                  >
+                    <div className="flex items-center gap-2">
+                      {/* 多选模式下的复选框 */}
+                      {isMultiSelectMode && (
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                          selectedDates.has(date) 
+                            ? 'bg-red-500 border-red-500' 
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {selectedDates.has(date) && (
+                            <Check size={14} className="text-white" />
+                          )}
+                        </div>
+                      )}
+                      <span className={`text-sm font-bold ${selectedDates.has(date) ? 'text-red-600' : 'text-gray-600'}`}>
+                        {(() => {
+                          const d = new Date(date);
+                          const today = new Date();
+                          const yesterday = new Date(today);
+                          yesterday.setDate(yesterday.getDate() - 1);
+                          
+                          const isToday = date === `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                          const isYesterday = date === `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+                          
+                          const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+                          const weekday = weekdays[d.getDay()];
+                          
+                          if (isToday) return `今天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                          if (isYesterday) return `昨天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                          return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
+                        })()}
+                        <span className={`text-xs font-normal ml-2 ${selectedDates.has(date) ? 'text-red-400' : 'text-gray-400'}`}>
+                          ({groupedByDate[date].length}条)
+                        </span>
+                      </span>
+                    </div>
+                    
+                    {/* 非多选模式下的删除按钮 */}
+                    {!isMultiSelectMode && (
+                      deletingDate === date ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeletingDate(null); }}
+                            className="px-2 py-1 text-xs text-gray-500 bg-gray-200 rounded-lg hover:bg-gray-300"
+                          >
+                            取消
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteByDate(date); }}
+                            className="px-2 py-1 text-xs text-white bg-red-500 rounded-lg hover:bg-red-600"
+                          >
+                            确认删除
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeletingDate(date); }}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          title="删除当天所有记录"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {(() => {
+                      const timeToMinutes = (time: string) => {
+                        const [h, m] = time.split(':').map(Number);
+                        return h * 60 + m;
+                      };
+                      
+                      const minutesToTimeStr = (mins: number) => {
+                        const h = Math.floor(mins / 60);
+                        const m = mins % 60;
+                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                      };
+                      
+                      const today = new Date();
+                      const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                      const isToday = date === todayStr;
+                      const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : 24 * 60;
+                      
+                      const dayRecords = [...groupedByDate[date]].sort((a, b) => 
+                        a.startTime.localeCompare(b.startTime)
+                      );
+                      
+                      const gaps: { start: string; end: string; duration: number }[] = [];
+                      const coveredIntervals: { start: number; end: number }[] = [];
+                      
+                      dayRecords.forEach(record => {
+                        const start = timeToMinutes(record.startTime);
+                        const end = timeToMinutes(record.endTime);
+                        
+                        if (coveredIntervals.length === 0) {
+                          coveredIntervals.push({ start, end });
+                        } else {
+                          const last = coveredIntervals[coveredIntervals.length - 1];
+                          if (start <= last.end) {
+                            last.end = Math.max(last.end, end);
+                          } else {
+                            coveredIntervals.push({ start, end });
+                          }
+                        }
+                      });
+                      
+                      for (let i = 0; i < coveredIntervals.length - 1; i++) {
+                        const gapStart = coveredIntervals[i].end;
+                        const gapEnd = coveredIntervals[i + 1].start;
+                        const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
+                        const gapMinutes = effectiveGapEnd - gapStart;
+                        
+                        if (gapMinutes >= 60) {
+                          gaps.push({
+                            start: minutesToTimeStr(gapStart),
+                            end: minutesToTimeStr(effectiveGapEnd),
+                            duration: gapMinutes
+                          });
+                        }
+                      }
+                      
+                      if (isToday && coveredIntervals.length > 0) {
+                        const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
+                        const gapToNow = currentMinutes - lastEnd;
+                        
+                        if (gapToNow >= 60) {
+                          gaps.push({
+                            start: minutesToTimeStr(lastEnd),
+                            end: minutesToTimeStr(currentMinutes),
+                            duration: gapToNow
+                          });
+                        }
+                      }
+                      
+                      type DisplayItem = 
+                        | { type: 'record'; data: TimeRecord }
+                        | { type: 'gap'; data: { start: string; end: string; duration: number } };
+                      
+                      const allItems: DisplayItem[] = [
+                        ...dayRecords.map(record => ({ type: 'record' as const, data: record })),
+                        ...gaps.map(gap => ({ type: 'gap' as const, data: gap }))
+                      ].sort((a, b) => {
+                        const aStart = a.type === 'record' ? a.data.startTime : a.data.start;
+                        const bStart = b.type === 'record' ? b.data.startTime : b.data.start;
+                        return aStart.localeCompare(bStart);
+                      });
+                      
+                      return allItems.map((item, idx) => {
+                        if (item.type === 'gap') {
+                          const gap = item.data;
+                          return (
+                            <div 
+                              key={`gap-${idx}`}
+                              onClick={() => {
+                                setNewRecordDate(date);
+                                setNewRecordStartTime(gap.start);
+                                setNewRecordEndTime(gap.end);
+                                setNewRecordName('');
+                                setIsAddingRecord(true);
+                              }}
+                              className="bg-orange-50 rounded-2xl p-4 border-2 border-dashed border-orange-200 cursor-pointer hover:bg-orange-100 transition-all"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-orange-400">⏰</span>
+                                  <span className="text-sm text-orange-600 font-medium">
+                                    空白时段 · {Math.floor(gap.duration / 60)}小时{gap.duration % 60 > 0 ? `${gap.duration % 60}分钟` : ''}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-orange-400">{gap.start} - {gap.end}</span>
+                                  <Plus size={16} className="text-orange-400" />
+                                </div>
+                              </div>
+                              <div className="text-xs text-orange-400 mt-1">点击补充这段时间在做什么</div>
+                            </div>
+                          );
+                        } else {
+                          const record = item.data;
+                          return (
+                            <div key={record.id} className="bg-white rounded-2xl p-4 border border-gray-100">
+                              {editingRecord?.id === record.id ? (
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-500 w-12">名称</label>
+                                    <input
+                                      type="text"
+                                      value={editName}
+                                      onChange={(e) => setEditName(e.target.value)}
+                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300 font-bold text-gray-700"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-500 w-12">日期</label>
+                                    <input
+                                      type="date"
+                                      value={editDate}
+                                      onChange={(e) => setEditDate(e.target.value)}
+                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-500 w-12">开始</label>
+                                    <input
+                                      type="time"
+                                      value={editStartTime}
+                                      onChange={(e) => setEditStartTime(e.target.value)}
+                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-500 w-12">结束</label>
+                                    <input
+                                      type="time"
+                                      value={editEndTime}
+                                      onChange={(e) => setEditEndTime(e.target.value)}
+                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2 pt-2">
+                                    <button
+                                      onClick={() => setEditingRecord(null)}
+                                      className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
+                                    >
+                                      取消
+                                    </button>
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      className="flex-1 py-2 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600"
+                                    >
+                                      保存
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-gray-700">{record.name}</span>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                        record.source === 'timer' 
+                                          ? 'bg-purple-100 text-purple-600' 
+                                          : record.source === 'manual'
+                                          ? 'bg-green-100 text-green-600'
+                                          : 'bg-blue-100 text-blue-600'
+                                      }`}>
+                                        {record.source === 'timer' ? '计时器' : record.source === 'manual' ? '手动' : '导入'}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                      {record.startTime} - {record.endTime}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleStartEdit(record)}
+                                      className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                    >
+                                      <Edit3 size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteRecord(record.id)}
+                                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                      });
+                    })()}
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // 设置视图
 const SettingsView = ({ 
   pomodoroSettings, 
@@ -8630,11 +9301,12 @@ const SettingsView = ({
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'calendar' | 'journal' | null>(null);
-  const [showDataManageModal, setShowDataManageModal] = useState(false);
+  const [showDataSourcePage, setShowDataSourcePage] = useState(false); // 数据源二级页面
   const [showDataMenuModal, setShowDataMenuModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showIdealTimeModal, setShowIdealTimeModal] = useState(false);
   const [showCategoryAssignModal, setShowCategoryAssignModal] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState(''); // 分类归属搜索关键词
   const [exportType, setExportType] = useState<'journal' | 'calendar' | null>(null);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
@@ -8722,24 +9394,6 @@ const SettingsView = ({
   };
   
   // 编辑数据相关状态
-  const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editStartTime, setEditStartTime] = useState('');
-  const [editEndTime, setEditEndTime] = useState('');
-  
-  // 搜索数据源
-  const [dataSearchQuery, setDataSearchQuery] = useState('');
-  // 是否已经初始定位过
-  const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
-  
-  // 新增数据相关状态
-  const [isAddingRecord, setIsAddingRecord] = useState(false);
-  const [newRecordName, setNewRecordName] = useState('');
-  const [newRecordDate, setNewRecordDate] = useState('');
-  const [newRecordStartTime, setNewRecordStartTime] = useState('');
-  const [newRecordEndTime, setNewRecordEndTime] = useState('');
-  const [newRecordCategoryId, setNewRecordCategoryId] = useState<string>('uncategorized');
 
   const showToastMessage = (msg: string) => {
     setToastMessage(msg);
@@ -9086,81 +9740,6 @@ END:VEVENT
     }
   };
 
-  // 删除记录
-  const handleDeleteRecord = (id: string) => {
-    setTimeRecords(timeRecords.filter(r => r.id !== id));
-    showToastMessage('删除成功');
-  };
-
-  // 开始编辑记录
-  const handleStartEdit = (record: TimeRecord) => {
-    setEditingRecord(record);
-    setEditName(record.name);
-    setEditDate(record.date);
-    setEditStartTime(record.startTime);
-    setEditEndTime(record.endTime);
-  };
-
-  // 保存编辑
-  const handleSaveEdit = () => {
-    if (editingRecord) {
-      setTimeRecords(timeRecords.map(r => 
-        r.id === editingRecord.id 
-          ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime, source: 'manual' as const }
-          : r
-      ));
-      setEditingRecord(null);
-      showToastMessage('修改成功');
-    }
-  };
-
-  // 新增数据记录
-  const handleAddRecord = () => {
-    if (!newRecordName.trim() || !newRecordDate || !newRecordStartTime || !newRecordEndTime) {
-      showToastMessage('请填写完整信息');
-      return;
-    }
-    
-    const newRecord: TimeRecord = {
-      id: Date.now().toString(),
-      name: newRecordName.trim(),
-      date: newRecordDate,
-      startTime: newRecordStartTime,
-      endTime: newRecordEndTime,
-      source: 'manual',
-      categoryId: newRecordCategoryId as CategoryId,
-      createdAt: Date.now()
-    };
-    
-    // 添加新记录并按日期和时间排序
-    const updatedRecords = [...timeRecords, newRecord].sort((a, b) => {
-      const aDateTime = `${a.date} ${a.startTime}`;
-      const bDateTime = `${b.date} ${b.startTime}`;
-      return aDateTime.localeCompare(bDateTime);
-    });
-    
-    setTimeRecords(updatedRecords);
-    setIsAddingRecord(false);
-    setNewRecordName('');
-    setNewRecordDate('');
-    setNewRecordStartTime('');
-    setNewRecordEndTime('');
-    setNewRecordCategoryId('uncategorized');
-    showToastMessage('添加成功');
-  };
-
-  // 开始新增记录
-  const startAddRecord = () => {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    setNewRecordDate(todayStr);
-    setNewRecordStartTime(currentTime);
-    setNewRecordEndTime(currentTime);
-    setNewRecordCategoryId('uncategorized');
-    setIsAddingRecord(true);
-  };
-
   return (
     <div className="flex flex-col h-full relative overflow-hidden" style={{ backgroundColor: '#FFFAF0' }}>
       {/* 背景装饰 */}
@@ -9462,12 +10041,93 @@ END:VEVENT
                 <X size={18} />
               </button>
             </div>
+
+            {/* 存储空间信息 */}
+            {(() => {
+              // 计算 localStorage 使用量
+              let usedBytes = 0;
+              for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                  usedBytes += (localStorage[key].length + key.length) * 2; // UTF-16 编码，每字符2字节
+                }
+              }
+              
+              // 浏览器 localStorage 限制通常是 5MB，保守估计
+              const totalBytes = 5 * 1024 * 1024; // 5MB
+              const remainingBytes = totalBytes - usedBytes;
+              const usedPercent = (usedBytes / totalBytes) * 100;
+              
+              // 格式化字节数
+              const formatBytes = (bytes: number) => {
+                if (bytes < 1024) return `${bytes} B`;
+                if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+              };
+              
+              // 根据使用率决定颜色
+              const getBarColor = () => {
+                if (usedPercent < 50) return '#4CAF50'; // 绿色
+                if (usedPercent < 80) return '#FF9800'; // 橙色
+                return '#F44336'; // 红色
+              };
+              
+              return (
+                <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold text-gray-600">📊 存储空间</span>
+                    <span className="text-xs text-gray-500">
+                      {formatBytes(usedBytes)} / {formatBytes(totalBytes)}
+                    </span>
+                  </div>
+                  
+                  {/* 进度条 */}
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                    <div 
+                      className="h-full rounded-full transition-all"
+                      style={{ 
+                        width: `${Math.min(usedPercent, 100)}%`,
+                        backgroundColor: getBarColor()
+                      }}
+                    />
+                  </div>
+                  
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>已用 {usedPercent.toFixed(1)}%</span>
+                    <span>剩余 {formatBytes(remainingBytes)}</span>
+                  </div>
+                  
+                  {/* 数据统计 */}
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-200">
+                    <div className="flex-1 text-center">
+                      <div className="text-lg font-black text-gray-700">{timeRecords.length}</div>
+                      <div className="text-xs text-gray-400">时间记录</div>
+                    </div>
+                    <div className="flex-1 text-center">
+                      <div className="text-lg font-black text-gray-700">{journals.length}</div>
+                      <div className="text-xs text-gray-400">日记</div>
+                    </div>
+                    <div className="flex-1 text-center">
+                      <div className="text-lg font-black text-gray-700">{globalTimers.length}</div>
+                      <div className="text-xs text-gray-400">计时器</div>
+                    </div>
+                  </div>
+                  
+                  {usedPercent > 70 && (
+                    <div className="mt-3 p-2 bg-orange-100 rounded-xl">
+                      <p className="text-xs text-orange-700">
+                        ⚠️ 存储空间使用较多，建议导出备份数据
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             
             <div className="space-y-3">
               <button 
                 onClick={() => {
                   setShowDataMenuModal(false);
-                  setShowDataManageModal(true);
+                  setShowDataSourcePage(true);
                 }}
                 className="w-full flex items-center gap-4 p-4 rounded-2xl bg-yellow-50 hover:bg-yellow-100 transition-all border-2 border-yellow-100"
               >
@@ -9933,470 +10593,6 @@ END:VEVENT
         </div>
       )}
 
-      {/* 数据管理弹窗 */}
-      {showDataManageModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in">
-          <div className="bg-white w-[95%] max-w-[430px] rounded-[2rem] p-5 shadow-2xl animate-scale-in max-h-[85%] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-black text-[#2D2D2D]">查看数据源</h3>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={startAddRecord}
-                  className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200"
-                  title="添加记录"
-                >
-                  <Plus size={18} />
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowDataManageModal(false);
-                    setEditingRecord(null);
-                    setIsAddingRecord(false);
-                    setDataSearchQuery('');
-                    setHasInitialScrolled(false);
-                  }}
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            {/* 搜索框 */}
-            <div className="mb-4">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={dataSearchQuery}
-                  onChange={(e) => setDataSearchQuery(e.target.value)}
-                  placeholder="搜索事项名称..."
-                  className="w-full bg-gray-50 rounded-xl pl-9 pr-4 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-300 focus:bg-white"
-                />
-                {dataSearchQuery && (
-                  <button
-                    onClick={() => setDataSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* 新增数据表单 */}
-            {isAddingRecord && (
-              <div className="bg-green-50 rounded-2xl p-4 border-2 border-green-200 mb-4">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 w-12">名称</label>
-                    <input
-                      type="text"
-                      value={newRecordName}
-                      onChange={(e) => setNewRecordName(e.target.value)}
-                      placeholder="输入事项名称..."
-                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 w-12">分类</label>
-                    <div className="flex-1 flex flex-wrap gap-1">
-                      {categories.map(cat => {
-                        const isSelected = newRecordCategoryId === cat.id;
-                        const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
-                        return (
-                          <button
-                            key={cat.id}
-                            onClick={() => setNewRecordCategoryId(cat.id)}
-                            className={`px-2 py-1 rounded-full text-xs font-bold transition-all ${
-                              isSelected ? 'text-white' : 'bg-gray-100 text-gray-500'
-                            }`}
-                            style={isSelected ? { backgroundColor: catColor } : {}}
-                          >
-                            {cat.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 w-12">日期</label>
-                    <input
-                      type="date"
-                      value={newRecordDate}
-                      onChange={(e) => setNewRecordDate(e.target.value)}
-                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 w-12">开始</label>
-                    <input
-                      type="time"
-                      value={newRecordStartTime}
-                      onChange={(e) => setNewRecordStartTime(e.target.value)}
-                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-500 w-12">结束</label>
-                    <input
-                      type="time"
-                      value={newRecordEndTime}
-                      onChange={(e) => setNewRecordEndTime(e.target.value)}
-                      className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => setIsAddingRecord(false)}
-                      className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleAddRecord}
-                      className="flex-1 py-2 text-sm font-bold text-white bg-green-500 rounded-xl hover:bg-green-600"
-                    >
-                      添加
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {timeRecords.length === 0 && !isAddingRecord ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-10">
-                <Database size={48} className="text-gray-300 mb-4" />
-                <p className="text-gray-400 text-sm">暂无数据记录</p>
-                <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
-              </div>
-            ) : (
-              <div 
-                className="flex-1 overflow-y-auto"
-                ref={(el) => {
-                  // 只在首次打开弹窗时定位，之后不再自动定位
-                  if (el && timeRecords.length > 0 && !hasInitialScrolled && !dataSearchQuery) {
-                    setHasInitialScrolled(true);
-                    
-                    // 找到距离当前时间最近的记录
-                    const now = new Date();
-                    
-                    const sortedRecords = [...timeRecords].sort((a, b) => {
-                      const aDateTime = `${a.date} ${a.startTime}`;
-                      const bDateTime = `${b.date} ${b.startTime}`;
-                      return aDateTime.localeCompare(bDateTime);
-                    });
-                    
-                    let closestIndex = 0;
-                    let minDiff = Infinity;
-                    sortedRecords.forEach((record, index) => {
-                      const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
-                      const diff = Math.abs(recordDateTime - now.getTime());
-                      if (diff < minDiff) {
-                        minDiff = diff;
-                        closestIndex = index;
-                      }
-                    });
-                    
-                    // 计算需要滚动的位置（考虑日期标题）
-                    const closestDate = sortedRecords[closestIndex]?.date;
-                    const dateElement = el.querySelector(`[data-date="${closestDate}"]`);
-                    if (dateElement) {
-                      setTimeout(() => {
-                        dateElement.scrollIntoView({ block: 'start' });
-                      }, 100);
-                    }
-                  }
-                }}
-              >
-                {(() => {
-                  // 根据搜索词过滤记录
-                  const filteredRecords = dataSearchQuery 
-                    ? timeRecords.filter(r => r.name.toLowerCase().includes(dataSearchQuery.toLowerCase()))
-                    : timeRecords;
-                  
-                  if (filteredRecords.length === 0 && dataSearchQuery) {
-                    return (
-                      <div className="flex-1 flex flex-col items-center justify-center py-10">
-                        <Search size={48} className="text-gray-300 mb-4" />
-                        <p className="text-gray-400 text-sm">未找到匹配的记录</p>
-                        <p className="text-gray-300 text-xs mt-1">尝试其他关键词</p>
-                      </div>
-                    );
-                  }
-                  
-                  // 按日期分组
-                  const sortedRecords = [...filteredRecords].sort((a, b) => {
-                    const aDateTime = `${a.date} ${a.startTime}`;
-                    const bDateTime = `${b.date} ${b.startTime}`;
-                    return aDateTime.localeCompare(bDateTime);
-                  });
-                  
-                  const groupedByDate: Record<string, TimeRecord[]> = {};
-                  sortedRecords.forEach(record => {
-                    if (!groupedByDate[record.date]) {
-                      groupedByDate[record.date] = [];
-                    }
-                    groupedByDate[record.date].push(record);
-                  });
-                  
-                  const dates = Object.keys(groupedByDate).sort();
-                  
-                  return dates.map(date => (
-                    <div key={date} data-date={date} className="mb-4">
-                      {/* 日期标题 */}
-                      <div className="sticky top-0 bg-white/95 backdrop-blur-sm py-2 px-1 z-10">
-                        <span className="text-sm font-bold text-gray-600">
-                          {(() => {
-                            const d = new Date(date);
-                            const today = new Date();
-                            const yesterday = new Date(today);
-                            yesterday.setDate(yesterday.getDate() - 1);
-                            
-                            const isToday = date === `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-                            const isYesterday = date === `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
-                            
-                            const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-                            const weekday = weekdays[d.getDay()];
-                            
-                            if (isToday) return `今天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
-                            if (isYesterday) return `昨天 · ${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
-                            return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`;
-                          })()}
-                        </span>
-                      </div>
-                      
-                      {/* 该日期下的记录和空白时间段（按时间排序） */}
-                      <div className="space-y-2">
-                        {(() => {
-                          // 时间转分钟
-                          const timeToMinutes = (time: string) => {
-                            const [h, m] = time.split(':').map(Number);
-                            return h * 60 + m;
-                          };
-                          
-                          // 分钟转时间字符串
-                          const minutesToTimeStr = (mins: number) => {
-                            const h = Math.floor(mins / 60);
-                            const m = mins % 60;
-                            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                          };
-                          
-                          // 判断是否是今天
-                          const today = new Date();
-                          const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-                          const isToday = date === todayStr;
-                          const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : 24 * 60;
-                          
-                          // 获取当天记录并排序
-                          const dayRecords = [...groupedByDate[date]].sort((a, b) => 
-                            a.startTime.localeCompare(b.startTime)
-                          );
-                          
-                          // 计算空白时间段
-                          const gaps: { start: string; end: string; duration: number }[] = [];
-                          
-                          // 合并重叠的时间段，得到已覆盖的时间区间
-                          const coveredIntervals: { start: number; end: number }[] = [];
-                          dayRecords.forEach(record => {
-                            const start = timeToMinutes(record.startTime);
-                            const end = timeToMinutes(record.endTime);
-                            
-                            if (coveredIntervals.length === 0) {
-                              coveredIntervals.push({ start, end });
-                            } else {
-                              const last = coveredIntervals[coveredIntervals.length - 1];
-                              if (start <= last.end) {
-                                last.end = Math.max(last.end, end);
-                              } else {
-                                coveredIntervals.push({ start, end });
-                              }
-                            }
-                          });
-                          
-                          // 计算区间之间的空白
-                          for (let i = 0; i < coveredIntervals.length - 1; i++) {
-                            const gapStart = coveredIntervals[i].end;
-                            const gapEnd = coveredIntervals[i + 1].start;
-                            const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
-                            const gapMinutes = effectiveGapEnd - gapStart;
-                            
-                            if (gapMinutes >= 60) {
-                              gaps.push({
-                                start: minutesToTimeStr(gapStart),
-                                end: minutesToTimeStr(effectiveGapEnd),
-                                duration: gapMinutes
-                              });
-                            }
-                          }
-                          
-                          // 检查最后一个区间到当前时间的空白（仅限今天）
-                          if (isToday && coveredIntervals.length > 0) {
-                            const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
-                            const gapToNow = currentMinutes - lastEnd;
-                            
-                            if (gapToNow >= 60) {
-                              gaps.push({
-                                start: minutesToTimeStr(lastEnd),
-                                end: minutesToTimeStr(currentMinutes),
-                                duration: gapToNow
-                              });
-                            }
-                          }
-                          
-                          // 合并记录和空白时间段，按开始时间排序
-                          type DisplayItem = 
-                            | { type: 'record'; data: TimeRecord }
-                            | { type: 'gap'; data: { start: string; end: string; duration: number } };
-                          
-                          const allItems: DisplayItem[] = [
-                            ...dayRecords.map(record => ({ type: 'record' as const, data: record })),
-                            ...gaps.map(gap => ({ type: 'gap' as const, data: gap }))
-                          ].sort((a, b) => {
-                            const aStart = a.type === 'record' ? a.data.startTime : a.data.start;
-                            const bStart = b.type === 'record' ? b.data.startTime : b.data.start;
-                            return aStart.localeCompare(bStart);
-                          });
-                          
-                          return allItems.map((item, idx) => {
-                            if (item.type === 'gap') {
-                              const gap = item.data;
-                              return (
-                                <div 
-                                  key={`gap-${idx}`}
-                                  onClick={() => {
-                                    setNewRecordDate(date);
-                                    setNewRecordStartTime(gap.start);
-                                    setNewRecordEndTime(gap.end);
-                                    setNewRecordName('');
-                                    setIsAddingRecord(true);
-                                  }}
-                                  className="bg-orange-50 rounded-2xl p-4 border-2 border-dashed border-orange-200 cursor-pointer hover:bg-orange-100 transition-all"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-orange-400">⏰</span>
-                                      <span className="text-sm text-orange-600 font-medium">
-                                        空白时段 · {Math.floor(gap.duration / 60)}小时{gap.duration % 60 > 0 ? `${gap.duration % 60}分钟` : ''}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-orange-400">{gap.start} - {gap.end}</span>
-                                      <Plus size={16} className="text-orange-400" />
-                                    </div>
-                                  </div>
-                                  <div className="text-xs text-orange-400 mt-1">点击补充这段时间在做什么</div>
-                                </div>
-                              );
-                            } else {
-                              const record = item.data;
-                              return (
-                                <div key={record.id} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                                  {editingRecord?.id === record.id ? (
-                                    // 编辑模式
-                                    <div className="space-y-3">
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-gray-500 w-12">名称</label>
-                                        <input
-                                          type="text"
-                                          value={editName}
-                                          onChange={(e) => setEditName(e.target.value)}
-                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300 font-bold text-gray-700"
-                                        />
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-gray-500 w-12">日期</label>
-                                        <input
-                                          type="date"
-                                          value={editDate}
-                                          onChange={(e) => setEditDate(e.target.value)}
-                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                        />
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-gray-500 w-12">开始</label>
-                                        <input
-                                          type="time"
-                                          value={editStartTime}
-                                          onChange={(e) => setEditStartTime(e.target.value)}
-                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                        />
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-gray-500 w-12">结束</label>
-                                        <input
-                                          type="time"
-                                          value={editEndTime}
-                                          onChange={(e) => setEditEndTime(e.target.value)}
-                                          className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                        />
-                                      </div>
-                                      <div className="flex gap-2 pt-2">
-                                        <button
-                                          onClick={() => setEditingRecord(null)}
-                                          className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
-                                        >
-                                          取消
-                                        </button>
-                                        <button
-                                          onClick={handleSaveEdit}
-                                          className="flex-1 py-2 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600"
-                                        >
-                                          保存
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    // 显示模式
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-gray-700">{record.name}</span>
-                                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                            record.source === 'timer' 
-                                              ? 'bg-purple-100 text-purple-600' 
-                                              : record.source === 'manual'
-                                              ? 'bg-green-100 text-green-600'
-                                              : 'bg-blue-100 text-blue-600'
-                                          }`}>
-                                            {record.source === 'timer' ? '计时器' : record.source === 'manual' ? '手动' : '导入'}
-                                          </span>
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                          {record.startTime} - {record.endTime}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => handleStartEdit(record)}
-                                          className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                                        >
-                                          <Edit3 size={16} />
-                                        </button>
-                                        <button
-                                          onClick={() => handleDeleteRecord(record.id)}
-                                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                        >
-                                          <Trash2 size={16} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }
-                          });
-                        })()}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* 分类归属弹窗 */}
       {showCategoryAssignModal && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
@@ -10404,11 +10600,34 @@ END:VEVENT
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-black text-[#2D2D2D]">分类归属</h3>
               <button 
-                onClick={() => setShowCategoryAssignModal(false)}
+                onClick={() => {
+                  setShowCategoryAssignModal(false);
+                  setCategorySearchQuery(''); // 关闭时清空搜索
+                }}
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200"
               >
                 <X size={18} />
               </button>
+            </div>
+            
+            {/* 搜索框 */}
+            <div className="relative mb-4">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={categorySearchQuery}
+                onChange={(e) => setCategorySearchQuery(e.target.value)}
+                placeholder="搜索事件名称..."
+                className="w-full h-10 pl-10 pr-10 bg-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-300 transition-all"
+              />
+              {categorySearchQuery && (
+                <button
+                  onClick={() => setCategorySearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
             
             <p className="text-xs text-gray-400 mb-4">修改事件分类后，将同步更新复盘数据和专注页面</p>
@@ -10434,7 +10653,7 @@ END:VEVENT
                 }
               });
 
-              const uniqueEvents = Array.from(eventMap.values()).sort((a: any, b: any) => {
+              let uniqueEvents = Array.from(eventMap.values()).sort((a: any, b: any) => {
                 // 待分类的排在前面
                 const aUncategorized = !a.categoryId || a.categoryId === 'uncategorized';
                 const bUncategorized = !b.categoryId || b.categoryId === 'uncategorized';
@@ -10443,12 +10662,21 @@ END:VEVENT
                 return a.normalizedName.localeCompare(b.normalizedName);
               });
               
+              // 根据搜索关键词过滤
+              if (categorySearchQuery.trim()) {
+                const query = categorySearchQuery.trim().toLowerCase();
+                uniqueEvents = uniqueEvents.filter((event: any) => 
+                  event.normalizedName.toLowerCase().includes(query) ||
+                  event.name.toLowerCase().includes(query)
+                );
+              }
+              
               if (uniqueEvents.length === 0) {
                 return (
                   <div className="flex-1 flex flex-col items-center justify-center py-10">
                     <ListTodo size={48} className="text-gray-300 mb-4" />
-                    <p className="text-gray-400 text-sm">暂无事件</p>
-                    <p className="text-gray-300 text-xs mt-1">使用计时器后会显示在这里</p>
+                    <p className="text-gray-400 text-sm">{categorySearchQuery ? '未找到匹配的事件' : '暂无事件'}</p>
+                    <p className="text-gray-300 text-xs mt-1">{categorySearchQuery ? '试试其他关键词' : '使用计时器后会显示在这里'}</p>
                   </div>
                 );
               }
@@ -10845,6 +11073,17 @@ END:VEVENT
             </div>
           </div>
         </div>
+      )}
+
+      {/* 数据源二级页面 */}
+      {showDataSourcePage && (
+        <DataSourcePage
+          onClose={() => setShowDataSourcePage(false)}
+          timeRecords={timeRecords}
+          setTimeRecords={setTimeRecords}
+          categories={categories}
+          showToastMessage={showToastMessage}
+        />
       )}
 
       {/* Toast 提示 */}
