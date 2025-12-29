@@ -8912,6 +8912,9 @@ const DataSourcePage = ({
             <p className="text-gray-400 text-sm">暂无数据记录</p>
             <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
           </div>
+        ) : timeRecords.length === 0 && isAddingRecord ? (
+          // 没有记录但正在添加时，只显示表单，不显示列表
+          null
         ) : (
           <div 
             ref={(el) => {
