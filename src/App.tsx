@@ -8636,21 +8636,32 @@ const DataSourcePage = ({
   const [editDate, setEditDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-  const [hasInitialScrolled, setHasInitialScrolled] = useState(false);
+  const hasInitialScrolledRef = useRef(false); // 使用 ref 而不是 state
   const [deletingDate, setDeletingDate] = useState<string | null>(null); // 正在确认删除的日期
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false); // 多选模式
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set()); // 已选中的日期
+  
+  // 用于强制重新渲染的 key
+  const [renderKey, setRenderKey] = useState(0);
 
   // 开始新增记录
   const startAddRecord = () => {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    // 使用函数式更新确保状态正确更新
+    setNewRecordName('');
     setNewRecordDate(todayStr);
     setNewRecordStartTime(currentTime);
     setNewRecordEndTime(currentTime);
     setNewRecordCategoryId('uncategorized');
-    setIsAddingRecord(true);
+    
+    // 使用 setTimeout 确保状态更新在下一个事件循环中执行
+    setTimeout(() => {
+      setIsAddingRecord(true);
+      setRenderKey(k => k + 1);
+    }, 0);
   };
 
   // 添加记录
@@ -8783,28 +8794,19 @@ const DataSourcePage = ({
             删除
           </button>
         ) : (
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setIsMultiSelectMode(true)}
-              className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100"
-              title="批量删除"
-            >
-              <Trash2 size={18} />
-            </button>
-            <button 
-              onClick={startAddRecord}
-              className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 hover:bg-green-200"
-              title="添加记录"
-            >
-              <Plus size={20} />
-            </button>
-          </div>
+          <button 
+            onClick={() => setIsMultiSelectMode(true)}
+            className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100"
+            title="批量删除"
+          >
+            <Trash2 size={18} />
+          </button>
         )}
       </div>
 
-      {/* 搜索框 */}
-      <div className="bg-white px-4 py-3 border-b border-gray-100">
-        <div className="relative">
+      {/* 搜索框和新增按钮 */}
+      <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center gap-3">
+        <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
@@ -8822,10 +8824,25 @@ const DataSourcePage = ({
             </button>
           )}
         </div>
+        {!isMultiSelectMode && (
+          <button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('新增按钮被点击');
+              startAddRecord();
+            }}
+            type="button"
+            className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white hover:bg-green-600 flex-shrink-0 active:bg-green-700"
+            title="添加记录"
+          >
+            <Plus size={20} />
+          </button>
+        )}
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+      <div key={`content-${renderKey}-${isAddingRecord}`} className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
         {/* 新增数据表单 */}
         {isAddingRecord && (
           <div className="bg-green-50 rounded-2xl p-4 border-2 border-green-200 mb-4">
@@ -8918,8 +8935,9 @@ const DataSourcePage = ({
         ) : (
           <div 
             ref={(el) => {
-              if (el && timeRecords.length > 0 && !hasInitialScrolled && !dataSearchQuery) {
-                setHasInitialScrolled(true);
+              if (el && timeRecords.length > 0 && !hasInitialScrolledRef.current && !dataSearchQuery) {
+                hasInitialScrolledRef.current = true;
+                
                 const now = new Date();
                 const sortedRecords = [...timeRecords].sort((a, b) => {
                   const aDateTime = `${a.date} ${a.startTime}`;
