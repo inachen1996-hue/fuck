@@ -9223,15 +9223,15 @@ const DataSourcePage = ({
                     )}
                   </div>
                   
-                  {/* 时间轴视图 - 缩放因子: 0.5px/分钟 (修改前: 1px/分钟, 修改后: 0.5px/分钟) */}
+                  {/* 时间轴视图 - 缩放因子: 1.5px/分钟 (修改前: 0.5px/分钟, 修改后: 1.5px/分钟) */}
                   <div className="flex">
                     {/* 左侧时间刻度 */}
-                    <div className="w-12 flex-shrink-0 relative" style={{ height: `${24 * 30}px` }}>
+                    <div className="w-12 flex-shrink-0 relative" style={{ height: `${24 * 90}px` }}>
                       {Array.from({ length: 25 }, (_, i) => (
                         <div 
                           key={i} 
                           className="absolute left-0 right-0 flex items-start"
-                          style={{ top: `${i * 30}px` }}
+                          style={{ top: `${i * 90}px` }}
                         >
                           <span className="text-[10px] text-gray-400 font-medium leading-none">
                             {i.toString().padStart(2, '0')}:00
@@ -9242,18 +9242,18 @@ const DataSourcePage = ({
                     </div>
                     
                     {/* 右侧卡片区域 */}
-                    <div className="flex-1 relative" style={{ height: `${24 * 30}px` }}>
+                    <div className="flex-1 relative" style={{ height: `${24 * 90}px` }}>
                       {/* 背景网格线 */}
                       {Array.from({ length: 24 }, (_, i) => (
                         <div 
                           key={i}
                           className="absolute left-0 right-0 border-t border-gray-100"
-                          style={{ top: `${i * 30}px`, height: '30px' }}
+                          style={{ top: `${i * 90}px`, height: '90px' }}
                         />
                       ))}
                       
                       {(() => {
-                        const SCALE = 0.5; // 缩放因子: 1分钟 = 0.5px
+                        const SCALE = 1.5; // 缩放因子: 1分钟 = 1.5px
                         const timeToMinutes = (time: string) => {
                           const [h, m] = time.split(':').map(Number);
                           return h * 60 + m;
@@ -9528,7 +9528,7 @@ const DataSourcePage = ({
                       
                       {/* 当前时间指示线 */}
                       {(() => {
-                        const SCALE = 0.5;
+                        const SCALE = 1.5;
                         const today = new Date();
                         const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
                         if (date === todayStr) {
