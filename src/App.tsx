@@ -1756,18 +1756,22 @@ const TimerView = ({
   // 拖拽排序状态
   const [draggedTimerId, setDraggedTimerId] = useState<string | null>(null);
   const [dragOverTimerId, setDragOverTimerId] = useState<string | null>(null);
+  
+  // 移动端长按拖拽状态
+  const longPressTimerRef = useRef<number | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const [isTouchDragging, setIsTouchDragging] = useState(false);
 
-  // 处理拖拽开始
+  // 处理拖拽开始（桌面端）
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, timerId: string) => {
     setDraggedTimerId(timerId);
     e.dataTransfer.effectAllowed = 'move';
-    // 设置拖拽时的透明度
     setTimeout(() => {
       e.currentTarget.style.opacity = '0.5';
     }, 0);
   };
 
-  // 处理拖拽结束
+  // 处理拖拽结束（桌面端）
   const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
     e.currentTarget.style.opacity = '1';
     setDraggedTimerId(null);
@@ -1788,9 +1792,14 @@ const TimerView = ({
     setDragOverTimerId(null);
   };
 
-  // 处理放置
+  // 处理放置（通用）
   const handleDrop = (e: React.DragEvent, targetTimerId: string) => {
     e.preventDefault();
+    reorderTimers(targetTimerId);
+  };
+
+  // 重新排序计时器（通用函数）
+  const reorderTimers = (targetTimerId: string) => {
     if (!draggedTimerId || draggedTimerId === targetTimerId) return;
 
     const draggedIndex = categoryTimers.findIndex(t => t.id === draggedTimerId);
@@ -1798,12 +1807,10 @@ const TimerView = ({
     
     if (draggedIndex === -1 || targetIndex === -1) return;
 
-    // 重新计算所有计时器的 order
     const newCategoryTimers = [...categoryTimers];
     const [draggedTimer] = newCategoryTimers.splice(draggedIndex, 1);
     newCategoryTimers.splice(targetIndex, 0, draggedTimer);
 
-    // 更新所有计时器的 order
     const updatedTimers = timers.map(t => {
       const newIndex = newCategoryTimers.findIndex(ct => ct.id === t.id);
       if (newIndex !== -1) {
@@ -1815,6 +1822,72 @@ const TimerView = ({
     setTimers(updatedTimers);
     setDraggedTimerId(null);
     setDragOverTimerId(null);
+    setIsTouchDragging(false);
+  };
+
+  // 移动端触摸开始
+  const handleTouchStart = (e: React.TouchEvent, timerId: string) => {
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    
+    // 长按 500ms 后开始拖拽
+    longPressTimerRef.current = window.setTimeout(() => {
+      setDraggedTimerId(timerId);
+      setIsTouchDragging(true);
+      // 震动反馈
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
+    }, 500);
+  };
+
+  // 移动端触摸移动
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPosRef.current) return;
+    
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    
+    // 如果移动超过 10px，取消长按（用户在滑动而不是长按）
+    if (!isTouchDragging && (deltaX > 10 || deltaY > 10)) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      return;
+    }
+    
+    // 如果正在拖拽，检测当前触摸位置下的卡片
+    if (isTouchDragging && draggedTimerId) {
+      const elementsAtPoint = document.elementsFromPoint(touch.clientX, touch.clientY);
+      for (const el of elementsAtPoint) {
+        const timerCard = el.closest('[data-timer-id]') as HTMLElement;
+        if (timerCard && timerCard.dataset.timerId !== draggedTimerId) {
+          setDragOverTimerId(timerCard.dataset.timerId || null);
+          break;
+        }
+      }
+    }
+  };
+
+  // 移动端触摸结束
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    
+    // 如果正在拖拽且有目标，执行排序
+    if (isTouchDragging && draggedTimerId && dragOverTimerId) {
+      reorderTimers(dragOverTimerId);
+    } else {
+      setDraggedTimerId(null);
+      setDragOverTimerId(null);
+      setIsTouchDragging(false);
+    }
+    
+    touchStartPosRef.current = null;
   };
 
   // 获取当前分类的主题色
@@ -1993,15 +2066,19 @@ const TimerView = ({
                 return (
                 <div 
                   key={timer.id}
+                  data-timer-id={timer.id}
                   className={`relative overflow-hidden rounded-2xl transition-all duration-200 ${
-                    isDragOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
-                  } ${isDragging ? 'opacity-50' : ''}`}
-                  draggable
+                    isDragOver ? 'ring-2 ring-purple-400 ring-offset-2 scale-105' : ''
+                  } ${isDragging ? 'opacity-50 scale-95' : ''}`}
+                  draggable={!isTouchDragging}
                   onDragStart={(e) => handleDragStart(e, timer.id)}
                   onDragEnd={handleDragEnd}
                   onDragOver={(e) => handleDragOver(e, timer.id)}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, timer.id)}
+                  onTouchStart={(e) => handleTouchStart(e, timer.id)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                 >
                   {/* 背景操作按钮 - 只在滑动时显示 */}
                   <div 
@@ -2041,9 +2118,11 @@ const TimerView = ({
                       borderColor: timer.status === 'running' ? theme.primary : 
                                   timer.status === 'completed' ? '#42D4A4' : theme.primary,
                       transform: isSwiped ? 'translateX(-96px)' : 'translateX(0)',
-                      touchAction: 'pan-y'
+                      touchAction: isTouchDragging ? 'none' : 'pan-y'
                     }}
                     onClick={(e) => {
+                      // 如果正在拖拽，不触发
+                      if (isTouchDragging || draggedTimerId) return;
                       // 如果点击的是更多按钮区域，不触发
                       if ((e.target as HTMLElement).closest('.more-btn')) return;
                       // 如果已滑动，先收回
@@ -2057,12 +2136,16 @@ const TimerView = ({
                       }
                     }}
                     onTouchStart={(e) => {
+                      // 如果正在拖拽模式，不处理滑动
+                      if (isTouchDragging) return;
                       const touch = e.touches[0];
                       const target = e.currentTarget as HTMLElement;
                       target.dataset.startX = String(touch.clientX);
                       target.dataset.startY = String(touch.clientY);
                     }}
                     onTouchEnd={(e) => {
+                      // 如果正在拖拽模式，不处理滑动
+                      if (isTouchDragging) return;
                       const target = e.currentTarget as HTMLElement;
                       const startX = Number(target.dataset.startX || 0);
                       const startY = Number(target.dataset.startY || 0);
@@ -4234,6 +4317,81 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
   
   const categoryDistribution = calculateCategoryDistribution();
   const totalMinutes = Object.values(categoryDistribution).reduce((sum, cat) => sum + cat.totalMinutes, 0);
+
+  // 计算对比时间段的分类分布
+  const calculateComparisonDistribution = (): Record<string, number> => {
+    const distribution: Record<string, number> = {};
+    let comparisonRecords: TimeRecord[] = [];
+    const today = new Date();
+    
+    if (progressPeriod === 'today') {
+      // 今日对比昨日
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+      comparisonRecords = timeRecords.filter(r => r.date === yesterdayStr);
+    } else if (progressPeriod === 'yesterday') {
+      // 昨日对比前日
+      const dayBeforeYesterday = new Date(today);
+      dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 2);
+      const dayBeforeStr = `${dayBeforeYesterday.getFullYear()}-${(dayBeforeYesterday.getMonth() + 1).toString().padStart(2, '0')}-${dayBeforeYesterday.getDate().toString().padStart(2, '0')}`;
+      comparisonRecords = timeRecords.filter(r => r.date === dayBeforeStr);
+    } else if (progressPeriod === 'week') {
+      // 本周对比上周
+      const dayOfWeek = today.getDay();
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const thisMonday = new Date(today);
+      thisMonday.setDate(today.getDate() + mondayOffset);
+      
+      // 上周一到上周日
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+      const lastSunday = new Date(lastMonday);
+      lastSunday.setDate(lastMonday.getDate() + 6);
+      
+      comparisonRecords = timeRecords.filter(r => {
+        const recordDate = new Date(r.date);
+        return recordDate >= lastMonday && recordDate <= lastSunday;
+      });
+    } else if (progressPeriod === 'month') {
+      // 本月对比上月
+      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      
+      comparisonRecords = timeRecords.filter(r => {
+        const recordDate = new Date(r.date);
+        return recordDate >= lastMonth && recordDate <= lastMonthEnd;
+      });
+    }
+    
+    comparisonRecords.forEach(record => {
+      const start = record.startTime.split(':').map(Number);
+      const end = record.endTime.split(':').map(Number);
+      let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+      if (minutes <= 0) minutes = 1;
+      
+      const categoryId = record.categoryId || 'uncategorized';
+      distribution[categoryId] = (distribution[categoryId] || 0) + minutes;
+    });
+    
+    return distribution;
+  };
+  
+  const comparisonDistribution = calculateComparisonDistribution();
+  
+  // 判断对比时间段是否有数据
+  const comparisonHasData = Object.values(comparisonDistribution).some(v => v > 0);
+  
+  // 获取对比时间段的标签
+  const getComparisonLabel = () => {
+    switch (progressPeriod) {
+      case 'today': return '昨日';
+      case 'yesterday': return '前日';
+      case 'week': return '上周';
+      case 'month': return '上月';
+      default: return '';
+    }
+  };
   
   // 生成饼图数据 - 包含所有有数据的分类
   const pieData: Array<{
@@ -4658,6 +4816,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   
                   {/* 图例 */}
                   <div className="space-y-3">
+                    {/* 对比时间段无数据提示 */}
+                    {!comparisonHasData && (
+                      <div className="text-xs text-gray-400 text-center py-1 bg-gray-50 rounded-lg">
+                        {getComparisonLabel()}无数据，无法对比
+                      </div>
+                    )}
                     {/* 按累计时间从多到少排序显示分类 */}
                     {[...timeCategories]
                       .map(cat => {
@@ -4686,6 +4850,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       const idealMinutes = idealHoursPerDay * 60 * daysInPeriod;
                       const progressPercent = idealMinutes > 0 ? Math.min((minutes / idealMinutes) * 100, 100) : 0;
                       
+                      // 计算与对比时间段的变化
+                      const comparisonMinutes = comparisonDistribution[cat.id] || 0;
+                      const changePercent = comparisonMinutes > 0 
+                        ? ((minutes - comparisonMinutes) / comparisonMinutes) * 100 
+                        : (minutes > 0 ? 100 : 0);
+                      const showChange = minutes > 0 || comparisonMinutes > 0;
+                      
                       return (
                         <button
                           key={cat.id}
@@ -4697,12 +4868,28 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                               className="w-3 h-3 rounded-full flex-shrink-0"
                               style={{ backgroundColor: cat.color }}
                             />
-                            <div className="flex items-center gap-1 flex-1">
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
                               <span className="text-sm">{cat.icon}</span>
-                              <span className="text-sm font-bold text-gray-700">{cat.label}</span>
+                              <span className="text-sm font-bold text-gray-700 truncate">{cat.label}</span>
                               <span className="text-xs text-gray-400 ml-1">{percentage.toFixed(0)}%</span>
+                              {/* 与对比时间段对比 */}
+                              {showChange && comparisonHasData && (
+                                <span 
+                                  className={`text-[10px] ml-1 px-1 py-0.5 rounded ${
+                                    changePercent > 0 
+                                      ? 'text-green-600 bg-green-50' 
+                                      : changePercent < 0 
+                                        ? 'text-red-500 bg-red-50' 
+                                        : 'text-gray-400 bg-gray-100'
+                                  }`}
+                                  title={`对比${getComparisonLabel()}`}
+                                >
+                                  {changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : '→'}
+                                  {Math.abs(changePercent).toFixed(0)}%
+                                </span>
+                              )}
                             </div>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-gray-500 flex-shrink-0">
                               {minutes >= 60 
                                 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
                                 : `${minutes}m`
