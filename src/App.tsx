@@ -9384,21 +9384,27 @@ const DataSourcePage = ({
                         for (let i = 0; i < coveredIntervals.length - 1; i++) {
                           const gapStart = coveredIntervals[i].end;
                           const gapEnd = coveredIntervals[i + 1].start;
-                          const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
-                          const gapMinutes = effectiveGapEnd - gapStart;
+                          const gapMinutes = gapEnd - gapStart;
                           
-                          // 超过1分钟就显示空白
+                          // 只有当间隙大于0时才显示空白（视觉上没有重叠）
                           if (gapMinutes >= 1) {
-                            gaps.push(...splitGapByHour(gapStart, effectiveGapEnd));
+                            // 对于今天，限制到当前时间
+                            const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
+                            const effectiveGapMinutes = effectiveGapEnd - gapStart;
+                            if (effectiveGapMinutes >= 1) {
+                              gaps.push(...splitGapByHour(gapStart, effectiveGapEnd));
+                            }
                           }
                         }
                         
                         // 计算第一条记录之前的空白（从00:00到第一条记录开始）
                         if (coveredIntervals.length > 0) {
                           const firstStart = coveredIntervals[0].start;
-                          const effectiveFirstStart = isToday ? Math.min(firstStart, currentMinutes) : firstStart;
-                          if (effectiveFirstStart > 0) {
-                            gaps.push(...splitGapByHour(0, effectiveFirstStart));
+                          if (firstStart > 0) {
+                            const effectiveFirstStart = isToday ? Math.min(firstStart, currentMinutes) : firstStart;
+                            if (effectiveFirstStart > 0) {
+                              gaps.push(...splitGapByHour(0, effectiveFirstStart));
+                            }
                           }
                         }
                         
@@ -9499,7 +9505,8 @@ const DataSourcePage = ({
                                 left: `calc(${leftPercent}% + 4px)`,
                                 width: `calc(${columnWidth}% - 8px)`,
                                 backgroundColor: catLightColor,
-                                border: `1px solid ${catColor}20`
+                                border: `1px solid ${catColor}20`,
+                                zIndex: 5
                               }}
                               onClick={() => handleStartEdit(record)}
                             >
@@ -9536,8 +9543,18 @@ const DataSourcePage = ({
                         
                         // 渲染空白时段卡片
                         const gapCards = gaps.map((gap, idx) => {
-                          const startMins = timeToMinutes(gap.start);
+                          const gapStartMins = timeToMinutes(gap.start);
+                          const gapEndMins = timeToMinutes(gap.end);
                           const cardHeight = Math.max(gap.duration * SCALE, 8); // 最小8px高度
+                          
+                          // 检查这个空白时段是否与任何日程卡片的视觉区域重叠
+                          const hasOverlap = recordsWithLayout.some(record => {
+                            const recordVisualEnd = Math.max(record.endMins, record.startMins + MIN_CARD_MINUTES);
+                            return gapStartMins < recordVisualEnd && gapEndMins > record.startMins;
+                          });
+                          
+                          // 如果有重叠，不显示这个空白卡片
+                          if (hasOverlap) return null;
                           
                           return (
                             <div 
@@ -9552,9 +9569,10 @@ const DataSourcePage = ({
                               }}
                               className="absolute left-1 right-1 bg-white rounded-lg border border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all overflow-hidden"
                               style={{ 
-                                top: `${startMins * SCALE}px`, 
+                                top: `${gapStartMins * SCALE}px`, 
                                 height: `${cardHeight}px`,
-                                minHeight: '14px'
+                                minHeight: '14px',
+                                zIndex: 1
                               }}
                             >
                               <div className="p-1 h-full flex flex-col justify-center">
@@ -9567,9 +9585,9 @@ const DataSourcePage = ({
                               </div>
                             </div>
                           );
-                        });
+                        }).filter(Boolean);
                         
-                        return [...recordCards, ...gapCards];
+                        return [...gapCards, ...recordCards];
                       })()}
                       
                       {/* 当前时间指示线 */}
@@ -10300,6 +10318,28 @@ END:VEVENT
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
         {/* 功能入口统一容器 */}
         <div className="bg-white rounded-[20px] overflow-hidden" style={{ boxShadow: '0 8px 24px rgba(255, 193, 7, 0.15)' }}>
+          {/* 数据管理 */}
+          <button 
+            onClick={() => setShowDataMenuModal(true)}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
+                <Database size={24} style={{ color: '#FFA000' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>数据管理</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  共 {timeRecords.length} 条记录
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
           {/* AI精力诊断对话 */}
           <button 
             onClick={onOpenAIChat}
@@ -10332,7 +10372,7 @@ END:VEVENT
                 <Timer size={24} style={{ color: '#FFA000' }} />
               </div>
               <div className="text-left">
-                <h3 className="font-semibold" style={{ color: '#5D4037' }}>AI计划番茄钟管理</h3>
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>番茄钟默认参数设置</h3>
                 <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
                   工作{pomodoroSettings.workDuration}分钟 · 休息{pomodoroSettings.breakDuration}分钟 · {pomodoroSettings.rounds}轮后长休息
                 </p>
@@ -10357,28 +10397,6 @@ END:VEVENT
                 <h3 className="font-semibold" style={{ color: '#5D4037' }}>理想时间配比</h3>
                 <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
                   已分配 {totalAllocatedTime}h / 24h
-                </p>
-              </div>
-            </div>
-            <ChevronRight size={20} style={{ color: '#FFA000' }} />
-          </button>
-
-          {/* 分割线 */}
-          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
-
-          {/* 数据管理 */}
-          <button 
-            onClick={() => setShowDataMenuModal(true)}
-            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)' }}>
-                <Database size={24} style={{ color: '#FFA000' }} />
-              </div>
-              <div className="text-left">
-                <h3 className="font-semibold" style={{ color: '#5D4037' }}>数据管理</h3>
-                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
-                  共 {timeRecords.length} 条记录
                 </p>
               </div>
             </div>
