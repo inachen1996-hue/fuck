@@ -92,6 +92,7 @@ interface Timer {
   remainingTime: number; // 秒
   status: TimerStatus;
   createdAt: number;
+  order?: number; // 排序顺序
 }
 
 interface Category {
@@ -1748,7 +1749,73 @@ const TimerView = ({
     setEditingTimer(null);
   };
 
-  const categoryTimers = timers.filter(t => t.categoryId === selectedCategory);
+  const categoryTimers = timers
+    .filter(t => t.categoryId === selectedCategory)
+    .sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+
+  // 拖拽排序状态
+  const [draggedTimerId, setDraggedTimerId] = useState<string | null>(null);
+  const [dragOverTimerId, setDragOverTimerId] = useState<string | null>(null);
+
+  // 处理拖拽开始
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, timerId: string) => {
+    setDraggedTimerId(timerId);
+    e.dataTransfer.effectAllowed = 'move';
+    // 设置拖拽时的透明度
+    setTimeout(() => {
+      e.currentTarget.style.opacity = '0.5';
+    }, 0);
+  };
+
+  // 处理拖拽结束
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    e.currentTarget.style.opacity = '1';
+    setDraggedTimerId(null);
+    setDragOverTimerId(null);
+  };
+
+  // 处理拖拽经过
+  const handleDragOver = (e: React.DragEvent, timerId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (timerId !== draggedTimerId) {
+      setDragOverTimerId(timerId);
+    }
+  };
+
+  // 处理拖拽离开
+  const handleDragLeave = () => {
+    setDragOverTimerId(null);
+  };
+
+  // 处理放置
+  const handleDrop = (e: React.DragEvent, targetTimerId: string) => {
+    e.preventDefault();
+    if (!draggedTimerId || draggedTimerId === targetTimerId) return;
+
+    const draggedIndex = categoryTimers.findIndex(t => t.id === draggedTimerId);
+    const targetIndex = categoryTimers.findIndex(t => t.id === targetTimerId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // 重新计算所有计时器的 order
+    const newCategoryTimers = [...categoryTimers];
+    const [draggedTimer] = newCategoryTimers.splice(draggedIndex, 1);
+    newCategoryTimers.splice(targetIndex, 0, draggedTimer);
+
+    // 更新所有计时器的 order
+    const updatedTimers = timers.map(t => {
+      const newIndex = newCategoryTimers.findIndex(ct => ct.id === t.id);
+      if (newIndex !== -1) {
+        return { ...t, order: newIndex };
+      }
+      return t;
+    });
+
+    setTimers(updatedTimers);
+    setDraggedTimerId(null);
+    setDragOverTimerId(null);
+  };
 
   // 获取当前分类的主题色
   const currentCategoryTheme = MACARON_COLORS.categories[selectedCategory] || {
@@ -1920,12 +1987,22 @@ const TimerView = ({
                   text: predefinedTheme.text
                 };
                 
+                const isDragging = draggedTimerId === timer.id;
+                const isDragOver = dragOverTimerId === timer.id;
+                
                 return (
                 <div 
                   key={timer.id}
-                  className="relative overflow-hidden rounded-2xl"
+                  className={`relative overflow-hidden rounded-2xl transition-all duration-200 ${
+                    isDragOver ? 'ring-2 ring-purple-400 ring-offset-2' : ''
+                  } ${isDragging ? 'opacity-50' : ''}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, timer.id)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleDragOver(e, timer.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, timer.id)}
                 >
-                  {/* 背景操作按钮 */}
                   {/* 背景操作按钮 - 只在滑动时显示 */}
                   <div 
                     className={`absolute right-0 top-0 bottom-0 flex items-center transition-opacity duration-300 ${isSwiped ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -1956,7 +2033,7 @@ const TimerView = ({
                   
                   {/* 卡片内容 - 可滑动 */}
                   <div 
-                    className={`relative w-full rounded-2xl p-3 bg-white border-2 transition-transform duration-300 cursor-pointer min-h-[140px] ${
+                    className={`relative w-full rounded-2xl p-3 bg-white border-2 transition-transform duration-300 cursor-grab active:cursor-grabbing min-h-[140px] ${
                       activeTimer?.id === timer.id ? 'ring-2 ring-purple-100' : ''
                     }`}
                     style={{ 
@@ -9545,13 +9622,19 @@ const DataSourcePage = ({
                         // 渲染空白时段卡片
                         const gapCards = gaps.map((gap, idx) => {
                           const gapStartMins = timeToMinutes(gap.start);
-                          const gapEndMins = timeToMinutes(gap.end);
-                          const cardHeight = Math.max(gap.duration * SCALE, 8); // 最小8px高度
+                          const gapHeight = Math.max(gap.duration * SCALE, 8); // 最小8px高度
                           
                           // 检查这个空白时段是否与任何日程卡片的视觉区域重叠
+                          // 需要考虑日程卡片的实际渲染高度（MIN_CARD_HEIGHT 对应的分钟数）
                           const hasOverlap = recordsWithLayout.some(record => {
-                            const recordVisualEnd = Math.max(record.endMins, record.startMins + MIN_CARD_MINUTES);
-                            return gapStartMins < recordVisualEnd && gapEndMins > record.startMins;
+                            // 计算日程卡片的实际视觉结束位置（与渲染时一致）
+                            const recordDuration = record.endMins - record.startMins;
+                            const recordCardHeight = Math.max(recordDuration * SCALE, MIN_CARD_HEIGHT);
+                            const recordVisualEndMins = record.startMins + (recordCardHeight / SCALE);
+                            
+                            // 检查空白卡片的视觉区域是否与日程卡片重叠
+                            const gapVisualEndMins = gapStartMins + (gapHeight / SCALE);
+                            return gapStartMins < recordVisualEndMins && gapVisualEndMins > record.startMins;
                           });
                           
                           // 如果有重叠，不显示这个空白卡片
@@ -9571,7 +9654,7 @@ const DataSourcePage = ({
                               className="absolute left-1 right-1 bg-white rounded-lg border border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all overflow-hidden"
                               style={{ 
                                 top: `${gapStartMins * SCALE}px`, 
-                                height: `${cardHeight}px`,
+                                height: `${gapHeight}px`,
                                 minHeight: '14px',
                                 zIndex: 1
                               }}
