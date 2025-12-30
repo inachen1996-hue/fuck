@@ -9196,30 +9196,63 @@ const DataSourcePage = ({
                     
                     {/* 非多选模式下的删除按钮 */}
                     {!isMultiSelectMode && (
-                      deletingDate === date ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeletingDate(null); }}
-                            className="px-2 py-1 text-xs text-gray-500 bg-gray-200 rounded-lg hover:bg-gray-300"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteByDate(date); }}
-                            className="px-2 py-1 text-xs text-white bg-red-500 rounded-lg hover:bg-red-600"
-                          >
-                            确认删除
-                          </button>
-                        </div>
-                      ) : (
+                      <div className="flex items-center gap-1">
+                        {/* 上下导航按钮 */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); setDeletingDate(date); }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="删除当天所有记录"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const dates = Object.keys(groupedByDate).sort();
+                            const currentIndex = dates.indexOf(date);
+                            if (currentIndex > 0) {
+                              setScrollToDate(dates[currentIndex - 1]);
+                            }
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-all"
+                          title="上一天"
                         >
-                          <Trash2 size={14} />
+                          <ChevronLeft size={14} className="rotate-90" />
                         </button>
-                      )
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const dates = Object.keys(groupedByDate).sort();
+                            const currentIndex = dates.indexOf(date);
+                            if (currentIndex < dates.length - 1) {
+                              setScrollToDate(dates[currentIndex + 1]);
+                            }
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-all"
+                          title="下一天"
+                        >
+                          <ChevronLeft size={14} className="-rotate-90" />
+                        </button>
+                        
+                        {/* 删除按钮 */}
+                        {deletingDate === date ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeletingDate(null); }}
+                              className="px-2 py-1 text-xs text-gray-500 bg-gray-200 rounded-lg hover:bg-gray-300"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteByDate(date); }}
+                              className="px-2 py-1 text-xs text-white bg-red-500 rounded-lg hover:bg-red-600"
+                            >
+                              确认删除
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeletingDate(date); }}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="删除当天所有记录"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                   
@@ -9353,15 +9386,29 @@ const DataSourcePage = ({
                           }
                         }
                         
-                        if (isToday && coveredIntervals.length > 0) {
-                          const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
-                          const gapToNow = currentMinutes - lastEnd;
-                          
-                          // 超过1分钟就显示空白
-                          if (gapToNow >= 1) {
-                            gaps.push(...splitGapByHour(lastEnd, currentMinutes));
+                        // 计算第一条记录之前的空白（从00:00到第一条记录开始）
+                        if (coveredIntervals.length > 0) {
+                          const firstStart = coveredIntervals[0].start;
+                          const effectiveFirstStart = isToday ? Math.min(firstStart, currentMinutes) : firstStart;
+                          if (effectiveFirstStart > 0) {
+                            gaps.push(...splitGapByHour(0, effectiveFirstStart));
                           }
                         }
+                        
+                        // 计算最后一条记录之后的空白
+                        if (coveredIntervals.length > 0) {
+                          const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
+                          const dayEndMinutes = isToday ? currentMinutes : 24 * 60;
+                          const gapToEnd = dayEndMinutes - lastEnd;
+                          
+                          // 超过1分钟就显示空白
+                          if (gapToEnd >= 1) {
+                            gaps.push(...splitGapByHour(lastEnd, dayEndMinutes));
+                          }
+                        }
+                        
+                        // 按开始时间排序空白时段
+                        gaps.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
                         
                         // 计算重叠记录的列布局
                         const recordsWithLayout = dayRecords.map(record => ({
@@ -9372,54 +9419,45 @@ const DataSourcePage = ({
                           totalColumns: 1
                         }));
                         
-                        // 检测重叠并分配列
+                        // 按开始时间排序
+                        recordsWithLayout.sort((a, b) => a.startMins - b.startMins || a.id.localeCompare(b.id));
+                        
+                        // 使用贪心算法分配列：每个记录分配到第一个不冲突的列
                         for (let i = 0; i < recordsWithLayout.length; i++) {
                           const current = recordsWithLayout[i];
-                          const overlapping: typeof recordsWithLayout = [current];
+                          
+                          // 找出所有在当前记录之前且与当前记录时间重叠的记录占用的列
+                          const occupiedColumns = new Set<number>();
+                          for (let j = 0; j < i; j++) {
+                            const other = recordsWithLayout[j];
+                            // 检查是否真正重叠（时间有交集）
+                            if (current.startMins < other.endMins && current.endMins > other.startMins) {
+                              occupiedColumns.add(other.column);
+                            }
+                          }
+                          
+                          // 分配第一个未被占用的列
+                          let col = 0;
+                          while (occupiedColumns.has(col)) col++;
+                          current.column = col;
+                        }
+                        
+                        // 计算每个记录的 totalColumns：找出与它重叠的所有记录中最大的列号+1
+                        for (let i = 0; i < recordsWithLayout.length; i++) {
+                          const current = recordsWithLayout[i];
+                          let maxColumn = current.column;
                           
                           // 找出所有与当前记录重叠的记录
                           for (let j = 0; j < recordsWithLayout.length; j++) {
                             if (i !== j) {
                               const other = recordsWithLayout[j];
-                              // 检查是否重叠
                               if (current.startMins < other.endMins && current.endMins > other.startMins) {
-                                overlapping.push(other);
+                                maxColumn = Math.max(maxColumn, other.column);
                               }
                             }
                           }
                           
-                          if (overlapping.length > 1) {
-                            // 按开始时间排序
-                            overlapping.sort((a, b) => a.startMins - b.startMins || a.id.localeCompare(b.id));
-                            
-                            // 分配列号
-                            const usedColumns = new Set<number>();
-                            overlapping.forEach(rec => {
-                              // 找到第一个未使用的列
-                              let col = 0;
-                              while (usedColumns.has(col)) col++;
-                              
-                              // 检查这个列是否与之前分配的记录冲突
-                              for (const other of overlapping) {
-                                if (other.id !== rec.id && other.column === col) {
-                                  if (rec.startMins < other.endMins && rec.endMins > other.startMins) {
-                                    col++;
-                                    while (usedColumns.has(col)) col++;
-                                  }
-                                }
-                              }
-                              
-                              rec.column = col;
-                              rec.totalColumns = overlapping.length;
-                              usedColumns.add(col);
-                            });
-                            
-                            // 更新所有重叠记录的总列数
-                            const maxCol = Math.max(...overlapping.map(r => r.column)) + 1;
-                            overlapping.forEach(rec => {
-                              rec.totalColumns = maxCol;
-                            });
-                          }
+                          current.totalColumns = maxColumn + 1;
                         }
                         
                         // 渲染记录卡片
@@ -9445,7 +9483,7 @@ const DataSourcePage = ({
                           return (
                             <div 
                               key={record.id} 
-                              className="absolute rounded-lg border-l-4 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                              className="absolute rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                               style={{ 
                                 top: `${startMins * SCALE}px`, 
                                 height: `${cardHeight}px`,
@@ -9453,14 +9491,16 @@ const DataSourcePage = ({
                                 left: `calc(${leftPercent}% + 4px)`,
                                 width: `calc(${columnWidth}% - 8px)`,
                                 backgroundColor: catLightColor,
-                                borderLeftColor: catColor,
-                                borderTop: `1px solid ${catColor}15`,
-                                borderRight: `1px solid ${catColor}15`,
-                                borderBottom: `1px solid ${catColor}15`
+                                border: `1px solid ${catColor}20`
                               }}
                               onClick={() => handleStartEdit(record)}
                             >
-                              <div className="p-2 h-full flex flex-col">
+                              {/* 左侧圆角竖条 */}
+                              <div 
+                                className="absolute left-1 top-1.5 bottom-1.5 w-1 rounded-full"
+                                style={{ backgroundColor: catColor }}
+                              />
+                              <div className="pl-4 pr-2 py-2 h-full flex flex-col">
                                 <div className="flex items-start justify-between flex-1 min-h-0">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1 flex-wrap">
@@ -9556,7 +9596,7 @@ const DataSourcePage = ({
 
       {/* 新增记录弹窗 */}
       {isAddingRecord && (
-        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setIsAddingRecord(false)}>
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}>
           <div 
             className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -9564,7 +9604,7 @@ const DataSourcePage = ({
             <div className="p-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
               <h3 className="font-bold text-gray-800 text-lg">新增记录</h3>
               <button 
-                onClick={() => setIsAddingRecord(false)}
+                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}
                 className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
               >
                 <X size={20} />
@@ -9641,7 +9681,7 @@ const DataSourcePage = ({
             </div>
             <div className="p-4 border-t border-gray-100 flex gap-3">
               <button
-                onClick={() => setIsAddingRecord(false)}
+                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}
                 className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
               >
                 取消
