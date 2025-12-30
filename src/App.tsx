@@ -9330,8 +9330,10 @@ const DataSourcePage = ({
                         const gaps: { start: string; end: string; duration: number }[] = [];
                         const coveredIntervals: { start: number; end: number }[] = [];
                         
-                        // 最小高度对应的分钟数 (minHeight=28px, SCALE=5px/min, 所以最小 28/5=5.6 分钟)
-                        const MIN_CARD_MINUTES = Math.ceil(28 / SCALE); // 6分钟
+                        // 卡片最小高度（需要足够显示标题和时间）
+                        const MIN_CARD_HEIGHT = 48; // 增加到48px以容纳内容
+                        // 最小高度对应的分钟数
+                        const MIN_CARD_MINUTES = Math.ceil(MIN_CARD_HEIGHT / SCALE); // 48/3=16分钟
                         
                         dayRecords.forEach(record => {
                           const start = timeToMinutes(record.startTime);
@@ -9471,9 +9473,8 @@ const DataSourcePage = ({
                         const recordCards = recordsWithLayout.map((record) => {
                           const startMins = record.startMins;
                           const endMins = record.endMins;
-                          const durationMins = Math.max(endMins - startMins, 30); // 最小30分钟高度（显示为15px）
-                          const minHeight = 28; // 最小高度28px
-                          const cardHeight = Math.max(durationMins * SCALE, minHeight);
+                          const durationMins = Math.max(endMins - startMins, 30);
+                          const cardHeight = Math.max(durationMins * SCALE, MIN_CARD_HEIGHT);
                           
                           // 计算宽度和左偏移
                           const columnWidth = 100 / record.totalColumns;
@@ -9494,7 +9495,7 @@ const DataSourcePage = ({
                               style={{ 
                                 top: `${startMins * SCALE}px`, 
                                 height: `${cardHeight}px`,
-                                minHeight: `${minHeight}px`,
+                                minHeight: `${MIN_CARD_HEIGHT}px`,
                                 left: `calc(${leftPercent}% + 4px)`,
                                 width: `calc(${columnWidth}% - 8px)`,
                                 backgroundColor: catLightColor,
