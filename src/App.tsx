@@ -1554,12 +1554,16 @@ const TimerView = ({
     setTimeRecords(prev => [...prev, newRecord]);
   };
 
-  // 停止响铃并进入番茄钟下一阶段
+  // 停止响铃（不自动进入下一阶段）
   const stopAlarmAndProceed = () => {
     alarmPlayer.stop();
     setIsAlarmPlaying(false);
     setAlarmTimerId(null);
-    
+    // 不再自动进入下一阶段，等待用户手动确认
+  };
+
+  // 手动确认进入下一阶段
+  const proceedToNextPhase = () => {
     // 如果是番茄钟等待下一阶段
     if (pomodoroWaitingNextPhase && nextPhaseInfo && activeTimer) {
       setPomodoroWaitingNextPhase(false);
@@ -2845,6 +2849,28 @@ const TimerView = ({
           >
             <span className="text-xl">🔔</span>
             <span>停止响铃</span>
+          </button>
+        </div>
+      )}
+
+      {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
+      {!isAlarmPlaying && pomodoroWaitingNextPhase && (
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+          <button
+            onClick={() => proceedToNextPhase()}
+            className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
+            style={{ boxShadow: '0 10px 30px rgba(34, 197, 94, 0.4)' }}
+          >
+            <span className="text-xl">▶️</span>
+            <span>
+              {nextPhaseInfo?.phase === 'work' 
+                ? `开始第 ${nextPhaseInfo.round} 轮工作` 
+                : nextPhaseInfo?.phase === 'break' 
+                  ? '开始休息' 
+                  : nextPhaseInfo?.phase === 'longBreak'
+                    ? '开始长休息'
+                    : '完成番茄钟'}
+            </span>
           </button>
         </div>
       )}
@@ -5957,11 +5983,15 @@ const PlanView = ({
     setTimerStatus('running');
   };
 
-  // 停止响铃并进入番茄钟下一阶段
+  // 停止响铃（不自动进入下一阶段）
   const stopAlarmAndProceed = () => {
     alarmPlayer.stop();
     setIsAlarmPlaying(false);
-    
+    // 不再自动进入下一阶段，等待用户手动确认
+  };
+
+  // 手动确认进入下一阶段
+  const proceedToNextPhase = () => {
     // 如果是番茄钟等待下一阶段
     if (pomodoroWaitingNextPhase && nextPhaseInfo) {
       setPomodoroWaitingNextPhase(false);
@@ -7455,6 +7485,28 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
             >
               <span className="text-xl">🔔</span>
               <span>停止响铃</span>
+            </button>
+          </div>
+        )}
+
+        {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
+        {!isAlarmPlaying && pomodoroWaitingNextPhase && (
+          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+            <button
+              onClick={() => proceedToNextPhase()}
+              className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
+              style={{ boxShadow: '0 10px 30px rgba(34, 197, 94, 0.4)' }}
+            >
+              <span className="text-xl">▶️</span>
+              <span>
+                {nextPhaseInfo?.phase === 'work' 
+                  ? `开始第 ${nextPhaseInfo.round} 轮工作` 
+                  : nextPhaseInfo?.phase === 'break' 
+                    ? '开始休息' 
+                    : nextPhaseInfo?.phase === 'longBreak'
+                      ? '开始长休息'
+                      : '完成番茄钟'}
+              </span>
             </button>
           </div>
         )}
