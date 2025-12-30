@@ -8888,22 +8888,45 @@ const DataSourcePage = ({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false); // 多选模式
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set()); // 已选中的日期
   const [scrollToDate, setScrollToDate] = useState<string | null>(null); // 添加/编辑后需要滚动到的日期
+  const [scrollToTime, setScrollToTime] = useState<string | null>(null); // 需要滚动到的具体时间
   
   // 用于强制重新渲染的 key
   const [renderKey, setRenderKey] = useState(0);
 
-  // 滚动到指定日期
+  // 滚动到指定日期和时间
   useEffect(() => {
     if (scrollToDate) {
       setTimeout(() => {
         const dateElement = document.querySelector(`[data-date="${scrollToDate}"]`);
         if (dateElement) {
-          dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (scrollToTime) {
+            // 如果有具体时间，滚动到该时间位置
+            const SCALE = 3; // 与渲染时一致
+            const [h, m] = scrollToTime.split(':').map(Number);
+            const timeMins = h * 60 + m;
+            const timeOffset = timeMins * SCALE;
+            
+            // 找到日期容器内的时间轴区域
+            const timelineContainer = dateElement.querySelector('.flex-1.relative');
+            if (timelineContainer) {
+              const containerRect = dateElement.getBoundingClientRect();
+              const scrollContainer = dateElement.closest('.overflow-y-auto');
+              if (scrollContainer) {
+                const targetScrollTop = scrollContainer.scrollTop + containerRect.top - scrollContainer.getBoundingClientRect().top + timeOffset - 100;
+                scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+              }
+            } else {
+              dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            setScrollToTime(null);
+          } else {
+            dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
         }
         setScrollToDate(null);
       }, 100);
     }
-  }, [scrollToDate]);
+  }, [scrollToDate, scrollToTime]);
 
   // 开始新增记录
   const startAddRecord = () => {
@@ -9704,7 +9727,7 @@ const DataSourcePage = ({
 
       {/* 新增记录弹窗 */}
       {isAddingRecord && (
-        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}>
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}>
           <div 
             className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -9712,7 +9735,7 @@ const DataSourcePage = ({
             <div className="p-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
               <h3 className="font-bold text-gray-800 text-lg">新增记录</h3>
               <button 
-                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}
+                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}
                 className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
               >
                 <X size={20} />
@@ -9789,7 +9812,7 @@ const DataSourcePage = ({
             </div>
             <div className="p-4 border-t border-gray-100 flex gap-3">
               <button
-                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); }}
+                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}
                 className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
               >
                 取消
