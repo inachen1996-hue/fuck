@@ -2523,18 +2523,32 @@ const TimerView = ({
                       <span className="text-sm text-gray-600">倒计时时长</span>
                       <span className="text-lg font-bold text-[#009688]">{timerDuration} 分钟</span>
                     </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="180"
-                      value={timerDuration}
-                      onChange={(e) => setTimerDuration(Number(e.target.value))}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full h-2 bg-[#B2DFDB] rounded-full appearance-none cursor-pointer accent-[#009688]"
-                      style={{
-                        background: `linear-gradient(to right, #009688 0%, #009688 ${(timerDuration / 180) * 100}%, #B2DFDB ${(timerDuration / 180) * 100}%, #B2DFDB 100%)`
-                      }}
-                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setTimerDuration(Math.max(1, timerDuration - 5))}
+                        className="w-8 h-8 rounded-full bg-[#B2DFDB] flex items-center justify-center text-[#009688] font-bold hover:bg-[#80CBC4] transition-all"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="range"
+                        min="1"
+                        max="180"
+                        value={timerDuration}
+                        onChange={(e) => setTimerDuration(Number(e.target.value))}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 h-2 bg-[#B2DFDB] rounded-full appearance-none cursor-pointer accent-[#009688]"
+                        style={{
+                          background: `linear-gradient(to right, #009688 0%, #009688 ${(timerDuration / 180) * 100}%, #B2DFDB ${(timerDuration / 180) * 100}%, #B2DFDB 100%)`
+                        }}
+                      />
+                      <button
+                        onClick={() => setTimerDuration(Math.min(180, timerDuration + 5))}
+                        className="w-8 h-8 rounded-full bg-[#B2DFDB] flex items-center justify-center text-[#009688] font-bold hover:bg-[#80CBC4] transition-all"
+                      >
+                        +
+                      </button>
+                    </div>
                     <div className="flex justify-between text-xs text-gray-400">
                       <span>1分</span>
                       <span>180分</span>
@@ -2565,17 +2579,31 @@ const TimerView = ({
                         <span className="text-sm text-gray-600">专注时长</span>
                         <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.workDuration} 分钟</span>
                       </div>
-                      <input
-                        type="range"
-                        min="5"
-                        max="90"
-                        value={pomodoroConfig.workDuration}
-                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
-                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                        style={{
-                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
-                        }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min="5"
+                          max="90"
+                          value={pomodoroConfig.workDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
+                          className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, prev.workDuration + 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                     
                     {/* 休息时长 */}
@@ -2584,17 +2612,31 @@ const TimerView = ({
                         <span className="text-sm text-gray-600">休息时长</span>
                         <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.breakDuration} 分钟</span>
                       </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="30"
-                        value={pomodoroConfig.breakDuration}
-                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
-                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                        style={{
-                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
-                        }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min="1"
+                          max="30"
+                          value={pomodoroConfig.breakDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
+                          className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                     
                     {/* 轮数 */}
@@ -2622,17 +2664,31 @@ const TimerView = ({
                         <span className="text-sm text-gray-600">长休息时长</span>
                         <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.longBreakDuration} 分钟</span>
                       </div>
-                      <input
-                        type="range"
-                        min="5"
-                        max="60"
-                        value={pomodoroConfig.longBreakDuration}
-                        onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
-                        className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                        style={{
-                          background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
-                        }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min="5"
+                          max="60"
+                          value={pomodoroConfig.longBreakDuration}
+                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
+                          className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                          style={{
+                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
+                          }}
+                        />
+                        <button
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                          className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                     
                     <button
@@ -7348,18 +7404,34 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         <span className="text-sm text-gray-600">倒计时时长</span>
                         <span className="text-lg font-bold" style={{ color: '#B066F5' }}>{countdownDuration} 分钟</span>
                       </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="180"
-                        value={countdownDuration}
-                        onChange={(e) => setCountdownDuration(Number(e.target.value))}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                        style={{
-                          background: `linear-gradient(to right, #B066F5 0%, #B066F5 ${(countdownDuration / 180) * 100}%, #E0AAFF ${(countdownDuration / 180) * 100}%, #E0AAFF 100%)`
-                        }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCountdownDuration(Math.max(1, countdownDuration - 5))}
+                          className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center font-bold hover:bg-purple-200 transition-all"
+                          style={{ color: '#B066F5' }}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min="1"
+                          max="180"
+                          value={countdownDuration}
+                          onChange={(e) => setCountdownDuration(Number(e.target.value))}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                          style={{
+                            background: `linear-gradient(to right, #B066F5 0%, #B066F5 ${(countdownDuration / 180) * 100}%, #E0AAFF ${(countdownDuration / 180) * 100}%, #E0AAFF 100%)`
+                          }}
+                        />
+                        <button
+                          onClick={() => setCountdownDuration(Math.min(180, countdownDuration + 5))}
+                          className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center font-bold hover:bg-purple-200 transition-all"
+                          style={{ color: '#B066F5' }}
+                        >
+                          +
+                        </button>
+                      </div>
                       <div className="flex justify-between text-xs text-gray-400">
                         <span>1分</span>
                         <span>180分</span>
@@ -7390,17 +7462,31 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           <span className="text-sm text-gray-600">专注时长</span>
                           <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.workDuration} 分钟</span>
                         </div>
-                        <input
-                          type="range"
-                          min="5"
-                          max="90"
-                          value={pomodoroConfig.workDuration}
-                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
-                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                          style={{
-                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="range"
+                            min="5"
+                            max="90"
+                            value={pomodoroConfig.workDuration}
+                            onChange={(e) => setPomodoroConfig(prev => ({ ...prev, workDuration: Number(e.target.value) }))}
+                            className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                            style={{
+                              background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 ${((pomodoroConfig.workDuration - 5) / 85) * 100}%, #FFCDD2 100%)`
+                            }}
+                          />
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, prev.workDuration + 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                       
                       {/* 休息时长 */}
@@ -7409,17 +7495,31 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           <span className="text-sm text-gray-600">休息时长</span>
                           <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.breakDuration} 分钟</span>
                         </div>
-                        <input
-                          type="range"
-                          min="1"
-                          max="30"
-                          value={pomodoroConfig.breakDuration}
-                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
-                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                          style={{
-                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="range"
+                            min="1"
+                            max="30"
+                            value={pomodoroConfig.breakDuration}
+                            onChange={(e) => setPomodoroConfig(prev => ({ ...prev, breakDuration: Number(e.target.value) }))}
+                            className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                            style={{
+                              background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 ${((pomodoroConfig.breakDuration - 1) / 29) * 100}%, #FFCDD2 100%)`
+                            }}
+                          />
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                       
                       {/* 轮数 */}
@@ -7447,17 +7547,31 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           <span className="text-sm text-gray-600">长休息时长</span>
                           <span className="text-sm font-bold text-[#FF7675]">{pomodoroConfig.longBreakDuration} 分钟</span>
                         </div>
-                        <input
-                          type="range"
-                          min="5"
-                          max="60"
-                          value={pomodoroConfig.longBreakDuration}
-                          onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
-                          className="w-full h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
-                          style={{
-                            background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="range"
+                            min="5"
+                            max="60"
+                            value={pomodoroConfig.longBreakDuration}
+                            onChange={(e) => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Number(e.target.value) }))}
+                            className="flex-1 h-2 bg-red-100 rounded-full appearance-none cursor-pointer accent-[#FF7675]"
+                            style={{
+                              background: `linear-gradient(to right, #FF7675 0%, #FF7675 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 ${((pomodoroConfig.longBreakDuration - 5) / 55) * 100}%, #FFCDD2 100%)`
+                            }}
+                          />
+                          <button
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                            className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                       
                       <button
