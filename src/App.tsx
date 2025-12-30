@@ -9479,7 +9479,8 @@ const DataSourcePage = ({
                         const recordCards = recordsWithLayout.map((record) => {
                           const startMins = record.startMins;
                           const endMins = record.endMins;
-                          const durationMins = Math.max(endMins - startMins, 30);
+                          const durationMins = endMins - startMins;
+                          // 使用与重叠检测一致的最小高度
                           const cardHeight = Math.max(durationMins * SCALE, MIN_CARD_HEIGHT);
                           
                           // 计算宽度和左偏移
