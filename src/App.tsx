@@ -113,7 +113,8 @@ interface PomodoroSettings {
 interface TimeRecord {
   id: string;
   name: string;
-  date: string;        // YYYY-MM-DD 格式
+  date: string;        // YYYY-MM-DD 格式（开始日期）
+  endDate?: string;    // YYYY-MM-DD 格式（结束日期，跨天时使用）
   startTime: string;   // HH:mm 格式
   endTime: string;     // HH:mm 格式
   source: 'timer' | 'import' | 'manual';  // 数据来源
@@ -2525,7 +2526,7 @@ const TimerView = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setTimerDuration(Math.max(1, timerDuration - 5))}
+                        onClick={() => setTimerDuration(Math.max(1, Math.floor((timerDuration - 1) / 5) * 5 || 1))}
                         className="w-8 h-8 rounded-full bg-[#B2DFDB] flex items-center justify-center text-[#009688] font-bold hover:bg-[#80CBC4] transition-all"
                       >
                         −
@@ -2543,7 +2544,7 @@ const TimerView = ({
                         }}
                       />
                       <button
-                        onClick={() => setTimerDuration(Math.min(180, timerDuration + 5))}
+                        onClick={() => setTimerDuration(Math.min(180, Math.ceil((timerDuration + 1) / 5) * 5))}
                         className="w-8 h-8 rounded-full bg-[#B2DFDB] flex items-center justify-center text-[#009688] font-bold hover:bg-[#80CBC4] transition-all"
                       >
                         +
@@ -2581,7 +2582,7 @@ const TimerView = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, Math.floor((prev.workDuration - 1) / 5) * 5 || 5) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           −
@@ -2598,7 +2599,7 @@ const TimerView = ({
                           }}
                         />
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, prev.workDuration + 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, Math.ceil((prev.workDuration + 1) / 5) * 5) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           +
@@ -2614,7 +2615,7 @@ const TimerView = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, Math.floor((prev.breakDuration - 1) / 5) * 5 || 1) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           −
@@ -2631,7 +2632,7 @@ const TimerView = ({
                           }}
                         />
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, Math.ceil((prev.breakDuration + 1) / 5) * 5) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           +
@@ -2666,7 +2667,7 @@ const TimerView = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, Math.floor((prev.longBreakDuration - 1) / 5) * 5 || 5) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           −
@@ -2683,7 +2684,7 @@ const TimerView = ({
                           }}
                         />
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, Math.ceil((prev.longBreakDuration + 1) / 5) * 5) }))}
                           className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                         >
                           +
@@ -7406,7 +7407,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setCountdownDuration(Math.max(1, countdownDuration - 5))}
+                          onClick={() => setCountdownDuration(Math.max(1, Math.floor((countdownDuration - 1) / 5) * 5 || 1))}
                           className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center font-bold hover:bg-purple-200 transition-all"
                           style={{ color: '#B066F5' }}
                         >
@@ -7425,7 +7426,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                           }}
                         />
                         <button
-                          onClick={() => setCountdownDuration(Math.min(180, countdownDuration + 5))}
+                          onClick={() => setCountdownDuration(Math.min(180, Math.ceil((countdownDuration + 1) / 5) * 5))}
                           className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center font-bold hover:bg-purple-200 transition-all"
                           style={{ color: '#B066F5' }}
                         >
@@ -7464,7 +7465,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, Math.floor((prev.workDuration - 1) / 5) * 5 || 5) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             −
@@ -7481,7 +7482,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                             }}
                           />
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, prev.workDuration + 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(90, Math.ceil((prev.workDuration + 1) / 5) * 5) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             +
@@ -7497,7 +7498,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, Math.floor((prev.breakDuration - 1) / 5) * 5 || 1) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             −
@@ -7514,7 +7515,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                             }}
                           />
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, Math.ceil((prev.breakDuration + 1) / 5) * 5) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             +
@@ -7549,7 +7550,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, Math.floor((prev.longBreakDuration - 1) / 5) * 5 || 5) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             −
@@ -7566,7 +7567,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                             }}
                           />
                           <button
-                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                            onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, Math.ceil((prev.longBreakDuration + 1) / 5) * 5) }))}
                             className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-[#FF7675] font-bold hover:bg-red-200 transition-all text-sm"
                           >
                             +
@@ -8370,12 +8371,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       <span className="text-sm text-gray-600">专注时长</span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, prev.workDuration - 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.max(5, Math.floor((prev.workDuration - 1) / 5) * 5 || 5) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >-</button>
                         <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.workDuration}分</span>
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(180, prev.workDuration + 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, workDuration: Math.min(180, Math.ceil((prev.workDuration + 1) / 5) * 5) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >+</button>
                       </div>
@@ -8385,12 +8386,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       <span className="text-sm text-gray-600">休息时长</span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, prev.breakDuration - 1) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.max(1, Math.floor((prev.breakDuration - 1) / 5) * 5 || 1) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >-</button>
                         <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.breakDuration}分</span>
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, prev.breakDuration + 1) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, breakDuration: Math.min(30, Math.ceil((prev.breakDuration + 1) / 5) * 5) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >+</button>
                       </div>
@@ -8415,12 +8416,12 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
                       <span className="text-sm text-gray-600">长休息</span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, prev.longBreakDuration - 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.max(5, Math.floor((prev.longBreakDuration - 1) / 5) * 5 || 5) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >-</button>
                         <span className="w-12 text-center font-bold text-[#2D2D2D]">{pomodoroConfig.longBreakDuration}分</span>
                         <button
-                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, prev.longBreakDuration + 5) }))}
+                          onClick={() => setPomodoroConfig(prev => ({ ...prev, longBreakDuration: Math.min(60, Math.ceil((prev.longBreakDuration + 1) / 5) * 5) }))}
                           className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
                         >+</button>
                       </div>
@@ -8794,21 +8795,38 @@ const DataSourcePage = ({
   const [isAddingRecord, setIsAddingRecord] = useState(false);
   const [newRecordName, setNewRecordName] = useState('');
   const [newRecordDate, setNewRecordDate] = useState('');
+  const [newRecordEndDate, setNewRecordEndDate] = useState('');
   const [newRecordStartTime, setNewRecordStartTime] = useState('');
   const [newRecordEndTime, setNewRecordEndTime] = useState('');
   const [newRecordCategoryId, setNewRecordCategoryId] = useState('uncategorized');
   const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null);
   const [editName, setEditName] = useState('');
   const [editDate, setEditDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState<string>('uncategorized');
   const hasInitialScrolledRef = useRef(false); // 使用 ref 而不是 state
   const [deletingDate, setDeletingDate] = useState<string | null>(null); // 正在确认删除的日期
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false); // 多选模式
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set()); // 已选中的日期
+  const [scrollToDate, setScrollToDate] = useState<string | null>(null); // 添加/编辑后需要滚动到的日期
   
   // 用于强制重新渲染的 key
   const [renderKey, setRenderKey] = useState(0);
+
+  // 滚动到指定日期
+  useEffect(() => {
+    if (scrollToDate) {
+      setTimeout(() => {
+        const dateElement = document.querySelector(`[data-date="${scrollToDate}"]`);
+        if (dateElement) {
+          dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        setScrollToDate(null);
+      }, 100);
+    }
+  }, [scrollToDate]);
 
   // 开始新增记录
   const startAddRecord = () => {
@@ -8819,6 +8837,7 @@ const DataSourcePage = ({
     // 使用函数式更新确保状态正确更新
     setNewRecordName('');
     setNewRecordDate(todayStr);
+    setNewRecordEndDate(''); // 默认不跨天
     setNewRecordStartTime(currentTime);
     setNewRecordEndTime(currentTime);
     setNewRecordCategoryId('uncategorized');
@@ -8830,6 +8849,11 @@ const DataSourcePage = ({
     }, 0);
   };
 
+  // 移除emoji的辅助函数
+  const removeEmoji = (str: string) => {
+    return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu, '').trim();
+  };
+
   // 添加记录
   const handleAddRecord = () => {
     if (!newRecordName.trim() || !newRecordDate || !newRecordStartTime || !newRecordEndTime) {
@@ -8837,21 +8861,39 @@ const DataSourcePage = ({
       return;
     }
 
+    // 查找该事件名称是否已有分类归属
+    const normalizedNewName = removeEmoji(newRecordName.trim());
+    let finalCategoryId: CategoryId = newRecordCategoryId as CategoryId;
+    
+    // 如果用户选择的是"未分类"，则尝试从已有记录中查找该事件的分类
+    if (finalCategoryId === 'uncategorized') {
+      // 先从 timeRecords 中查找
+      const existingRecord = timeRecords.find(r => 
+        removeEmoji(r.name) === normalizedNewName && r.categoryId && r.categoryId !== 'uncategorized'
+      );
+      if (existingRecord && existingRecord.categoryId) {
+        finalCategoryId = existingRecord.categoryId;
+      }
+    }
+
     const newRecord: TimeRecord = {
       id: `manual-${Date.now()}`,
       name: newRecordName.trim(),
       date: newRecordDate,
+      endDate: newRecordEndDate || undefined, // 跨天时设置结束日期
       startTime: newRecordStartTime,
       endTime: newRecordEndTime,
       source: 'manual',
-      categoryId: newRecordCategoryId as CategoryId,
+      categoryId: finalCategoryId,
       createdAt: Date.now()
     };
 
     setTimeRecords([...timeRecords, newRecord]);
     setIsAddingRecord(false);
+    setScrollToDate(newRecordDate); // 滚动到新添加记录的日期
     setNewRecordName('');
     setNewRecordDate('');
+    setNewRecordEndDate('');
     setNewRecordStartTime('');
     setNewRecordEndTime('');
     setNewRecordCategoryId('uncategorized');
@@ -8863,8 +8905,10 @@ const DataSourcePage = ({
     setEditingRecord(record);
     setEditName(record.name);
     setEditDate(record.date);
+    setEditEndDate(record.endDate || '');
     setEditStartTime(record.startTime);
     setEditEndTime(record.endTime);
+    setEditCategoryId(record.categoryId || 'uncategorized');
   };
 
   // 保存编辑
@@ -8873,9 +8917,10 @@ const DataSourcePage = ({
     
     setTimeRecords(timeRecords.map(r => 
       r.id === editingRecord.id 
-        ? { ...r, name: editName, date: editDate, startTime: editStartTime, endTime: editEndTime }
+        ? { ...r, name: editName, date: editDate, endDate: editEndDate || undefined, startTime: editStartTime, endTime: editEndTime, categoryId: editCategoryId as CategoryId }
         : r
     ));
+    setScrollToDate(editDate); // 滚动到编辑后的日期
     setEditingRecord(null);
     showToastMessage('修改成功');
   };
@@ -9009,95 +9054,12 @@ const DataSourcePage = ({
 
       {/* 内容区域 */}
       <div key={`content-${renderKey}-${isAddingRecord}`} className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-        {/* 新增数据表单 */}
-        {isAddingRecord && (
-          <div className="bg-green-50 rounded-2xl p-4 border-2 border-green-200 mb-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">名称</label>
-                <input
-                  type="text"
-                  value={newRecordName}
-                  onChange={(e) => setNewRecordName(e.target.value)}
-                  placeholder="输入事项名称..."
-                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">分类</label>
-                <div className="flex-1 flex flex-wrap gap-1">
-                  {categories.map(cat => {
-                    const isSelected = newRecordCategoryId === cat.id;
-                    const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => setNewRecordCategoryId(cat.id)}
-                        className={`px-2 py-1 rounded-full text-xs font-bold transition-all ${
-                          isSelected ? 'text-white' : 'bg-gray-100 text-gray-500'
-                        }`}
-                        style={isSelected ? { backgroundColor: catColor } : {}}
-                      >
-                        {cat.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">日期</label>
-                <input
-                  type="date"
-                  value={newRecordDate}
-                  onChange={(e) => setNewRecordDate(e.target.value)}
-                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">开始</label>
-                <input
-                  type="time"
-                  value={newRecordStartTime}
-                  onChange={(e) => setNewRecordStartTime(e.target.value)}
-                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500 w-12">结束</label>
-                <input
-                  type="time"
-                  value={newRecordEndTime}
-                  onChange={(e) => setNewRecordEndTime(e.target.value)}
-                  className="flex-1 bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-green-300"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => setIsAddingRecord(false)}
-                  className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleAddRecord}
-                  className="flex-1 py-2 text-sm font-bold text-white bg-green-500 rounded-xl hover:bg-green-600"
-                >
-                  添加
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {timeRecords.length === 0 && !isAddingRecord ? (
+        {timeRecords.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20">
             <Database size={48} className="text-gray-300 mb-4" />
             <p className="text-gray-400 text-sm">暂无数据记录</p>
             <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
           </div>
-        ) : timeRecords.length === 0 && isAddingRecord ? (
-          // 没有记录但正在添加时，只显示表单，不显示列表
-          null
         ) : (
           <div 
             ref={(el) => {
@@ -9153,12 +9115,37 @@ const DataSourcePage = ({
                 return aDateTime.localeCompare(bDateTime);
               });
               
+              // 按日期分组，处理跨天记录
               const groupedByDate: Record<string, TimeRecord[]> = {};
               sortedRecords.forEach(record => {
+                // 添加到开始日期
                 if (!groupedByDate[record.date]) {
                   groupedByDate[record.date] = [];
                 }
                 groupedByDate[record.date].push(record);
+                
+                // 如果是跨天记录，也添加到结束日期（以及中间的日期）
+                if (record.endDate && record.endDate !== record.date) {
+                  const startDate = new Date(record.date);
+                  const endDate = new Date(record.endDate);
+                  const currentDate = new Date(startDate);
+                  currentDate.setDate(currentDate.getDate() + 1); // 从第二天开始
+                  
+                  while (currentDate <= endDate) {
+                    const dateStr = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}`;
+                    if (!groupedByDate[dateStr]) {
+                      groupedByDate[dateStr] = [];
+                    }
+                    // 创建一个标记为跨天续接的记录副本
+                    groupedByDate[dateStr].push({
+                      ...record,
+                      _isSpanningDay: true,
+                      _spanDayDate: dateStr,
+                      _isLastDay: dateStr === record.endDate
+                    } as TimeRecord & { _isSpanningDay?: boolean; _spanDayDate?: string; _isLastDay?: boolean });
+                    currentDate.setDate(currentDate.getDate() + 1);
+                  }
+                }
               });
               
               const dates = Object.keys(groupedByDate).sort();
@@ -9236,91 +9223,276 @@ const DataSourcePage = ({
                     )}
                   </div>
                   
-                  <div className="space-y-2">
-                    {(() => {
-                      const timeToMinutes = (time: string) => {
-                        const [h, m] = time.split(':').map(Number);
-                        return h * 60 + m;
-                      };
+                  {/* 时间轴视图 - 缩放因子: 0.5px/分钟 (修改前: 1px/分钟, 修改后: 0.5px/分钟) */}
+                  <div className="flex">
+                    {/* 左侧时间刻度 */}
+                    <div className="w-12 flex-shrink-0 relative" style={{ height: `${24 * 30}px` }}>
+                      {Array.from({ length: 25 }, (_, i) => (
+                        <div 
+                          key={i} 
+                          className="absolute left-0 right-0 flex items-start"
+                          style={{ top: `${i * 30}px` }}
+                        >
+                          <span className="text-[10px] text-gray-400 font-medium leading-none">
+                            {i.toString().padStart(2, '0')}:00
+                          </span>
+                          <div className="flex-1 border-t border-gray-200 ml-1 mt-1" />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* 右侧卡片区域 */}
+                    <div className="flex-1 relative" style={{ height: `${24 * 30}px` }}>
+                      {/* 背景网格线 */}
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <div 
+                          key={i}
+                          className="absolute left-0 right-0 border-t border-gray-100"
+                          style={{ top: `${i * 30}px`, height: '30px' }}
+                        />
+                      ))}
                       
-                      const minutesToTimeStr = (mins: number) => {
-                        const h = Math.floor(mins / 60);
-                        const m = mins % 60;
-                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-                      };
-                      
-                      const today = new Date();
-                      const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-                      const isToday = date === todayStr;
-                      const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : 24 * 60;
-                      
-                      const dayRecords = [...groupedByDate[date]].sort((a, b) => 
-                        a.startTime.localeCompare(b.startTime)
-                      );
-                      
-                      const gaps: { start: string; end: string; duration: number }[] = [];
-                      const coveredIntervals: { start: number; end: number }[] = [];
-                      
-                      dayRecords.forEach(record => {
-                        const start = timeToMinutes(record.startTime);
-                        const end = timeToMinutes(record.endTime);
+                      {(() => {
+                        const SCALE = 0.5; // 缩放因子: 1分钟 = 0.5px
+                        const timeToMinutes = (time: string) => {
+                          const [h, m] = time.split(':').map(Number);
+                          return h * 60 + m;
+                        };
                         
-                        if (coveredIntervals.length === 0) {
-                          coveredIntervals.push({ start, end });
-                        } else {
-                          const last = coveredIntervals[coveredIntervals.length - 1];
-                          if (start <= last.end) {
-                            last.end = Math.max(last.end, end);
-                          } else {
+                        const minutesToTimeStr = (mins: number) => {
+                          const h = Math.floor(mins / 60);
+                          const m = mins % 60;
+                          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                        };
+                        
+                        const today = new Date();
+                        const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                        const isToday = date === todayStr;
+                        const currentMinutes = isToday ? today.getHours() * 60 + today.getMinutes() : 24 * 60;
+                        
+                        // 处理跨天记录的时间范围
+                        const processedRecords = groupedByDate[date].map(record => {
+                          const spanRecord = record as TimeRecord & { _isSpanningDay?: boolean; _spanDayDate?: string; _isLastDay?: boolean };
+                          
+                          if (spanRecord._isSpanningDay) {
+                            // 这是跨天记录在非开始日期的显示
+                            if (spanRecord._isLastDay) {
+                              // 最后一天：从00:00到结束时间
+                              return { ...record, startTime: '00:00', endTime: record.endTime };
+                            } else {
+                              // 中间日期：全天显示
+                              return { ...record, startTime: '00:00', endTime: '23:59' };
+                            }
+                          } else if (record.endDate && record.endDate !== record.date && date === record.date) {
+                            // 开始日期：从开始时间到23:59
+                            return { ...record, endTime: '23:59' };
+                          }
+                          return record;
+                        });
+                        
+                        const dayRecords = [...processedRecords].sort((a, b) => 
+                          a.startTime.localeCompare(b.startTime)
+                        );
+                        
+                        const gaps: { start: string; end: string; duration: number }[] = [];
+                        const coveredIntervals: { start: number; end: number }[] = [];
+                        
+                        dayRecords.forEach(record => {
+                          const start = timeToMinutes(record.startTime);
+                          const end = timeToMinutes(record.endTime);
+                          
+                          if (coveredIntervals.length === 0) {
                             coveredIntervals.push({ start, end });
+                          } else {
+                            const last = coveredIntervals[coveredIntervals.length - 1];
+                            if (start <= last.end) {
+                              last.end = Math.max(last.end, end);
+                            } else {
+                              coveredIntervals.push({ start, end });
+                            }
+                          }
+                        });
+                        
+                        // 将空白时段按小时分割的辅助函数
+                        const splitGapByHour = (gapStart: number, gapEnd: number): { start: string; end: string; duration: number }[] => {
+                          const result: { start: string; end: string; duration: number }[] = [];
+                          const totalDuration = gapEnd - gapStart;
+                          
+                          if (totalDuration <= 60) {
+                            // 不超过1小时，不分割
+                            result.push({
+                              start: minutesToTimeStr(gapStart),
+                              end: minutesToTimeStr(gapEnd),
+                              duration: totalDuration
+                            });
+                          } else {
+                            // 超过1小时，按小时分割
+                            let currentStart = gapStart;
+                            while (currentStart < gapEnd) {
+                              const segmentEnd = Math.min(currentStart + 60, gapEnd);
+                              result.push({
+                                start: minutesToTimeStr(currentStart),
+                                end: minutesToTimeStr(segmentEnd),
+                                duration: segmentEnd - currentStart
+                              });
+                              currentStart = segmentEnd;
+                            }
+                          }
+                          return result;
+                        };
+                        
+                        for (let i = 0; i < coveredIntervals.length - 1; i++) {
+                          const gapStart = coveredIntervals[i].end;
+                          const gapEnd = coveredIntervals[i + 1].start;
+                          const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
+                          const gapMinutes = effectiveGapEnd - gapStart;
+                          
+                          // 超过1分钟就显示空白
+                          if (gapMinutes >= 1) {
+                            gaps.push(...splitGapByHour(gapStart, effectiveGapEnd));
                           }
                         }
-                      });
-                      
-                      for (let i = 0; i < coveredIntervals.length - 1; i++) {
-                        const gapStart = coveredIntervals[i].end;
-                        const gapEnd = coveredIntervals[i + 1].start;
-                        const effectiveGapEnd = isToday ? Math.min(gapEnd, currentMinutes) : gapEnd;
-                        const gapMinutes = effectiveGapEnd - gapStart;
                         
-                        if (gapMinutes >= 60) {
-                          gaps.push({
-                            start: minutesToTimeStr(gapStart),
-                            end: minutesToTimeStr(effectiveGapEnd),
-                            duration: gapMinutes
-                          });
+                        if (isToday && coveredIntervals.length > 0) {
+                          const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
+                          const gapToNow = currentMinutes - lastEnd;
+                          
+                          // 超过1分钟就显示空白
+                          if (gapToNow >= 1) {
+                            gaps.push(...splitGapByHour(lastEnd, currentMinutes));
+                          }
                         }
-                      }
-                      
-                      if (isToday && coveredIntervals.length > 0) {
-                        const lastEnd = coveredIntervals[coveredIntervals.length - 1].end;
-                        const gapToNow = currentMinutes - lastEnd;
                         
-                        if (gapToNow >= 60) {
-                          gaps.push({
-                            start: minutesToTimeStr(lastEnd),
-                            end: minutesToTimeStr(currentMinutes),
-                            duration: gapToNow
-                          });
+                        // 计算重叠记录的列布局
+                        const recordsWithLayout = dayRecords.map(record => ({
+                          ...record,
+                          startMins: timeToMinutes(record.startTime),
+                          endMins: timeToMinutes(record.endTime),
+                          column: 0,
+                          totalColumns: 1
+                        }));
+                        
+                        // 检测重叠并分配列
+                        for (let i = 0; i < recordsWithLayout.length; i++) {
+                          const current = recordsWithLayout[i];
+                          const overlapping: typeof recordsWithLayout = [current];
+                          
+                          // 找出所有与当前记录重叠的记录
+                          for (let j = 0; j < recordsWithLayout.length; j++) {
+                            if (i !== j) {
+                              const other = recordsWithLayout[j];
+                              // 检查是否重叠
+                              if (current.startMins < other.endMins && current.endMins > other.startMins) {
+                                overlapping.push(other);
+                              }
+                            }
+                          }
+                          
+                          if (overlapping.length > 1) {
+                            // 按开始时间排序
+                            overlapping.sort((a, b) => a.startMins - b.startMins || a.id.localeCompare(b.id));
+                            
+                            // 分配列号
+                            const usedColumns = new Set<number>();
+                            overlapping.forEach(rec => {
+                              // 找到第一个未使用的列
+                              let col = 0;
+                              while (usedColumns.has(col)) col++;
+                              
+                              // 检查这个列是否与之前分配的记录冲突
+                              for (const other of overlapping) {
+                                if (other.id !== rec.id && other.column === col) {
+                                  if (rec.startMins < other.endMins && rec.endMins > other.startMins) {
+                                    col++;
+                                    while (usedColumns.has(col)) col++;
+                                  }
+                                }
+                              }
+                              
+                              rec.column = col;
+                              rec.totalColumns = overlapping.length;
+                              usedColumns.add(col);
+                            });
+                            
+                            // 更新所有重叠记录的总列数
+                            const maxCol = Math.max(...overlapping.map(r => r.column)) + 1;
+                            overlapping.forEach(rec => {
+                              rec.totalColumns = maxCol;
+                            });
+                          }
                         }
-                      }
-                      
-                      type DisplayItem = 
-                        | { type: 'record'; data: TimeRecord }
-                        | { type: 'gap'; data: { start: string; end: string; duration: number } };
-                      
-                      const allItems: DisplayItem[] = [
-                        ...dayRecords.map(record => ({ type: 'record' as const, data: record })),
-                        ...gaps.map(gap => ({ type: 'gap' as const, data: gap }))
-                      ].sort((a, b) => {
-                        const aStart = a.type === 'record' ? a.data.startTime : a.data.start;
-                        const bStart = b.type === 'record' ? b.data.startTime : b.data.start;
-                        return aStart.localeCompare(bStart);
-                      });
-                      
-                      return allItems.map((item, idx) => {
-                        if (item.type === 'gap') {
-                          const gap = item.data;
+                        
+                        // 渲染记录卡片
+                        const recordCards = recordsWithLayout.map((record) => {
+                          const startMins = record.startMins;
+                          const endMins = record.endMins;
+                          const durationMins = Math.max(endMins - startMins, 30); // 最小30分钟高度（显示为15px）
+                          const minHeight = 28; // 最小高度28px
+                          const cardHeight = Math.max(durationMins * SCALE, minHeight);
+                          
+                          // 计算宽度和左偏移
+                          const columnWidth = 100 / record.totalColumns;
+                          const leftPercent = record.column * columnWidth;
+                          
+                          // 获取分类颜色 - 使用更高明度的背景色
+                          const category = categories.find(c => c.id === record.categoryId);
+                          const catColor = category?.color || MACARON_COLORS.categories[record.categoryId as CategoryId]?.primary || '#9ca3af';
+                          // 使用更浅的背景色（透明度从20改为10，约6%透明度）
+                          const catLightColor = category?.color 
+                            ? `${category.color}18` 
+                            : MACARON_COLORS.categories[record.categoryId as CategoryId]?.light || '#f9fafb';
+                          
+                          return (
+                            <div 
+                              key={record.id} 
+                              className="absolute rounded-lg border-l-4 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                              style={{ 
+                                top: `${startMins * SCALE}px`, 
+                                height: `${cardHeight}px`,
+                                minHeight: `${minHeight}px`,
+                                left: `calc(${leftPercent}% + 4px)`,
+                                width: `calc(${columnWidth}% - 8px)`,
+                                backgroundColor: catLightColor,
+                                borderLeftColor: catColor,
+                                borderTop: `1px solid ${catColor}15`,
+                                borderRight: `1px solid ${catColor}15`,
+                                borderBottom: `1px solid ${catColor}15`
+                              }}
+                              onClick={() => handleStartEdit(record)}
+                            >
+                              <div className="p-2 h-full flex flex-col">
+                                <div className="flex items-start justify-between flex-1 min-h-0">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="font-bold text-gray-700 text-sm truncate">{record.name}</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 mt-0.5">
+                                      {record.startTime} - {record.endTime}
+                                      <span className="ml-1 text-gray-400">
+                                        ({Math.floor(durationMins / 60) > 0 ? `${Math.floor(durationMins / 60)}h` : ''}{durationMins % 60 > 0 ? `${durationMins % 60}m` : ''})
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteRecord(record.id);
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-white/50 rounded transition-all flex-shrink-0"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                        
+                        // 渲染空白时段卡片
+                        const gapCards = gaps.map((gap, idx) => {
+                          const startMins = timeToMinutes(gap.start);
+                          const cardHeight = Math.max(gap.duration * SCALE, 8); // 最小8px高度
+                          
                           return (
                             <div 
                               key={`gap-${idx}`}
@@ -9329,122 +9501,51 @@ const DataSourcePage = ({
                                 setNewRecordStartTime(gap.start);
                                 setNewRecordEndTime(gap.end);
                                 setNewRecordName('');
+                                setNewRecordEndDate('');
                                 setIsAddingRecord(true);
                               }}
-                              className="bg-orange-50 rounded-2xl p-4 border-2 border-dashed border-orange-200 cursor-pointer hover:bg-orange-100 transition-all"
+                              className="absolute left-1 right-1 bg-white rounded-lg border border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all overflow-hidden"
+                              style={{ 
+                                top: `${startMins * SCALE}px`, 
+                                height: `${cardHeight}px`,
+                                minHeight: '14px'
+                              }}
                             >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-orange-400">⏰</span>
-                                  <span className="text-sm text-orange-600 font-medium">
-                                    空白时段 · {Math.floor(gap.duration / 60)}小时{gap.duration % 60 > 0 ? `${gap.duration % 60}分钟` : ''}
+                              <div className="p-1 h-full flex flex-col justify-center">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] text-gray-400">
+                                    {gap.duration >= 10 ? `${gap.start} - ${gap.end}` : ''}
                                   </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-orange-400">{gap.start} - {gap.end}</span>
-                                  <Plus size={16} className="text-orange-400" />
+                                  <Plus size={10} className="text-gray-300" />
                                 </div>
                               </div>
-                              <div className="text-xs text-orange-400 mt-1">点击补充这段时间在做什么</div>
                             </div>
                           );
-                        } else {
-                          const record = item.data;
+                        });
+                        
+                        return [...recordCards, ...gapCards];
+                      })()}
+                      
+                      {/* 当前时间指示线 */}
+                      {(() => {
+                        const SCALE = 0.5;
+                        const today = new Date();
+                        const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                        if (date === todayStr) {
+                          const currentMins = today.getHours() * 60 + today.getMinutes();
                           return (
-                            <div key={record.id} className="bg-white rounded-2xl p-4 border border-gray-100">
-                              {editingRecord?.id === record.id ? (
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-2">
-                                    <label className="text-xs text-gray-500 w-12">名称</label>
-                                    <input
-                                      type="text"
-                                      value={editName}
-                                      onChange={(e) => setEditName(e.target.value)}
-                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300 font-bold text-gray-700"
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <label className="text-xs text-gray-500 w-12">日期</label>
-                                    <input
-                                      type="date"
-                                      value={editDate}
-                                      onChange={(e) => setEditDate(e.target.value)}
-                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <label className="text-xs text-gray-500 w-12">开始</label>
-                                    <input
-                                      type="time"
-                                      value={editStartTime}
-                                      onChange={(e) => setEditStartTime(e.target.value)}
-                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <label className="text-xs text-gray-500 w-12">结束</label>
-                                    <input
-                                      type="time"
-                                      value={editEndTime}
-                                      onChange={(e) => setEditEndTime(e.target.value)}
-                                      className="flex-1 bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200 outline-none focus:border-blue-300"
-                                    />
-                                  </div>
-                                  <div className="flex gap-2 pt-2">
-                                    <button
-                                      onClick={() => setEditingRecord(null)}
-                                      className="flex-1 py-2 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200"
-                                    >
-                                      取消
-                                    </button>
-                                    <button
-                                      onClick={handleSaveEdit}
-                                      className="flex-1 py-2 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600"
-                                    >
-                                      保存
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-gray-700">{record.name}</span>
-                                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                        record.source === 'timer' 
-                                          ? 'bg-purple-100 text-purple-600' 
-                                          : record.source === 'manual'
-                                          ? 'bg-green-100 text-green-600'
-                                          : 'bg-blue-100 text-blue-600'
-                                      }`}>
-                                        {record.source === 'timer' ? '计时器' : record.source === 'manual' ? '手动' : '导入'}
-                                      </span>
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-1">
-                                      {record.startTime} - {record.endTime}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => handleStartEdit(record)}
-                                      className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                                    >
-                                      <Edit3 size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteRecord(record.id)}
-                                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
+                            <div 
+                              className="absolute left-0 right-0 flex items-center z-20 pointer-events-none"
+                              style={{ top: `${currentMins * SCALE}px` }}
+                            >
+                              <div className="w-2 h-2 rounded-full bg-red-500" />
+                              <div className="flex-1 border-t-2 border-red-500" />
                             </div>
                           );
                         }
-                      });
-                    })()}
+                        return null;
+                      })()}
+                    </div>
                   </div>
                 </div>
               ));
@@ -9452,6 +9553,211 @@ const DataSourcePage = ({
           </div>
         )}
       </div>
+
+      {/* 新增记录弹窗 */}
+      {isAddingRecord && (
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setIsAddingRecord(false)}>
+          <div 
+            className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+              <h3 className="font-bold text-gray-800 text-lg">新增记录</h3>
+              <button 
+                onClick={() => setIsAddingRecord(false)}
+                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">事项名称</label>
+                <input
+                  type="text"
+                  value={newRecordName}
+                  onChange={(e) => setNewRecordName(e.target.value)}
+                  placeholder="输入事项名称..."
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm border border-gray-200 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">分类</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => {
+                    const isSelected = newRecordCategoryId === cat.id;
+                    const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setNewRecordCategoryId(cat.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                          isSelected ? 'text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                        style={isSelected ? { backgroundColor: catColor } : {}}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">开始</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={newRecordDate}
+                    onChange={(e) => setNewRecordDate(e.target.value)}
+                    className="flex-1 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                  />
+                  <input
+                    type="time"
+                    value={newRecordStartTime}
+                    onChange={(e) => setNewRecordStartTime(e.target.value)}
+                    className="w-28 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">结束 <span className="text-gray-300">(可跨天)</span></label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={newRecordEndDate || newRecordDate}
+                    onChange={(e) => setNewRecordEndDate(e.target.value === newRecordDate ? '' : e.target.value)}
+                    min={newRecordDate}
+                    className="flex-1 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                  />
+                  <input
+                    type="time"
+                    value={newRecordEndTime}
+                    onChange={(e) => setNewRecordEndTime(e.target.value)}
+                    className="w-28 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setIsAddingRecord(false)}
+                className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddRecord}
+                className="flex-1 py-3 text-sm font-bold text-white bg-green-500 rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-200"
+              >
+                添加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑记录弹窗 */}
+      {editingRecord && (
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setEditingRecord(null)}>
+          <div 
+            className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+              <h3 className="font-bold text-gray-800 text-lg">编辑记录</h3>
+              <button 
+                onClick={() => setEditingRecord(null)}
+                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">事项名称</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 font-bold text-gray-700"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">分类</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => {
+                    const isSelected = editCategoryId === cat.id;
+                    const catColor = cat.color || MACARON_COLORS.categories[cat.id as CategoryId]?.primary || '#9ca3af';
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setEditCategoryId(cat.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                          isSelected ? 'text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                        style={isSelected ? { backgroundColor: catColor } : {}}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">开始</label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="flex-1 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <input
+                    type="time"
+                    value={editStartTime}
+                    onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-28 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">结束 <span className="text-gray-300">(可跨天)</span></label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={editEndDate || editDate}
+                    onChange={(e) => setEditEndDate(e.target.value === editDate ? '' : e.target.value)}
+                    min={editDate}
+                    className="flex-1 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <input
+                    type="time"
+                    value={editEndTime}
+                    onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-28 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setEditingRecord(null)}
+                className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="flex-1 py-3 text-sm font-bold text-white bg-blue-500 rounded-xl hover:bg-blue-600 transition-all shadow-lg shadow-blue-200"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -9792,13 +10098,17 @@ END:VEVENT
       if (parts.length >= 3) {
         const startDate = new Date(parts[1].trim());
         const endDate = new Date(parts[2].trim());
+        const eventName = parts[0].trim();
+        // 查找该事件是否已有分类
+        const existingCategory = findExistingCategory(eventName, timeRecords, globalTimers);
         records.push({
           id: `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: parts[0].trim(),
+          name: eventName,
           date: startDate.toISOString().split('T')[0],
           startTime: startDate.toTimeString().slice(0, 5),
           endTime: endDate.toTimeString().slice(0, 5),
           source: 'import',
+          categoryId: existingCategory,
           createdAt: Date.now()
         });
       }
@@ -9830,14 +10140,18 @@ END:VEVENT
           
           const start = formatICSDate(dtStartMatch[1]);
           const end = dtEndMatch ? formatICSDate(dtEndMatch[1]) : start;
+          const eventName = summaryMatch[1].trim();
+          // 查找该事件是否已有分类
+          const existingCategory = findExistingCategory(eventName, timeRecords, globalTimers);
           
           records.push({
             id: `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: summaryMatch[1].trim(),
+            name: eventName,
             date: start.date,
             startTime: start.time,
             endTime: end.time,
             source: 'import',
+            categoryId: existingCategory,
             createdAt: Date.now()
           });
         }
