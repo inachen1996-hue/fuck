@@ -9330,10 +9330,10 @@ const DataSourcePage = ({
                         const gaps: { start: string; end: string; duration: number }[] = [];
                         const coveredIntervals: { start: number; end: number }[] = [];
                         
-                        // 卡片最小高度（需要足够显示标题和时间）
-                        const MIN_CARD_HEIGHT = 48; // 增加到48px以容纳内容
+                        // 卡片最小高度（紧凑显示标题和时间）
+                        const MIN_CARD_HEIGHT = 36; // 36px 紧凑布局
                         // 最小高度对应的分钟数
-                        const MIN_CARD_MINUTES = Math.ceil(MIN_CARD_HEIGHT / SCALE); // 48/3=16分钟
+                        const MIN_CARD_MINUTES = Math.ceil(MIN_CARD_HEIGHT / SCALE); // 36/3=12分钟
                         
                         dayRecords.forEach(record => {
                           const start = timeToMinutes(record.startTime);
@@ -9505,16 +9505,14 @@ const DataSourcePage = ({
                             >
                               {/* 左侧圆角竖条 */}
                               <div 
-                                className="absolute left-1 top-1.5 bottom-1.5 w-1 rounded-full"
+                                className="absolute left-1 top-1 bottom-1 w-1 rounded-full"
                                 style={{ backgroundColor: catColor }}
                               />
-                              <div className="pl-4 pr-2 py-2 h-full flex flex-col">
-                                <div className="flex items-start justify-between flex-1 min-h-0">
+                              <div className="pl-3.5 pr-1.5 py-1 h-full flex flex-col justify-center">
+                                <div className="flex items-center justify-between min-h-0">
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1 flex-wrap">
-                                      <span className="font-bold text-gray-700 text-sm truncate">{record.name}</span>
-                                    </div>
-                                    <div className="text-[10px] text-gray-500 mt-0.5">
+                                    <span className="font-bold text-gray-700 text-xs truncate block">{record.name}</span>
+                                    <div className="text-[9px] text-gray-500 leading-tight">
                                       {record.startTime} - {record.endTime}
                                       <span className="ml-1 text-gray-400">
                                         ({Math.floor(durationMins / 60) > 0 ? `${Math.floor(durationMins / 60)}h` : ''}{durationMins % 60 > 0 ? `${durationMins % 60}m` : ''})
@@ -9526,9 +9524,9 @@ const DataSourcePage = ({
                                       e.stopPropagation();
                                       handleDeleteRecord(record.id);
                                     }}
-                                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-white/50 rounded transition-all flex-shrink-0"
+                                    className="p-0.5 text-gray-400 hover:text-red-500 hover:bg-white/50 rounded transition-all flex-shrink-0"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={11} />
                                   </button>
                                 </div>
                               </div>
