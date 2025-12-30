@@ -9256,15 +9256,15 @@ const DataSourcePage = ({
                     )}
                   </div>
                   
-                  {/* 时间轴视图 - 缩放因子: 5px/分钟 */}
+                  {/* 时间轴视图 - 缩放因子: 3px/分钟 */}
                   <div className="flex">
                     {/* 左侧时间刻度 */}
-                    <div className="w-12 flex-shrink-0 relative" style={{ height: `${24 * 300}px` }}>
+                    <div className="w-12 flex-shrink-0 relative" style={{ height: `${24 * 180}px` }}>
                       {Array.from({ length: 25 }, (_, i) => (
                         <div 
                           key={i} 
                           className="absolute left-0 right-0 flex items-start"
-                          style={{ top: `${i * 300}px` }}
+                          style={{ top: `${i * 180}px` }}
                         >
                           <span className="text-[10px] text-gray-400 font-medium leading-none">
                             {i.toString().padStart(2, '0')}:00
@@ -9275,18 +9275,18 @@ const DataSourcePage = ({
                     </div>
                     
                     {/* 右侧卡片区域 */}
-                    <div className="flex-1 relative" style={{ height: `${24 * 300}px` }}>
+                    <div className="flex-1 relative" style={{ height: `${24 * 180}px` }}>
                       {/* 背景网格线 */}
                       {Array.from({ length: 24 }, (_, i) => (
                         <div 
                           key={i}
                           className="absolute left-0 right-0 border-t border-gray-100"
-                          style={{ top: `${i * 300}px`, height: '300px' }}
+                          style={{ top: `${i * 180}px`, height: '180px' }}
                         />
                       ))}
                       
                       {(() => {
-                        const SCALE = 5; // 缩放因子: 1分钟 = 5px
+                        const SCALE = 3; // 缩放因子: 1分钟 = 3px
                         const timeToMinutes = (time: string) => {
                           const [h, m] = time.split(':').map(Number);
                           return h * 60 + m;
@@ -9330,18 +9330,23 @@ const DataSourcePage = ({
                         const gaps: { start: string; end: string; duration: number }[] = [];
                         const coveredIntervals: { start: number; end: number }[] = [];
                         
+                        // 最小高度对应的分钟数 (minHeight=28px, SCALE=5px/min, 所以最小 28/5=5.6 分钟)
+                        const MIN_CARD_MINUTES = Math.ceil(28 / SCALE); // 6分钟
+                        
                         dayRecords.forEach(record => {
                           const start = timeToMinutes(record.startTime);
-                          const end = timeToMinutes(record.endTime);
+                          const actualEnd = timeToMinutes(record.endTime);
+                          // 考虑最小高度：如果实际时长小于最小高度对应的时长，使用最小时长
+                          const visualEnd = Math.max(actualEnd, start + MIN_CARD_MINUTES);
                           
                           if (coveredIntervals.length === 0) {
-                            coveredIntervals.push({ start, end });
+                            coveredIntervals.push({ start, end: visualEnd });
                           } else {
                             const last = coveredIntervals[coveredIntervals.length - 1];
                             if (start <= last.end) {
-                              last.end = Math.max(last.end, end);
+                              last.end = Math.max(last.end, visualEnd);
                             } else {
-                              coveredIntervals.push({ start, end });
+                              coveredIntervals.push({ start, end: visualEnd });
                             }
                           }
                         });
@@ -9415,6 +9420,8 @@ const DataSourcePage = ({
                           ...record,
                           startMins: timeToMinutes(record.startTime),
                           endMins: timeToMinutes(record.endTime),
+                          // 视觉结束时间：考虑最小高度
+                          visualEndMins: Math.max(timeToMinutes(record.endTime), timeToMinutes(record.startTime) + MIN_CARD_MINUTES),
                           column: 0,
                           totalColumns: 1
                         }));
@@ -9426,12 +9433,12 @@ const DataSourcePage = ({
                         for (let i = 0; i < recordsWithLayout.length; i++) {
                           const current = recordsWithLayout[i];
                           
-                          // 找出所有在当前记录之前且与当前记录时间重叠的记录占用的列
+                          // 找出所有在当前记录之前且与当前记录视觉上重叠的记录占用的列
                           const occupiedColumns = new Set<number>();
                           for (let j = 0; j < i; j++) {
                             const other = recordsWithLayout[j];
-                            // 检查是否真正重叠（时间有交集）
-                            if (current.startMins < other.endMins && current.endMins > other.startMins) {
+                            // 检查是否视觉上重叠（使用视觉结束时间）
+                            if (current.startMins < other.visualEndMins && current.visualEndMins > other.startMins) {
                               occupiedColumns.add(other.column);
                             }
                           }
@@ -9442,16 +9449,16 @@ const DataSourcePage = ({
                           current.column = col;
                         }
                         
-                        // 计算每个记录的 totalColumns：找出与它重叠的所有记录中最大的列号+1
+                        // 计算每个记录的 totalColumns：找出与它视觉上重叠的所有记录中最大的列号+1
                         for (let i = 0; i < recordsWithLayout.length; i++) {
                           const current = recordsWithLayout[i];
                           let maxColumn = current.column;
                           
-                          // 找出所有与当前记录重叠的记录
+                          // 找出所有与当前记录视觉上重叠的记录
                           for (let j = 0; j < recordsWithLayout.length; j++) {
                             if (i !== j) {
                               const other = recordsWithLayout[j];
-                              if (current.startMins < other.endMins && current.endMins > other.startMins) {
+                              if (current.startMins < other.visualEndMins && current.visualEndMins > other.startMins) {
                                 maxColumn = Math.max(maxColumn, other.column);
                               }
                             }
@@ -9568,7 +9575,7 @@ const DataSourcePage = ({
                       
                       {/* 当前时间指示线 */}
                       {(() => {
-                        const SCALE = 5;
+                        const SCALE = 3;
                         const today = new Date();
                         const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
                         if (date === todayStr) {
