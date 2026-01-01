@@ -1626,16 +1626,56 @@ const TimerView = ({
     openTimerModeModal(timer);
   };
 
+  // 暂停计时 - 保存当前时间段的记录
   const pauseTimer = (timer: Timer) => {
+    // 保存当前时间段的记录（暂停时结束当前时间段）
+    // 正计时、倒计时都保存，番茄钟只保存工作阶段
+    if (timerStartTime) {
+      if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
+        saveTimeRecord(timer, timerStartTime, new Date());
+      }
+    }
+    
     const updatedTimer = { ...timer, status: 'paused' as TimerStatus };
     setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
     setActiveTimer(updatedTimer);
   };
 
+  // 继续计时 - 开始新的时间段
+  const resumeTimer = (timer: Timer) => {
+    const updatedTimer = { ...timer, status: 'running' as TimerStatus };
+    setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
+    setActiveTimer(updatedTimer);
+    
+    // 重置开始时间为当前时间（开始新的时间段）
+    setTimerStartTime(new Date());
+    
+    // 重新计算 timerStartTimestamp，排除暂停期间的时间
+    if (timerMode === 'countup') {
+      // 正计时：时间戳 = 当前时间 - 已过时间
+      setTimerStartTimestamp(Date.now() - elapsedTime * 1000);
+    } else if (timerMode === 'countdown') {
+      // 倒计时：时间戳 = 当前时间 - (总时长 - 剩余时间)
+      const totalDuration = timerDuration * 60;
+      const elapsed = totalDuration - timer.remainingTime;
+      setTimerStartTimestamp(Date.now() - elapsed * 1000);
+    } else if (timerMode === 'pomodoro') {
+      // 番茄钟：根据当前阶段计算
+      const phaseDuration = pomodoroPhase === 'work' 
+        ? pomodoroConfig.workDuration * 60 
+        : pomodoroPhase === 'break' 
+        ? pomodoroConfig.breakDuration * 60 
+        : pomodoroConfig.longBreakDuration * 60;
+      const elapsed = phaseDuration - timer.remainingTime;
+      setTimerStartTimestamp(Date.now() - elapsed * 1000);
+    }
+  };
+
   const resetTimer = (timer: Timer) => {
-    // 保存计时记录（如果有开始时间）
+    // 保存计时记录（如果有开始时间且计时器正在运行）
     // 正计时、倒计时都保存，番茄钟只保存工作阶段
-    if (timerStartTime && activeTimer?.id === timer.id) {
+    // 注意：如果是暂停状态，记录已经在暂停时保存过了
+    if (timerStartTime && activeTimer?.id === timer.id && timer.status === 'running') {
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
         saveTimeRecord(timer, timerStartTime, new Date());
       }
@@ -1731,11 +1771,14 @@ const TimerView = ({
   const saveEditTimer = () => {
     if (!editingTimer || !editTimerName.trim()) return;
     
+    const oldName = editingTimer.name;
+    const newCategoryId = editTimerCategory;
+    
     const updatedTimer = {
       ...editingTimer,
       name: editTimerName.trim(),
       icon: editTimerIcon,
-      categoryId: editTimerCategory
+      categoryId: newCategoryId
     };
     
     setTimers(prev => prev.map(t => t.id === editingTimer.id ? updatedTimer : t));
@@ -1744,6 +1787,17 @@ const TimerView = ({
     if (activeTimer?.id === editingTimer.id) {
       setActiveTimer(updatedTimer);
     }
+    
+    // 更新 timeRecords 中所有同名记录的分类
+    // 使用 removeEmoji 进行名称匹配，确保带emoji和不带emoji的名称都能匹配
+    const normalizedOldName = removeEmoji(oldName);
+    setTimeRecords(prev => prev.map(record => {
+      const normalizedRecordName = removeEmoji(record.name);
+      if (normalizedRecordName === normalizedOldName) {
+        return { ...record, categoryId: newCategoryId };
+      }
+      return record;
+    }));
     
     setShowEditTimerModal(false);
     setEditingTimer(null);
@@ -2043,6 +2097,7 @@ const TimerView = ({
             <div className="grid grid-cols-2 gap-3">
               {categoryTimers.map(timer => {
                 const isTimerActive = activeTimer?.id === timer.id && (timer.status === 'running' || timer.status === 'paused');
+                const hasAnyActiveTimer = activeTimer && (activeTimer.status === 'running' || activeTimer.status === 'paused');
                 const isSwiped = swipedTimerId === timer.id;
                 
                 // 获取计时器所属分类的完整对象，检查是否有自定义颜色
@@ -2063,13 +2118,22 @@ const TimerView = ({
                 const isDragging = draggedTimerId === timer.id;
                 const isDragOver = dragOverTimerId === timer.id;
                 
+                // 计算卡片明度：有活动计时器时，非活动卡片降低明度，活动卡片提高明度
+                const cardOpacity = hasAnyActiveTimer 
+                  ? (isTimerActive ? 1 : 0.5) 
+                  : 1;
+                const cardBrightness = hasAnyActiveTimer 
+                  ? (isTimerActive ? 'brightness-105' : 'brightness-75') 
+                  : '';
+                
                 return (
                 <div 
                   key={timer.id}
                   data-timer-id={timer.id}
-                  className={`relative overflow-hidden rounded-2xl transition-all duration-200 ${
+                  className={`relative overflow-hidden rounded-2xl transition-all duration-300 ${cardBrightness} ${
                     isDragOver ? 'ring-2 ring-purple-400 ring-offset-2 scale-105' : ''
                   } ${isDragging ? 'opacity-50 scale-95' : ''}`}
+                  style={{ opacity: isDragging ? 0.5 : cardOpacity }}
                   draggable={!isTouchDragging}
                   onDragStart={(e) => handleDragStart(e, timer.id)}
                   onDragEnd={handleDragEnd}
@@ -2181,6 +2245,9 @@ const TimerView = ({
                     {isTimerActive ? (
                       // 计时中的内容
                       <>
+                        {/* 计时器名称 */}
+                        <h4 className="text-sm font-bold text-[#2D2D2D] mb-1 line-clamp-1">{timer.name}</h4>
+                        
                         {/* 模式标签 */}
                         <div className="flex justify-center mb-1">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -2225,11 +2292,7 @@ const TimerView = ({
                             </button>
                           ) : (
                             <button
-                              onClick={() => {
-                                const updatedTimer = { ...timer, status: 'running' as TimerStatus };
-                                setTimers(prev => prev.map(t => t.id === timer.id ? updatedTimer : t));
-                                setActiveTimer(updatedTimer);
-                              }}
+                              onClick={() => resumeTimer(timer)}
                               className="w-10 h-10 rounded-full bg-[#00B894] flex items-center justify-center text-white shadow-lg hover:bg-[#00a383] transition-all"
                             >
                               <Play size={16} />
@@ -3058,7 +3121,7 @@ const TimerView = ({
 
       {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
       {isAlarmPlaying && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+        <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
           <button
             onClick={() => stopAlarmAndProceed()}
             className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
@@ -3072,7 +3135,7 @@ const TimerView = ({
 
       {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
       {!isAlarmPlaying && pomodoroWaitingNextPhase && (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+        <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
           <button
             onClick={() => proceedToNextPhase()}
             className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
@@ -4031,11 +4094,68 @@ const ReviewView = ({
     }).join('\n\n');
     
     // 构建AI提示词
-    const prompt = `# Role
-你是一位**注重细节的首席生活运营官 (Detail-Oriented Personal COO)**。你的核心竞争力是：**拒绝"大概印象"，坚持"穿透式审计"。** 你不看表面的分类标签，而是深入解读每一条具体的时间记录内容。
+    const prompt = `# Role: 理性的生存效能合伙人 (Rational Survival Partner)
 
-# Input Data
-## 用户数据
+# User Profile (用户画像):
+1. **现状**：全职自媒体，背负2026年4月必须变现的生存压力。
+2. **限制**：严重腰肌劳损，必须"碎片化工作"；心理上抗拒宏大任务，需要极简指令。
+3. **需求**：拒绝情绪化的羞辱，也拒绝无意义的安慰。需要客观、犀利地指出"时间去哪了"，并进行深度战略分析。
+
+# 🔋 Battery Definitions (电池定义库):
+1. **🔴 搞钱电池 (Money Battery) - 核心产出**
+   - **包含**：[动作类] 拍摄、剪辑、写脚本、发布；[脑力类] 复盘、商务。
+   - **注意**：即使躺着做也算。
+   - **排除**：无明确目标的"学习/找素材/准备"。
+
+2. **🟢 绿色健康电池 (Health Battery) - 生存维护**
+   - **包含**：康复训练、因腰痛必须的躺平/热敷、睡眠、饮食、如厕、**照顾猫咪**。
+
+3. **🟡 快乐电池 (Joy Battery) - 精神回血**
+   - **包含**：打游戏、看剧、非功利兴趣。
+   - **排除**：**"黑洞时间"**（无意识刷手机、发呆、焦虑拖延）。
+
+# Core Analysis Protocols (核心分析协议):
+1. **🛡️ 基础维护豁免**：
+   - "绿色健康电池"事项（含照顾猫、便秘）视为刚性成本，**不做负面评价**。
+
+2. **⚖️ 损耗侦测**：
+   - 揪出不属于任何电池的"黑洞时间"。话术："检测到 [XX分钟] 不明损耗，疑似陷入算法黑洞。"
+
+3. **🧱 积木式产出**：
+   - 只看"搞钱电池"累计总时长，忽略碎片化。
+
+4. **🔬 深度四维扫描 (The 4-Dimension Scan) - 战略核心**
+   *必须针对当日数据，回答以下四个战略问题：*
+
+   - **A. 时机对吗？(Timing Check)**
+     - **分析**：高强度的"搞钱动作"（如剪辑/脚本）是否发生在用户精力最好的时段？还是被琐事推到了疲惫的垃圾时间？
+     - **判定**：如果核心工作都在深夜或饭后犯困时，标记为"低效勤奋"。
+
+   - **B. 比例对吗？(Input/Output Ratio)**
+     - **分析**：对比 [准备/学习/找素材] 与 [拍摄/剪辑/发布] 的时长。
+     - **判定**：如果"准备工作"时长 > "核心产出"时长，标记为"**假装努力**（Procrastination by Preparation）"。
+
+   - **C. 代价大吗？(Sustainability Cost)**
+     - **分析**：今日"搞钱电池"是否严重超标（>设置中时间分配给工作的时间）？
+     - **判定**：如果超标，必须发出红色预警："今日拼命，明日可能报废（Pain Lag Risk）。"
+
+   - **D. 干扰多吗？(Interference Analysis)**
+     - **分析**：工作的中断点，是因为"腰痛/猫咪"（不可抗力），还是因为"想看八卦/刷手机"（主动逃避）？
+     - **判定**：如果是后者，标记为"意志力漏水"。
+
+# 🔋 Battery System Standards (电池仪表盘):
+1. **🔴 搞钱电池**：
+   - < 2h：【⚠ 存量不足】提示风险。
+   - 2h-3h：【✅ 运行平稳】确认安全。
+   - > 4h：【🛑 熔断预警】强制关机。
+
+2. **🟢 绿色健康电池**：
+   - 缺失康复/躺平/放松肌肉 -> 提示"设备故障风险"。
+
+3. **🟡 快乐电池**：
+   - < 2h -> 提示"精神燃料不足"。
+
+# Input Data (用户数据)
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
 - 时间记录总时长：${totalActualHours.toFixed(1)}小时
@@ -4052,59 +4172,28 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Core Logic (核心分析逻辑·最高优先级)
-1. **🔍 强制解读具体事件 (Mandatory Event Decoding)：**
-   - **指令：** 在分析任何时间块时，**必须读取并引用**计时器中记录的**【具体事件名称/备注】**。
-   - **禁止：** 严禁只说"你花在生活上的时间太多"。
-   - **要求：** 必须说"你花在'生活'分类下的**'准备猫饭'**和**'收纳杂物'**上的时间较多"。只有看到具体事件，才能判断这到底是"必要的维护"还是"无意义的拖延"。
+# Output Structure (输出格式):
+请严格按照以下JSON格式输出：
 
-2. **🏷️ 基于内容的价值重估 (Content-Based Valuation)：**
-   - 不要被 App 的预设分类误导。请根据**具体做的事**重新定义价值：
-   - *例子 A：* 分类是"工作"，但事件是"无意义地反复调整字体" -> 判定为**"伪工作/磨洋工"**。
-   - *例子 B：* 分类是"生活"，但事件是"为家人做营养餐" -> 判定为**"高价值的后勤保障"**。
-   - *例子 C：* 分类是"生活"，但事件是"修水管/照顾病号" -> 判定为**"不可抗力的突发维护"**。
-
-3. **⚖️ 运营成本视角：**
-   - 将所有非产出的琐事视为**"生活系统的运营成本"**。你的分析目标不是消灭这些时间（因为不可能），而是分析**"成本是否过高"**以及**"流程是否可以优化"**。
-
-# Analysis Framework (审计透镜)
-请依次扫描以下维度：
-1. **事件成分分析：** 在"生活"或"工作"的大类下，具体是由哪些细碎任务组成的？（如：是做饭占了大头，还是通勤占了大头？）
-2. **琐事颗粒度：** 这些具体事件是集中处理的，还是像碎片一样散落在全天，切碎了你的注意力？
-3. **隐形负担：** 是否有某些具体事项（如"清洗猫砂盆"或"整理文件"）出现的频率过高，暗示了流程上的低效？
-
-# Output Structure (严格按照此JSON格式输出)
 {
-  "eventLevelBreakdown": {
-    "lifeChores": {
-      "mainTimeConsumers": ["具体事件名称1", "具体事件名称2"],
-      "cooEvaluation": "分析这些具体琐事的必要性。例如：'每日做饭'占据了2小时，这是高质量的自我投喂，但作为运营成本略高。"
-    },
-    "workOutput": {
-      "coreActions": ["具体事件名称"],
-      "cooEvaluation": "分析具体任务的含金量。例如：大部分时间集中在'核心代码编写'，而非'回消息'，含金量极高。"
-    }
+  "billSummary": "📊 账单速览：客观总结今日盈亏",
+  "fourDimensionDiagnosis": {
+    "timing": "⏱ 时机：[点评，如无问题可写'正常']",
+    "ratio": "⚖️ 比例：[点评，如无问题可写'正常']",
+    "cost": "📉 代价：[点评，如无问题可写'正常']",
+    "interference": "🚧 干扰：[点评，如无问题可写'正常']"
   },
-  "operationalDiagnosis": {
-    "currentMode": "基于具体事件定义。例如：被'家务琐事'包围的'间歇性冲刺者'。",
-    "costBenefitAnalysis": "指出本周最大的时间开销（具体事件）是否带来了相应的价值（情绪价值或生存价值）？"
+  "anomalyData": "🕵️‍♂️ 异常数据：指出'黑洞时间'或'假装工作'的具体时段",
+  "batteryStatus": {
+    "money": "🔴 [时长/评级]",
+    "health": "🟢 [时长/评级]",
+    "joy": "🟡 [时长/评级]"
   },
-  "processOptimization": [
-    {
-      "targetEvent": "某具体高耗时琐事",
-      "suggestion": "例如：针对'做饭耗时久'，建议'周末备菜法'或'简化食谱'。"
-    },
-    {
-      "targetEvent": "某具体工作习惯",
-      "suggestion": "例如：发现'找素材'时间分散，建议设立专门的'素材搜集时段'。"
-    }
-  ]
+  "tomorrowStrategy": "📅 明日策略：基于四维诊断，给出一条实用建议"
 }
 
-# Tone
-- **像拿着放大镜的审计师：** 精准、细致。
-- **基于事实说话：** 哪怕是批评或表扬，都要引用具体的事件名称作为证据。
-- 只返回JSON，不要其他内容`;
+# Tone (语气):
+冷静、客观、坚定。像一位经验丰富的战略顾问。只返回JSON，不要其他内容。`;
 
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
@@ -4121,7 +4210,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是一位注重细节的首席生活运营官(Detail-Oriented Personal COO)。你的核心竞争力是：拒绝"大概印象"，坚持"穿透式审计"。你不看表面的分类标签，而是深入解读每一条具体的时间记录内容。你的风格精准、细致，基于事实说话，哪怕是批评或表扬，都要引用具体的事件名称作为证据。请以JSON格式返回分析报告。'
+              content: '你是一位理性的生存效能合伙人(Rational Survival Partner)。你的风格冷静、客观、坚定，像一位经验丰富的战略顾问。你拒绝情绪化的羞辱，也拒绝无意义的安慰。你需要客观、犀利地指出"时间去哪了"，并进行深度战略分析。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -4504,8 +4593,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 
   const tabs = [
     { id: 'progress' as const, label: '当前进度' },
-    { id: 'ai' as const, label: 'AI复盘' },
     { id: 'habits' as const, label: '习惯追踪' },
+    { id: 'ai' as const, label: 'AI复盘' },
   ];
 
   const aiPeriods = [
@@ -7856,7 +7945,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
         {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
         {isAlarmPlaying && (
-          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
             <button
               onClick={() => stopAlarmAndProceed()}
               className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
@@ -7870,7 +7959,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
         {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
         {!isAlarmPlaying && pomodoroWaitingNextPhase && (
-          <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
             <button
               onClick={() => proceedToNextPhase()}
               className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
@@ -9086,29 +9175,32 @@ const DataSourcePage = ({
       setTimeout(() => {
         const dateElement = document.querySelector(`[data-date="${scrollToDate}"]`);
         if (dateElement) {
-          if (scrollToTime) {
-            // 如果有具体时间，滚动到该时间位置
-            const SCALE = 3; // 与渲染时一致
-            const [h, m] = scrollToTime.split(':').map(Number);
-            const timeMins = h * 60 + m;
-            const timeOffset = timeMins * SCALE;
+          const scrollContainer = dateElement.closest('.overflow-y-auto');
+          if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const containerHeight = containerRect.height;
             
-            // 找到日期容器内的时间轴区域
-            const timelineContainer = dateElement.querySelector('.flex-1.relative');
-            if (timelineContainer) {
-              const containerRect = dateElement.getBoundingClientRect();
-              const scrollContainer = dateElement.closest('.overflow-y-auto');
-              if (scrollContainer) {
-                const targetScrollTop = scrollContainer.scrollTop + containerRect.top - scrollContainer.getBoundingClientRect().top + timeOffset - 100;
-                scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-              }
+            if (scrollToTime) {
+              // 如果有具体时间，滚动到该时间位置
+              const SCALE = 3; // 与渲染时一致
+              const [h, m] = scrollToTime.split(':').map(Number);
+              const timeMins = h * 60 + m;
+              const timeOffset = timeMins * SCALE;
+              
+              const dateRect = dateElement.getBoundingClientRect();
+              // 计算目标位置，让定位点处于页面中间
+              const targetScrollTop = scrollContainer.scrollTop + dateRect.top - containerRect.top + timeOffset - containerHeight / 2;
+              scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
-              dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              // 没有具体时间，滚动到日期开头，让其处于页面中间
+              const dateRect = dateElement.getBoundingClientRect();
+              const targetScrollTop = scrollContainer.scrollTop + dateRect.top - containerRect.top - containerHeight / 2 + 100;
+              scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             }
-            setScrollToTime(null);
           } else {
-            dateElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            dateElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
+          setScrollToTime(null);
         }
         setScrollToDate(null);
       }, 100);
@@ -9178,6 +9270,7 @@ const DataSourcePage = ({
     setTimeRecords([...timeRecords, newRecord]);
     setIsAddingRecord(false);
     setScrollToDate(newRecordDate); // 滚动到新添加记录的日期
+    setScrollToTime(newRecordStartTime); // 滚动到新添加记录的时间
     setNewRecordName('');
     setNewRecordDate('');
     setNewRecordEndDate('');
@@ -9208,6 +9301,7 @@ const DataSourcePage = ({
         : r
     ));
     setScrollToDate(editDate); // 滚动到编辑后的日期
+    setScrollToTime(editStartTime); // 滚动到编辑后的时间
     setEditingRecord(null);
     showToastMessage('修改成功');
   };
@@ -9354,30 +9448,54 @@ const DataSourcePage = ({
                 hasInitialScrolledRef.current = true;
                 
                 const now = new Date();
-                const sortedRecords = [...timeRecords].sort((a, b) => {
-                  const aDateTime = `${a.date} ${a.startTime}`;
-                  const bDateTime = `${b.date} ${b.startTime}`;
-                  return aDateTime.localeCompare(bDateTime);
-                });
+                const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+                const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 
-                let closestIndex = 0;
-                let minDiff = Infinity;
-                sortedRecords.forEach((record, index) => {
-                  const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
-                  const diff = Math.abs(recordDateTime - now.getTime());
-                  if (diff < minDiff) {
-                    minDiff = diff;
-                    closestIndex = index;
+                setTimeout(() => {
+                  // 优先找今天的日期元素
+                  let dateElement = el.querySelector(`[data-date="${todayStr}"]`);
+                  let targetDate = todayStr;
+                  
+                  // 如果今天没有记录，找最近的日期
+                  if (!dateElement) {
+                    const sortedRecords = [...timeRecords].sort((a, b) => {
+                      const aDateTime = `${a.date} ${a.startTime}`;
+                      const bDateTime = `${b.date} ${b.startTime}`;
+                      return aDateTime.localeCompare(bDateTime);
+                    });
+                    
+                    let closestIndex = 0;
+                    let minDiff = Infinity;
+                    sortedRecords.forEach((record, index) => {
+                      const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
+                      const diff = Math.abs(recordDateTime - now.getTime());
+                      if (diff < minDiff) {
+                        minDiff = diff;
+                        closestIndex = index;
+                      }
+                    });
+                    
+                    targetDate = sortedRecords[closestIndex]?.date || todayStr;
+                    dateElement = el.querySelector(`[data-date="${targetDate}"]`);
                   }
-                });
-                
-                const closestDate = sortedRecords[closestIndex]?.date;
-                const dateElement = el.querySelector(`[data-date="${closestDate}"]`);
-                if (dateElement) {
-                  setTimeout(() => {
-                    dateElement.scrollIntoView({ block: 'start' });
-                  }, 100);
-                }
+                  
+                  if (dateElement) {
+                    const scrollContainer = el.closest('.overflow-y-auto') || el;
+                    const containerRect = scrollContainer.getBoundingClientRect();
+                    const containerHeight = containerRect.height;
+                    const dateRect = dateElement.getBoundingClientRect();
+                    
+                    // 计算当前时间在时间轴上的位置
+                    const SCALE = 3;
+                    const [h, m] = currentTimeStr.split(':').map(Number);
+                    const timeMins = h * 60 + m;
+                    const timeOffset = timeMins * SCALE;
+                    
+                    // 计算目标滚动位置，让当前时间处于页面中间
+                    const targetScrollTop = scrollContainer.scrollTop + dateRect.top - containerRect.top + timeOffset - containerHeight / 2;
+                    scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'auto' });
+                  }
+                }, 100);
               }
             }}
           >
@@ -12309,11 +12427,20 @@ export default function App() {
     }
   };
 
+  // 获取当前选中分类的颜色（优先使用用户自定义颜色）
+  const getSelectedCategoryColor = () => {
+    const currentCat = categories.find(c => c.id === selectedCategory);
+    if (currentCat?.color) {
+      return currentCat.color;
+    }
+    return MACARON_COLORS.categories[selectedCategory]?.primary || MACARON_COLORS.themes.timer;
+  };
+
   const tabs: { id: TabId; icon: typeof Timer; label: string; color: string }[] = [
-    { id: 'plan', icon: Calendar, label: '规划', color: MACARON_COLORS.themes.plan },
+    { id: 'timer', icon: Timer, label: '专注', color: getSelectedCategoryColor() },
     { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
-    { id: 'timer', icon: Timer, label: '专注', color: MACARON_COLORS.categories[selectedCategory]?.primary || MACARON_COLORS.themes.timer },
     { id: 'journal', icon: BookHeart, label: '日记', color: MACARON_COLORS.themes.journal },
+    { id: 'plan', icon: Calendar, label: '规划', color: MACARON_COLORS.themes.plan },
     { id: 'settings', icon: Settings2, label: '设置', color: MACARON_COLORS.themes.settings },
   ];
 
