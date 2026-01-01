@@ -5058,113 +5058,103 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🕵️</span>
-                        </div>
-                        <h4 className="font-black text-gray-800 text-lg">现场级成分分析</h4>
-                      </div>
-                      
-                      {/* 生活/琐事板块 */}
-                      <div className="mb-4">
-                        <h5 className="font-bold text-gray-700 mb-2">🏠 生活/琐事板块拆解</h5>
-                        <div className="bg-purple-50 rounded-xl p-3">
-                          {viewingHistoryReport.eventLevelBreakdown?.lifeChores?.mainTimeConsumers && (
-                            <p className="text-xs text-purple-600 mb-2">
-                              主要耗时项：{Array.isArray(viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers) 
-                                ? viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers.map((item: string) => `【${item}】`).join('、')
-                                : viewingHistoryReport.eventLevelBreakdown.lifeChores.mainTimeConsumers}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.eventLevelBreakdown?.lifeChores?.cooEvaluation || viewingHistoryReport.executiveSummary?.patternDefinition || viewingHistoryReport.summary?.energyAudit || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
-                          }} />
-                        </div>
-                      </div>
-                      
-                      {/* 工作/产出板块 */}
-                      <div>
-                        <h5 className="font-bold text-gray-700 mb-2">💼 工作/产出板块拆解</h5>
-                        <div className="bg-orange-50 rounded-xl p-3">
-                          {viewingHistoryReport.eventLevelBreakdown?.workOutput?.coreActions && (
-                            <p className="text-xs text-orange-600 mb-2">
-                              核心动作：{Array.isArray(viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions) 
-                                ? viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions.map((item: string) => `【${item}】`).join('、')
-                                : viewingHistoryReport.eventLevelBreakdown.workOutput.coreActions}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.eventLevelBreakdown?.workOutput?.cooEvaluation || viewingHistoryReport.executiveSummary?.coreConflict || viewingHistoryReport.summary?.positiveSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                          }} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 📊 运营模式诊断 */}
-                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
                           <span className="text-lg">📊</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">运营模式诊断</h4>
+                        <h4 className="font-black text-gray-800 text-lg">账单速览</h4>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.billSummary || viewingHistoryReport.eventLevelBreakdown?.lifeChores?.cooEvaluation || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                      }} />
+                    </div>
+
+                    {/* 🔬 四维深度诊断 */}
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">🔬</span>
+                        </div>
+                        <h4 className="font-black text-gray-800 text-lg">四维深度诊断</h4>
                       </div>
                       
                       <div className="space-y-3">
                         <div className="bg-amber-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-amber-600 mb-1">🎭 当前模式</p>
+                          <p className="text-xs font-bold text-amber-600 mb-1">⏱ 时机</p>
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.operationalDiagnosis?.currentMode || viewingHistoryReport.fiveLensAudit?.roiAnalysis || viewingHistoryReport.summary?.negativeSignal || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.timing || viewingHistoryReport.operationalDiagnosis?.currentMode || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                           }} />
                         </div>
                         <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 成本/收益分析</p>
+                          <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 比例</p>
                           <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.operationalDiagnosis?.costBenefitAnalysis || viewingHistoryReport.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.ratio || viewingHistoryReport.operationalDiagnosis?.costBenefitAnalysis || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                          }} />
+                        </div>
+                        <div className="bg-red-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-red-600 mb-1">📉 代价</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.cost || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
+                          }} />
+                        </div>
+                        <div className="bg-orange-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-orange-600 mb-1">🚧 干扰</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.interference || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
                           }} />
                         </div>
                       </div>
                     </div>
 
-                    {/* 🛠 流程优化建议 */}
-                    <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🛠</span>
+                    {/* 🕵️‍♂️ 异常数据 */}
+                    {viewingHistoryReport.anomalyData && (
+                      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
+                            <span className="text-lg">🕵️</span>
+                          </div>
+                          <h4 className="font-black text-gray-800 text-lg">异常数据</h4>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">流程优化建议</h4>
+                        <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                          __html: (viewingHistoryReport.anomalyData || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
+                        }} />
+                      </div>
+                    )}
+
+                    {/* 🔋 电池状态 */}
+                    <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">🔋</span>
+                        </div>
+                        <h4 className="font-black text-gray-800 text-lg">电池状态</h4>
                       </div>
                       
                       <div className="space-y-3">
-                        {Array.isArray(viewingHistoryReport.processOptimization) ? (
-                          viewingHistoryReport.processOptimization.map((item: { targetEvent: string; suggestion: string }, index: number) => (
-                            <div key={index} className="bg-white/60 rounded-xl p-3">
-                              <p className="text-xs font-bold text-sky-600 mb-1">🎯 针对「{item.targetEvent}」</p>
-                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                                __html: (item.suggestion || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                              }} />
-                            </div>
-                          ))
-                        ) : (
-                          <>
-                            <div className="bg-white/60 rounded-xl p-3">
-                              <p className="text-xs font-bold text-amber-600 mb-1">🔮 三个月后的心理画像</p>
-                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                                __html: (viewingHistoryReport.threeMonthProjection?.mindsetChange || viewingHistoryReport.advice?.threeMonthWarning || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
-                              }} />
-                            </div>
-                            <div className="bg-white/60 rounded-xl p-3">
-                              <p className="text-xs font-bold text-sky-600 mb-1">🛡️ 最需守护的三件事</p>
-                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                                __html: (viewingHistoryReport.actionGuide?.threeThingsToProtect || (viewingHistoryReport.advice?.protections || []).join('；') || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                              }} />
-                            </div>
-                            <div className="bg-white/60 rounded-xl p-3">
-                              <p className="text-xs font-bold text-sky-600 mb-1">🔧 "懒人"调仓建议</p>
-                              <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                                __html: (viewingHistoryReport.actionGuide?.lazyRebalancing || viewingHistoryReport.advice?.adjustment || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                              }} />
-                            </div>
-                          </>
-                        )}
+                        <div className="bg-red-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-red-600 mb-1">🔴 搞钱电池</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.money || '暂无数据'}</p>
+                        </div>
+                        <div className="bg-green-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-green-600 mb-1">🟢 绿色健康电池</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.health || '暂无数据'}</p>
+                        </div>
+                        <div className="bg-yellow-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-yellow-600 mb-1">🟡 快乐电池</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.joy || '暂无数据'}</p>
+                        </div>
                       </div>
+                    </div>
+
+                    {/* 📅 明日策略 */}
+                    <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">📅</span>
+                        </div>
+                        <h4 className="font-black text-sky-800 text-lg">明日策略</h4>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.tomorrowStrategy || viewingHistoryReport.actionGuide?.lazyRebalancing || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                      }} />
                     </div>
                   </div>
                 ) : (
@@ -5253,111 +5243,107 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 🕵️ 现场级成分分析 ===== */}
+                {/* ===== 📊 账单速览 ===== */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">📊</span>
+                    </div>
+                    <h4 className="font-black text-gray-800 text-lg">账单速览</h4>
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.billSummary || reportData.eventLevelBreakdown?.lifeChores?.cooEvaluation || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                  }} />
+                </div>
+
+                {/* ===== 🔬 四维深度诊断 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🕵️</span>
+                      <span className="text-lg">🔬</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">现场级成分分析</h4>
-                  </div>
-                  
-                  {/* 生活/琐事板块 */}
-                  <div className="mb-4">
-                    <h5 className="font-bold text-gray-700 mb-2">🏠 生活/琐事板块拆解</h5>
-                    <div className="bg-purple-50 rounded-xl p-3">
-                      {reportData.eventLevelBreakdown?.lifeChores?.mainTimeConsumers && (
-                        <p className="text-xs text-purple-600 mb-2">
-                          主要耗时项：{Array.isArray(reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers) 
-                            ? reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers.map((item: string) => `【${item}】`).join('、')
-                            : reportData.eventLevelBreakdown.lifeChores.mainTimeConsumers}
-                        </p>
-                      )}
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.eventLevelBreakdown?.lifeChores?.cooEvaluation || reportData.executiveSummary?.patternDefinition || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
-                  
-                  {/* 工作/产出板块 */}
-                  <div>
-                    <h5 className="font-bold text-gray-700 mb-2">💼 工作/产出板块拆解</h5>
-                    <div className="bg-orange-50 rounded-xl p-3">
-                      {reportData.eventLevelBreakdown?.workOutput?.coreActions && (
-                        <p className="text-xs text-orange-600 mb-2">
-                          核心动作：{Array.isArray(reportData.eventLevelBreakdown.workOutput.coreActions) 
-                            ? reportData.eventLevelBreakdown.workOutput.coreActions.map((item: string) => `【${item}】`).join('、')
-                            : reportData.eventLevelBreakdown.workOutput.coreActions}
-                        </p>
-                      )}
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.eventLevelBreakdown?.workOutput?.cooEvaluation || reportData.executiveSummary?.coreConflict || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ===== 📊 运营模式诊断 ===== */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">📊</span>
-                    </div>
-                    <h4 className="font-black text-gray-800 text-lg">运营模式诊断</h4>
+                    <h4 className="font-black text-gray-800 text-lg">四维深度诊断</h4>
                   </div>
                   
                   <div className="space-y-3">
                     <div className="bg-amber-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-amber-600 mb-1">🎭 当前模式</p>
+                      <p className="text-xs font-bold text-amber-600 mb-1">⏱ 时机</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.operationalDiagnosis?.currentMode || reportData.fiveLensAudit?.roiAnalysis || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
+                        __html: (reportData.fourDimensionDiagnosis?.timing || reportData.operationalDiagnosis?.currentMode || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
                       }} />
                     </div>
                     <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 成本/收益分析</p>
+                      <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 比例</p>
                       <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.operationalDiagnosis?.costBenefitAnalysis || reportData.fiveLensAudit?.energyAndRhythm || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                        __html: (reportData.fourDimensionDiagnosis?.ratio || reportData.operationalDiagnosis?.costBenefitAnalysis || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                      }} />
+                    </div>
+                    <div className="bg-red-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-red-600 mb-1">📉 代价</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.fourDimensionDiagnosis?.cost || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
+                      }} />
+                    </div>
+                    <div className="bg-orange-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-orange-600 mb-1">🚧 干扰</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.fourDimensionDiagnosis?.interference || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 🛠 流程优化建议 ===== */}
+                {/* ===== 🕵️‍♂️ 异常数据 ===== */}
+                {reportData.anomalyData && (
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
+                        <span className="text-lg">🕵️</span>
+                      </div>
+                      <h4 className="font-black text-gray-800 text-lg">异常数据</h4>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                      __html: (reportData.anomalyData || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
+                    }} />
+                  </div>
+                )}
+
+                {/* ===== 🔋 电池状态 ===== */}
+                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">🔋</span>
+                    </div>
+                    <h4 className="font-black text-gray-800 text-lg">电池状态</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="bg-red-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-red-600 mb-1">🔴 搞钱电池</p>
+                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.money || '暂无数据'}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-green-600 mb-1">🟢 绿色健康电池</p>
+                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.health || '暂无数据'}</p>
+                    </div>
+                    <div className="bg-yellow-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-yellow-600 mb-1">🟡 快乐电池</p>
+                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.joy || '暂无数据'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ===== 📅 明日策略 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🛠</span>
+                      <span className="text-lg">📅</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">流程优化建议</h4>
+                    <h4 className="font-black text-sky-800 text-lg">明日策略</h4>
                   </div>
-
-                  <div className="space-y-3">
-                    {Array.isArray(reportData.processOptimization) ? (
-                      reportData.processOptimization.map((item: { targetEvent: string; suggestion: string }, index: number) => (
-                        <div key={index} className="bg-white/60 rounded-xl p-3">
-                          <p className="text-xs font-bold text-sky-600 mb-1">🎯 针对「{item.targetEvent}」</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (item.suggestion || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
-                          }} />
-                        </div>
-                      ))
-                    ) : (
-                      <>
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <p className="text-xs font-bold text-emerald-600 mb-1">🛡️ 最需守护的三件事</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (reportData.actionGuide?.threeThingsToProtect || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-emerald-600">$1</strong>') 
-                          }} />
-                        </div>
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <p className="text-xs font-bold text-sky-600 mb-1">🔧 "懒人"调仓建议</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (reportData.actionGuide?.lazyRebalancing || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-600">$1</strong>') 
-                          }} />
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.tomorrowStrategy || reportData.actionGuide?.lazyRebalancing || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                  }} />
                 </div>
               </div>
             ) : (
