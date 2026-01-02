@@ -3727,7 +3727,7 @@ const ReviewView = ({
 }: { 
   journals: Journal[]; 
   timeRecords: TimeRecord[];
-  setTimeRecords: (records: TimeRecord[]) => void;
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   idealTimeAllocation: Record<string, number>;
@@ -9126,12 +9126,13 @@ const DataSourcePage = ({
 }: {
   onClose: () => void;
   timeRecords: TimeRecord[];
-  setTimeRecords: (records: TimeRecord[]) => void;
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   categories: Category[];
   showToastMessage: (msg: string) => void;
 }) => {
   const [dataSearchQuery, setDataSearchQuery] = useState('');
   const [isAddingRecord, setIsAddingRecord] = useState(false);
+  const [shouldScrollAfterAdd, setShouldScrollAfterAdd] = useState(false); // 是否需要在添加后滚动
   const [newRecordName, setNewRecordName] = useState('');
   const [newRecordDate, setNewRecordDate] = useState('');
   const [newRecordEndDate, setNewRecordEndDate] = useState('');
@@ -9146,6 +9147,7 @@ const DataSourcePage = ({
   const [editEndTime, setEditEndTime] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<string>('uncategorized');
   const hasInitialScrolledRef = useRef(false); // 使用 ref 而不是 state
+  const scrollContainerRef = useRef<HTMLDivElement>(null); // 滚动容器的 ref
   const [deletingDate, setDeletingDate] = useState<string | null>(null); // 正在确认删除的日期
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false); // 多选模式
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set()); // 已选中的日期
@@ -9154,6 +9156,73 @@ const DataSourcePage = ({
   
   // 用于强制重新渲染的 key
   const [renderKey, setRenderKey] = useState(0);
+
+  // 初始滚动到当前时间位置（只在组件首次加载时执行一次）
+  useEffect(() => {
+    // 已经滚动过了，不再执行
+    if (hasInitialScrolledRef.current) {
+      return;
+    }
+    
+    // 等待 DOM 渲染完成
+    const timer = setTimeout(() => {
+      if (hasInitialScrolledRef.current || !scrollContainerRef.current || timeRecords.length === 0 || dataSearchQuery) {
+        return;
+      }
+      
+      hasInitialScrolledRef.current = true;
+      
+      const el = scrollContainerRef.current;
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+      const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      // 优先找今天的日期元素
+      let dateElement = el.querySelector(`[data-date="${todayStr}"]`);
+      
+      // 如果今天没有记录，找最近的日期
+      if (!dateElement) {
+        const sortedRecords = [...timeRecords].sort((a, b) => {
+          const aDateTime = `${a.date} ${a.startTime}`;
+          const bDateTime = `${b.date} ${b.startTime}`;
+          return aDateTime.localeCompare(bDateTime);
+        });
+        
+        let closestIndex = 0;
+        let minDiff = Infinity;
+        sortedRecords.forEach((record, index) => {
+          const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
+          const diff = Math.abs(recordDateTime - now.getTime());
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = index;
+          }
+        });
+        
+        const targetDate = sortedRecords[closestIndex]?.date || todayStr;
+        dateElement = el.querySelector(`[data-date="${targetDate}"]`);
+      }
+      
+      if (dateElement) {
+        const scrollContainer = el.closest('.overflow-y-auto') || el;
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const containerHeight = containerRect.height;
+        const dateRect = dateElement.getBoundingClientRect();
+        
+        // 计算当前时间在时间轴上的位置
+        const SCALE = 3;
+        const [h, m] = currentTimeStr.split(':').map(Number);
+        const timeMins = h * 60 + m;
+        const timeOffset = timeMins * SCALE;
+        
+        // 计算目标滚动位置，让当前时间处于页面中间
+        const targetScrollTop = scrollContainer.scrollTop + dateRect.top - containerRect.top + timeOffset - containerHeight / 2;
+        scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'auto' });
+      }
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, []); // 空依赖，只在挂载时执行一次
 
   // 滚动到指定日期和时间
   useEffect(() => {
@@ -9206,6 +9275,7 @@ const DataSourcePage = ({
     setNewRecordStartTime(currentTime);
     setNewRecordEndTime(currentTime);
     setNewRecordCategoryId('uncategorized');
+    setShouldScrollAfterAdd(true); // 从顶部按钮新增，需要滚动
     
     // 使用 setTimeout 确保状态更新在下一个事件循环中执行
     setTimeout(() => {
@@ -9253,10 +9323,14 @@ const DataSourcePage = ({
       createdAt: Date.now()
     };
 
-    setTimeRecords([...timeRecords, newRecord]);
+    setTimeRecords(prev => [...prev, newRecord]);
     setIsAddingRecord(false);
-    setScrollToDate(newRecordDate); // 滚动到新添加记录的日期
-    setScrollToTime(newRecordStartTime); // 滚动到新添加记录的时间
+    // 只有从顶部按钮新增时才需要滚动定位
+    if (shouldScrollAfterAdd) {
+      setScrollToDate(newRecordDate);
+      setScrollToTime(newRecordStartTime);
+    }
+    setShouldScrollAfterAdd(false);
     setNewRecordName('');
     setNewRecordDate('');
     setNewRecordEndDate('');
@@ -9281,9 +9355,19 @@ const DataSourcePage = ({
   const handleSaveEdit = () => {
     if (!editingRecord) return;
     
-    setTimeRecords(timeRecords.map(r => 
-      r.id === editingRecord.id 
-        ? { ...r, name: editName, date: editDate, endDate: editEndDate || undefined, startTime: editStartTime, endTime: editEndTime, categoryId: editCategoryId as CategoryId }
+    const recordId = editingRecord.id;
+    const updatedData = {
+      name: editName,
+      date: editDate,
+      endDate: editEndDate || undefined,
+      startTime: editStartTime,
+      endTime: editEndTime,
+      categoryId: editCategoryId as CategoryId
+    };
+    
+    setTimeRecords(prev => prev.map(r => 
+      r.id === recordId 
+        ? { ...r, ...updatedData }
         : r
     ));
     setScrollToDate(editDate); // 滚动到编辑后的日期
@@ -9294,14 +9378,14 @@ const DataSourcePage = ({
 
   // 删除记录
   const handleDeleteRecord = (id: string) => {
-    setTimeRecords(timeRecords.filter(r => r.id !== id));
+    setTimeRecords(prev => prev.filter(r => r.id !== id));
     showToastMessage('删除成功');
   };
 
   // 按天删除所有记录
   const handleDeleteByDate = (date: string) => {
     const count = timeRecords.filter(r => r.date === date).length;
-    setTimeRecords(timeRecords.filter(r => r.date !== date));
+    setTimeRecords(prev => prev.filter(r => r.date !== date));
     setDeletingDate(null);
     showToastMessage(`已删除 ${count} 条记录`);
   };
@@ -9320,7 +9404,8 @@ const DataSourcePage = ({
   // 批量删除选中的日期
   const handleDeleteSelectedDates = () => {
     const count = timeRecords.filter(r => selectedDates.has(r.date)).length;
-    setTimeRecords(timeRecords.filter(r => !selectedDates.has(r.date)));
+    const datesToDelete = new Set(selectedDates);
+    setTimeRecords(prev => prev.filter(r => !datesToDelete.has(r.date)));
     setSelectedDates(new Set());
     setIsMultiSelectMode(false);
     showToastMessage(`已删除 ${selectedDates.size} 天共 ${count} 条记录`);
@@ -9420,7 +9505,7 @@ const DataSourcePage = ({
       </div>
 
       {/* 内容区域 */}
-      <div key={`content-${renderKey}-${isAddingRecord}`} className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+      <div key={`content-${renderKey}`} className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
         {timeRecords.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20">
             <Database size={48} className="text-gray-300 mb-4" />
@@ -9428,63 +9513,7 @@ const DataSourcePage = ({
             <p className="text-gray-300 text-xs mt-1">点击右上角 + 手动添加数据</p>
           </div>
         ) : (
-          <div 
-            ref={(el) => {
-              if (el && timeRecords.length > 0 && !hasInitialScrolledRef.current && !dataSearchQuery) {
-                hasInitialScrolledRef.current = true;
-                
-                const now = new Date();
-                const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-                const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-                
-                setTimeout(() => {
-                  // 优先找今天的日期元素
-                  let dateElement = el.querySelector(`[data-date="${todayStr}"]`);
-                  let targetDate = todayStr;
-                  
-                  // 如果今天没有记录，找最近的日期
-                  if (!dateElement) {
-                    const sortedRecords = [...timeRecords].sort((a, b) => {
-                      const aDateTime = `${a.date} ${a.startTime}`;
-                      const bDateTime = `${b.date} ${b.startTime}`;
-                      return aDateTime.localeCompare(bDateTime);
-                    });
-                    
-                    let closestIndex = 0;
-                    let minDiff = Infinity;
-                    sortedRecords.forEach((record, index) => {
-                      const recordDateTime = new Date(`${record.date}T${record.startTime}`).getTime();
-                      const diff = Math.abs(recordDateTime - now.getTime());
-                      if (diff < minDiff) {
-                        minDiff = diff;
-                        closestIndex = index;
-                      }
-                    });
-                    
-                    targetDate = sortedRecords[closestIndex]?.date || todayStr;
-                    dateElement = el.querySelector(`[data-date="${targetDate}"]`);
-                  }
-                  
-                  if (dateElement) {
-                    const scrollContainer = el.closest('.overflow-y-auto') || el;
-                    const containerRect = scrollContainer.getBoundingClientRect();
-                    const containerHeight = containerRect.height;
-                    const dateRect = dateElement.getBoundingClientRect();
-                    
-                    // 计算当前时间在时间轴上的位置
-                    const SCALE = 3;
-                    const [h, m] = currentTimeStr.split(':').map(Number);
-                    const timeMins = h * 60 + m;
-                    const timeOffset = timeMins * SCALE;
-                    
-                    // 计算目标滚动位置，让当前时间处于页面中间
-                    const targetScrollTop = scrollContainer.scrollTop + dateRect.top - containerRect.top + timeOffset - containerHeight / 2;
-                    scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'auto' });
-                  }
-                }, 100);
-              }
-            }}
-          >
+          <div ref={scrollContainerRef}>
             {(() => {
               const filteredRecords = dataSearchQuery 
                 ? timeRecords.filter(r => r.name.toLowerCase().includes(dataSearchQuery.toLowerCase()))
@@ -9963,6 +9992,7 @@ const DataSourcePage = ({
                                 setNewRecordEndTime(gap.end);
                                 setNewRecordName('');
                                 setNewRecordEndDate('');
+                                setShouldScrollAfterAdd(false); // 从空白时间段新增，不需要滚动
                                 setIsAddingRecord(true);
                               }}
                               className="absolute left-1 right-1 bg-white rounded-lg border border-dashed border-gray-200 cursor-pointer hover:bg-gray-50 transition-all overflow-hidden"
@@ -10018,7 +10048,7 @@ const DataSourcePage = ({
 
       {/* 新增记录弹窗 */}
       {isAddingRecord && (
-        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}>
+        <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setIsAddingRecord(false)}>
           <div 
             className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
@@ -10026,7 +10056,7 @@ const DataSourcePage = ({
             <div className="p-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
               <h3 className="font-bold text-gray-800 text-lg">新增记录</h3>
               <button 
-                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}
+                onClick={() => setIsAddingRecord(false)}
                 className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400"
               >
                 <X size={20} />
@@ -10103,7 +10133,7 @@ const DataSourcePage = ({
             </div>
             <div className="p-4 border-t border-gray-100 flex gap-3">
               <button
-                onClick={() => { setIsAddingRecord(false); setScrollToDate(newRecordDate); setScrollToTime(newRecordStartTime); }}
+                onClick={() => setIsAddingRecord(false)}
                 className="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-all"
               >
                 取消
@@ -10242,7 +10272,7 @@ const SettingsView = ({
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
   timeRecords: TimeRecord[];
-  setTimeRecords: (records: TimeRecord[]) => void;
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   journals: Journal[];
   setJournals: React.Dispatch<React.SetStateAction<Journal[]>>;
   idealTimeAllocation: Record<string, number>;
