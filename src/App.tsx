@@ -4094,74 +4094,42 @@ const ReviewView = ({
     }).join('\n\n');
     
     // 构建AI提示词
-    const prompt = `# Role: 理性的生存效能合伙人 (Rational Survival Partner)
+    const prompt = `# Role: 生存战略侦探
 
-# User Profile (用户画像):
-1. **现状**：全职自媒体，背负2026年4月必须变现的生存压力。
-2. **限制**：严重腰肌劳损，必须"碎片化工作"；心理上抗拒宏大任务，需要极简指令。
-3. **需求**：拒绝情绪化的羞辱，也拒绝无意义的安慰。需要客观、犀利地指出"时间去哪了"，并进行深度战略分析。
+## 用户画像
+- **死线**：2026年4月必须变现，否则被迫上班
+- **身体限制**：严重腰肌劳损，必须碎片化工作
+- **核心需求**：对数据背后的行为模式进行病理分析（用户已有饼图，严禁复述时长数据）
 
-# 🔋 Battery Definitions (电池定义库):
-1. **🔴 搞钱电池 (Money Battery) - 核心产出**
-   - **包含**：[动作类] 拍摄、剪辑、写脚本、发布；[脑力类] 复盘、商务。
-   - **注意**：即使躺着做也算。
-   - **排除**：无明确目标的"学习/找素材/准备"。
+## 电池分类（仅供判断，禁止输出定义）
+- 搞钱电池：拍摄/剪辑/脚本/复盘/商务
+- 绿色电池：睡眠/饮食/如厕/康复/照顾猫
+- 快乐电池：主动娱乐（游戏/剧）
+- 黑洞时间：刷短视频/发呆/情绪性拖延
 
-2. **🟢 绿色健康电池 (Health Battery) - 生存维护**
-   - **包含**：康复训练、因腰痛必须的躺平/热敷、睡眠、饮食、如厕、**照顾猫咪**。
+## ⛔ 硬性禁令（违反任意一条=输出作废）
+1. **禁止报数字**：不许出现"XX小时""XX分钟""占比XX%"
+2. **禁止列清单**：不许罗列"工作包含A、B、C"
+3. **禁止正确的废话**：不许说"工作少所以产出低"，要说"黄金时间耗在造工具上，产出归零"
 
-3. **🟡 快乐电池 (Joy Battery) - 精神回血**
-   - **包含**：打游戏、看剧、非功利兴趣。
-   - **排除**：**"黑洞时间"**（无意识刷手机、发呆、焦虑拖延）。
+## 🔍 四层诊断滤镜
 
-# Core Analysis Protocols (核心分析协议):
-1. **🛡️ 基础维护豁免**：
-   - "绿色健康电池"事项（含照顾猫、便秘）视为刚性成本，**不做负面评价**。
+### 1. 伪装识别
+大量时间花在"打造工具/整理素材/过度准备"而核心产出（成片）极低 → 标记**低效勤奋**
 
-2. **⚖️ 损耗侦测**：
-   - 揪出不属于任何电池的"黑洞时间"。话术："检测到 [XX分钟] 不明损耗，疑似陷入算法黑洞。"
+### 2. 能量匹配
+- ✅ 精力旺盛期→高脑力决策（写脚本/复盘）；疲惫期→低脑力执行（粗剪/字幕）或心流任务
+- ❌ 深夜强行高难度思考→"决策疲劳"；困倦时做创意→"垃圾时间空转"
 
-3. **🧱 积木式产出**：
-   - 只看"搞钱电池"累计总时长，忽略碎片化。
+### 3. 脊柱高利贷
+深夜伏案>1小时，无论产出如何，必须警告："腰部折旧率极高，这笔账划算吗？"
 
-4. **🔬 深度四维扫描 (The 4-Dimension Scan) - 战略核心**
-   *必须针对当日数据，回答以下四个战略问题：*
-
-   - **A. 时机对吗？(Timing Check)**
-     - **分析**：高强度的"搞钱动作"（如剪辑/脚本）是否发生在用户精力最好的时段？还是被琐事推到了疲惫的垃圾时间？
-     - **判定**：如果核心工作都在深夜或饭后犯困时，标记为"低效勤奋"。
-
-   - **B. 比例对吗？(Input/Output Ratio)**
-     - **分析**：对比 [准备/学习/找素材] 与 [拍摄/剪辑/发布] 的时长。
-     - **判定**：如果"准备工作"时长 > "核心产出"时长，标记为"**假装努力**（Procrastination by Preparation）"。
-
-   - **C. 代价大吗？(Sustainability Cost)**
-     - **分析**：今日"搞钱电池"是否严重超标（>设置中时间分配给工作的时间）？
-     - **判定**：如果超标，必须发出红色预警："今日拼命，明日可能报废（Pain Lag Risk）。"
-
-   - **D. 干扰多吗？(Interference Analysis)**
-     - **分析**：工作的中断点，是因为"腰痛/猫咪"（不可抗力），还是因为"想看八卦/刷手机"（主动逃避）？
-     - **判定**：如果是后者，标记为"意志力漏水"。
-
-# 🔋 Battery System Standards (电池仪表盘):
-1. **🔴 搞钱电池**：
-   - < 2h：【⚠ 存量不足】提示风险。
-   - 2h-3h：【✅ 运行平稳】确认安全。
-   - > 4h：【🛑 熔断预警】强制关机。
-
-2. **🟢 绿色健康电池**：
-   - 缺失康复/躺平/放松肌肉 -> 提示"设备故障风险"。
-
-3. **🟡 快乐电池**：
-   - < 2h -> 提示"精神燃料不足"。
+### 4. 黑洞引力
+无意识损耗占比过高 → "今天你被算法控制，而非自己在控制"
 
 # Input Data (用户数据)
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
-- 时间记录总时长：${totalActualHours.toFixed(1)}小时
-
-## 时间分配情况（实际 vs 理想）
-${gaps.map(g => `- ${g.category}：实际${g.actual.toFixed(1)}h，理想${g.ideal.toFixed(1)}h，差距${g.diff > 0 ? '+' : ''}${g.diff.toFixed(1)}h`).join('\n')}
 
 ## 具体时间记录详情（按分类）
 ${eventDetailsText || '暂无具体时间记录'}
@@ -4172,28 +4140,25 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Output Structure (输出格式):
+# Output Structure (严格四段JSON，每段限3句内)
+
 请严格按照以下JSON格式输出：
 
 {
-  "billSummary": "📊 账单速览：客观总结今日盈亏",
-  "fourDimensionDiagnosis": {
-    "timing": "⏱ 时机：[点评，如无问题可写'正常']",
-    "ratio": "⚖️ 比例：[点评，如无问题可写'正常']",
-    "cost": "📉 代价：[点评，如无问题可写'正常']",
-    "interference": "🚧 干扰：[点评，如无问题可写'正常']"
+  "verdict": "🩸 生存判词：一句话定性今日对4月生存战的贡献（示例：典型虚假繁荣——用'造工具'逃避'用工具'）",
+  "biopsy": "🕵️ 病理切片：仅挑1-2个最致命的行为逻辑剖析（时机错配/脊柱透支/伪装勤奋）",
+  "profitLoss": {
+    "input": "投入：精力+腰部折旧的定性描述",
+    "output": "回报：成片数量/关键进度",
+    "conclusion": "结论：今日是离上岸更近，还是离上班更近？"
   },
-  "anomalyData": "🕵️‍♂️ 异常数据：指出'黑洞时间'或'假装工作'的具体时段",
-  "batteryStatus": {
-    "money": "🔴 [时长/评级]",
-    "health": "🟢 [时长/评级]",
-    "joy": "🟡 [时长/评级]"
-  },
-  "tomorrowStrategy": "📅 明日策略：基于四维诊断，给出一条实用建议"
+  "tomorrowOrder": "💊 明日死令：一条具体可执行的指令（示例：明天11点前禁止处理琐事，死磕那个最难的脚本）"
 }
 
-# Tone (语气):
-冷静、客观、坚定。像一位经验丰富的战略顾问。只返回JSON，不要其他内容。`;
+# Tone (语气)
+福尔摩斯式：不屑陈述显而易见的数据，只揭穿行为背后的逻辑漏洞。犀利、理性、尊重真正的高价值努力。
+
+只返回JSON，不要其他内容。`;
 
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
@@ -4210,7 +4175,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是一位理性的生存效能合伙人(Rational Survival Partner)。你的风格冷静、客观、坚定，像一位经验丰富的战略顾问。你拒绝情绪化的羞辱，也拒绝无意义的安慰。你需要客观、犀利地指出"时间去哪了"，并进行深度战略分析。请以JSON格式返回分析报告。'
+              content: '你是生存战略侦探。风格像福尔摩斯：不屑陈述显而易见的数据，只揭穿行为背后的逻辑漏洞。犀利、理性、尊重真正的高价值努力。硬性禁令：禁止报数字（XX小时/分钟/占比），禁止列清单，禁止正确的废话。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -4218,7 +4183,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             }
           ],
           temperature: 0.7,
-          max_tokens: 3000
+          max_tokens: 2000
         })
       });
 
@@ -5054,106 +5019,67 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 🕵️ 现场级成分分析 */}
+                    {/* 🩸 生存判词 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">📊</span>
+                        <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">🩸</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">账单速览</h4>
+                        <h4 className="font-black text-gray-800 text-lg">生存判词</h4>
                       </div>
                       <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.billSummary || viewingHistoryReport.eventLevelBreakdown?.lifeChores?.cooEvaluation || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                        __html: (viewingHistoryReport.verdict || viewingHistoryReport.billSummary || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🔬 四维深度诊断 */}
+                    {/* 🕵️ 病理切片 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔬</span>
+                          <span className="text-lg">🕵️</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">四维深度诊断</h4>
+                        <h4 className="font-black text-gray-800 text-lg">病理切片</h4>
                       </div>
-                      
-                      <div className="space-y-3">
-                        <div className="bg-amber-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-amber-600 mb-1">⏱ 时机</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.timing || viewingHistoryReport.operationalDiagnosis?.currentMode || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
-                          }} />
-                        </div>
-                        <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 比例</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.ratio || viewingHistoryReport.operationalDiagnosis?.costBenefitAnalysis || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
-                          }} />
-                        </div>
-                        <div className="bg-red-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-red-600 mb-1">📉 代价</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.cost || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                          }} />
-                        </div>
-                        <div className="bg-orange-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-orange-600 mb-1">🚧 干扰</p>
-                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                            __html: (viewingHistoryReport.fourDimensionDiagnosis?.interference || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                          }} />
-                        </div>
-                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.biopsy || viewingHistoryReport.anomalyData || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                      }} />
                     </div>
 
-                    {/* 🕵️‍♂️ 异常数据 */}
-                    {viewingHistoryReport.anomalyData && (
-                      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
-                            <span className="text-lg">🕵️</span>
-                          </div>
-                          <h4 className="font-black text-gray-800 text-lg">异常数据</h4>
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                          __html: (viewingHistoryReport.anomalyData || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                        }} />
-                      </div>
-                    )}
-
-                    {/* 🔋 电池状态 */}
+                    {/* 📉 盈亏核算 */}
                     <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔋</span>
+                        <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">📉</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">电池状态</h4>
+                        <h4 className="font-black text-gray-800 text-lg">盈亏核算</h4>
                       </div>
                       
                       <div className="space-y-3">
-                        <div className="bg-red-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-red-600 mb-1">🔴 搞钱电池</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.money || '暂无数据'}</p>
+                        <div className="bg-orange-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-orange-600 mb-1">📥 投入</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.profitLoss?.input || viewingHistoryReport.batteryStatus?.money || '暂无数据'}</p>
                         </div>
                         <div className="bg-green-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-green-600 mb-1">🟢 绿色健康电池</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.health || '暂无数据'}</p>
+                          <p className="text-xs font-bold text-green-600 mb-1">📤 回报</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.profitLoss?.output || viewingHistoryReport.batteryStatus?.health || '暂无数据'}</p>
                         </div>
-                        <div className="bg-yellow-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-yellow-600 mb-1">🟡 快乐电池</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.batteryStatus?.joy || '暂无数据'}</p>
+                        <div className="bg-blue-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-blue-600 mb-1">📊 结论</p>
+                          <p className="text-sm text-gray-700 font-bold">{viewingHistoryReport.profitLoss?.conclusion || viewingHistoryReport.batteryStatus?.joy || '暂无数据'}</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* 📅 明日策略 */}
+                    {/* 💊 明日死令 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">📅</span>
+                          <span className="text-lg">💊</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">明日策略</h4>
+                        <h4 className="font-black text-sky-800 text-lg">明日死令</h4>
                       </div>
-                      <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.tomorrowStrategy || viewingHistoryReport.actionGuide?.lazyRebalancing || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                      <p className="text-sm text-gray-700 leading-relaxed font-bold" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.tomorrowOrder || viewingHistoryReport.tomorrowStrategy || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
                       }} />
                     </div>
                   </div>
@@ -5243,106 +5169,67 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 📊 账单速览 ===== */}
+                {/* ===== 🩸 生存判词 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">📊</span>
+                    <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">🩸</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">账单速览</h4>
+                    <h4 className="font-black text-gray-800 text-lg">生存判词</h4>
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.billSummary || reportData.eventLevelBreakdown?.lifeChores?.cooEvaluation || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                    __html: (reportData.verdict || reportData.billSummary || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
                   }} />
                 </div>
 
-                {/* ===== 🔬 四维深度诊断 ===== */}
+                {/* ===== 🕵️ 病理切片 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔬</span>
+                      <span className="text-lg">🕵️</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">四维深度诊断</h4>
+                    <h4 className="font-black text-gray-800 text-lg">病理切片</h4>
                   </div>
-                  
-                  <div className="space-y-3">
-                    <div className="bg-amber-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-amber-600 mb-1">⏱ 时机</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fourDimensionDiagnosis?.timing || reportData.operationalDiagnosis?.currentMode || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-amber-700">$1</strong>') 
-                      }} />
-                    </div>
-                    <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">⚖️ 比例</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fourDimensionDiagnosis?.ratio || reportData.operationalDiagnosis?.costBenefitAnalysis || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
-                      }} />
-                    </div>
-                    <div className="bg-red-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-red-600 mb-1">📉 代价</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fourDimensionDiagnosis?.cost || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                      }} />
-                    </div>
-                    <div className="bg-orange-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-orange-600 mb-1">🚧 干扰</p>
-                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
-                        __html: (reportData.fourDimensionDiagnosis?.interference || '正常').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
-                      }} />
-                    </div>
-                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.biopsy || reportData.anomalyData || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-700">$1</strong>') 
+                  }} />
                 </div>
 
-                {/* ===== 🕵️‍♂️ 异常数据 ===== */}
-                {reportData.anomalyData && (
-                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
-                        <span className="text-lg">🕵️</span>
-                      </div>
-                      <h4 className="font-black text-gray-800 text-lg">异常数据</h4>
-                    </div>
-                    <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                      __html: (reportData.anomalyData || '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                    }} />
-                  </div>
-                )}
-
-                {/* ===== 🔋 电池状态 ===== */}
+                {/* ===== 📉 盈亏核算 ===== */}
                 <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔋</span>
+                    <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">📉</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">电池状态</h4>
+                    <h4 className="font-black text-gray-800 text-lg">盈亏核算</h4>
                   </div>
                   
                   <div className="space-y-3">
-                    <div className="bg-red-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-red-600 mb-1">🔴 搞钱电池</p>
-                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.money || '暂无数据'}</p>
+                    <div className="bg-orange-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-orange-600 mb-1">📥 投入</p>
+                      <p className="text-sm text-gray-700">{reportData.profitLoss?.input || reportData.batteryStatus?.money || '暂无数据'}</p>
                     </div>
                     <div className="bg-green-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-green-600 mb-1">🟢 绿色健康电池</p>
-                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.health || '暂无数据'}</p>
+                      <p className="text-xs font-bold text-green-600 mb-1">📤 回报</p>
+                      <p className="text-sm text-gray-700">{reportData.profitLoss?.output || reportData.batteryStatus?.health || '暂无数据'}</p>
                     </div>
-                    <div className="bg-yellow-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-yellow-600 mb-1">🟡 快乐电池</p>
-                      <p className="text-sm text-gray-700">{reportData.batteryStatus?.joy || '暂无数据'}</p>
+                    <div className="bg-blue-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-blue-600 mb-1">📊 结论</p>
+                      <p className="text-sm text-gray-700 font-bold">{reportData.profitLoss?.conclusion || reportData.batteryStatus?.joy || '暂无数据'}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 📅 明日策略 ===== */}
+                {/* ===== 💊 明日死令 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">📅</span>
+                      <span className="text-lg">💊</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">明日策略</h4>
+                    <h4 className="font-black text-sky-800 text-lg">明日死令</h4>
                   </div>
-                  <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.tomorrowStrategy || reportData.actionGuide?.lazyRebalancing || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
+                  <p className="text-sm text-gray-700 leading-relaxed font-bold" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.tomorrowOrder || reportData.tomorrowStrategy || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-700">$1</strong>') 
                   }} />
                 </div>
               </div>
