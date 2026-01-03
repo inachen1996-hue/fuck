@@ -349,7 +349,7 @@ const alarmPlayer = {
           setTimeout(() => {
             audio.pause();
             audio.currentTime = 0;
-            audio.loop = true;
+            audio.loop = false; // 解锁后保持 loop 为 false，只有真正播放铃声时才设为 true
             audio.volume = 1.0;
           }, 100);
           
@@ -403,7 +403,7 @@ const alarmPlayer = {
       
       audio.pause();
       audio.currentTime = 0;
-      audio.loop = true;
+      audio.loop = false; // 解锁后保持 loop 为 false
       audio.volume = 1.0;
       
       audioUnlocked = true;
@@ -541,6 +541,7 @@ const alarmPlayer = {
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;
+      audioElement.loop = false; // 确保停止后 loop 为 false，防止后台切换时自动恢复播放
     }
     
     // 停止 Web Audio API
@@ -626,6 +627,7 @@ const alarmPlayer = {
         console.log('检测到异常音频播放，强制停止');
         audioElement.pause();
         audioElement.currentTime = 0;
+        audioElement.loop = false;
       }
     }
   }
