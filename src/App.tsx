@@ -2053,6 +2053,12 @@ const TimerView = ({
                   backgroundColor: isSelected ? lightBgColor : 'transparent'
                 }}
               >
+                {/* 计时中气泡 - 当该分类有正在计时的计时器且未选中时显示 */}
+                {activeTimer?.status === 'running' && activeTimer?.categoryId === cat.id && !isSelected && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold text-white bg-red-500 rounded-full animate-pulse">
+                    计时中
+                  </span>
+                )}
                 <span 
                   className="text-[10px] font-black"
                   style={{ color: isSelected ? primaryColor : '#9ca3af' }}
@@ -4122,39 +4128,55 @@ const ReviewView = ({
       return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
     }).join('\n\n');
     
-    // 构建AI提示词
+    // 构建AI提示词 - 直接使用用户定义的提示词模板
     const prompt = `# Role: 生存心理战术大师 (Survival Psycho-Tactician)
 
-## 用户画像
-- **死线**：2026年4月必须变现
-- **现状**：腰肌劳损，酷爱刷抖音（真快乐源泉），但容易陷入"假装努力"和"焦虑刷屏"
-- **核心需求**：不仅要分析过去，更要给出**变现、冷启动、抗拒心理**的实操解决方案
+# User Profile:
+1. **死线**：2026年4月必须变现。
+2. **商业模式**：
+   * **内容流**：视频流量变现（需要剪辑/拍摄能力支撑）。
+   * **资产流**：特效资产变现（需要建模/交互技术支撑）。
+3. **痛点**：腰肌劳损，容易用"盲目学习"代替"实际产出"，或因技术不足导致流量瓶颈，容易用简单的事情去逃避苦难的事情。
 
-## 🔋 数据解读规则
+# 🔋 Data Interpretation Rules (数据解读新规):
 
-### 1. 深度动机扫描
-透过行为看本质，分析"动作背后的潜意识"：
-- **为何造工具？**（如打造App）：是因为**"畏难"**。害怕面对视频数据的失败，躲进"绝对可控"的代码里找安全感
-- **为何假快乐？**（如焦虑刷抖音）：是因为**"能量逃逸"**。无法面对工作压力，选择麻醉自己
-- **为何无法开始？**：是因为**"完美主义"**。觉得"必须准备好才能开始"，导致门槛太高
+**1. 动作价值分级 (Action Value Grading) - [重大逻辑修正]**
+* **原则**：不看你在做什么，只看**为了什么做**。
+* **判定逻辑**：
+  * ✅ **核心变现动作 (Cash Cow)**：
+    * **[发布视频]**、**[上架特效]**。这是唯一的"结果"。
+  * 🔵 **战略研发动作 (Strategic R&D)** - *[新增合法输入]*：
+    * **定义**：为了解决**当下某个具体视频/特效的卡点**而进行的针对性学习。
+    * **判定**：
+      * [调研]：刷抖音是为了找"明天要拍的那个视频"的BGM或对标（需在日记中有明确产出）。
+      * [学习]：看Blender教程是为了解决"手头这个模型贴图不对"的问题。
+    * **特征**：**现学现卖，学完立刻应用。**
+  * 🟡 **库存积压动作 (Inventory)**：
+    * [制作特效但未上架]、[剪辑了一半]。（半成品也是库存，不流动就是成本）。
+  * ❌ **伪勤奋/学术逃避 (Academic Procrastination)**：
+    * [无明确目标的系统学习]：例如"今天我要把Blender基础课看完"。
+    * [无产出的调研]：刷了2小时抖音说是找灵感，结果一个选题都没定下来。
 
-### 2. 快乐质量质检
-**开心=充电，焦虑=漏电**
-- 日记里写"开心/爽"的刷抖音 = ✅ 强者奖赏
-- 日记里"焦虑/空虚"的刷抖音 = ❌ 弱者麻醉
+**2. 投入产出比扫描 (ROI Scan)**
+* **任务**：计算"研发成本"与"产品产出"的比例。
+* **黄金比例**：**1小时学习 : 3小时实操**。
+* **判定**：
+  * 如果用户"看教程"2小时，"做模型"只有30分钟 -> 判定为**"知识囤积症"**（焦虑性输入）。
+  * 如果用户"看教程"10分钟，马上试错1小时 -> 判定为**"特种兵式学习"**（高效研发）。
 
-### 3. 变现动作识别
-- **变现动作**：发布、接广、引流、复盘数据
-- **半变现动作**：写脚本、剪辑
-- **非变现动作（成本）**：找素材、做计划、学教程、造工具
+**3. 快乐质量质检 (Joy Quality Check)**
+* **判定**：日记里"开心/爽"的刷抖音 = ✅ 充电；"焦虑/空虚"的刷抖音 = ❌ 漏电。
 
-## 🛠️ 战术解决方案库
-*(当检测到特定问题时，从这里调用建议)*
+# 🛠️ Tactical Solution Library (战术解决方案库):
 
-- **针对"无法快速变现"**：**MVP原则** - 不要憋大招！哪怕视频只有15秒，哪怕剪得很糙，只要发布频率上去了才有变现可能。数量对抗算法，完美主义是贫穷的根源
-- **针对"沉浸虚假娱乐"**：**物理阻断法** - 不要靠意志力。完成核心任务前把手机扔厕所/用APP锁死。或设定闹钟每刷20分钟响一次问自己："我爽吗？还是在逃避？"
-- **针对"无法冷启动"**：**睡衣工作法** - 起床不要洗漱换衣，直接像丧尸一样坐/趴在电脑前。只做2分钟。告诉自己："我就剪一刀，剪完就去刷牙。"骗过大脑的启动防御
-- **针对"抗拒工作"**：**任务极度降级** - 把"我要做一个爆款视频"拆解成"我要把这个素材拖进轨道"。把任务拆碎到像"呼吸"一样简单，你就不会抗拒了
+* **针对"流量瓶颈（技术不够）"**：
+  * **建议**：**"定点爆破式学习"**。不要学"摄影构图全解"，去学"这一个镜头怎么运镜"。不要学"Blender全流程"，去学"怎么把这个猫耳朵材质调得更软"。**学一个知识点，立刻把它变成视频里的一个亮点。**
+
+* **针对"调研上瘾（刷抖音停不下来）"**：
+  * **建议**：**"猎人模式"**。刷抖音前，必须在一张纸上写下："我今天要找3个适合猫的转场特效"。找到了就停，找不到也停。**不带任务进抖音，就是猎物进森林。**
+
+* **针对"特效变现难"**：
+  * **建议**：**"MVP + 迭代"**。先用你现在的烂技术做一个勉强能用的上架。如果数据好，再花时间去学新技术优化它。**不要为了一个未经验证的市场需求去苦学高深技术。**
 
 # Input Data (用户数据)
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
@@ -4169,25 +4191,44 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Output Structure (严格JSON格式)
+# Output Structure (输出结构):
 
+## 1. 🔮 4月上岸概率：[ XX% ]
+*(不仅看产出（发布视频、发布特效视频），还要看'研发转化率'。学了能用，概率才高)*
+
+## 2. 🧠 潜意识深度病理 (Deep Psycho-Analysis)
+*(分析动作背后的意义)*
+* *示例：* "你今天花了3小时看《Blender光影大师课》，却没打开软件。这**不是学习，这是安慰剂**。你潜意识里觉得'只要我在学习，我就没有浪费时间'，但对于商业变现来说，**没有被执行的知识是负资产**。"
+
+## 3. 🔪 行为显微镜 (Behavioral Microscope)
+* **研发转化率**：[今日学习/调研了多久？是否直接转化为了作品的一部分？]
+* **资产/流量增量**：[是否发布/上架？]
+* **真/假快乐**：[区分爽刷与瘫刷]
+
+## 4. 🛡️ 战术行动处方 (Tactical Prescriptions)
+*(从战术库中调用建议)*
+* **研发校准**：[如果今天学偏了，告诉明天该学什么具体技术]
+* **变现催化**：[如何用现有的技术快速变现，别等学会了再做]
+* **心理拆弹**：[一句话打破'等我学会了再做'的幻想]
+
+# Tone (语气):
+像一位**技术总监+产品经理**。肯定你提升技术的野心，但严厉禁止你把"学习"当成"逃避战斗"的防空洞。**口号：不为了考试而学，只为了杀敌而学。**
+
+请以JSON格式返回，结构如下：
 {
-  "survivalRate": "🔮 4月上岸概率：XX%（根据变现动作含金量打分，只有发布了视频分才会高）",
-  "psychoAnalysis": "🧠 潜意识深度病理：分析动作背后的意义（示例：你今天花了2小时装修计划App，看似勤奋，实则是'恐惧变现'。你潜意识里觉得：只要我不发布视频，我就没有失败。你在用'准备'来推迟'审判'）",
+  "survivalRate": "🔮 4月上岸概率：XX%（说明）",
+  "psychoAnalysis": "🧠 潜意识深度病理内容",
   "microscope": {
-    "cashAction": "变现动作：[描述] - 如果是0，严厉警告：今天没赚钱！",
-    "joyQuality": "真/假快乐：区分爽刷与瘫刷",
-    "energyLeak": "能量漏点：指出导致无法冷启动的琐事"
+    "rdConversion": "研发转化率内容",
+    "assetIncrement": "资产/流量增量内容",
+    "joyQuality": "真/假快乐内容"
   },
   "tactics": {
-    "cashBoost": "变现加速：如何把今天的半成品快速发出去",
-    "coldStart": "冷启动秘籍：明天早上怎么骗自己开始",
-    "mindBomb": "心理拆弹：一句话卸下完美主义包袱（例如：'烂片也能赚钱，完美只能让你穷'）"
+    "rdCalibration": "研发校准内容",
+    "cashCatalyst": "变现催化内容",
+    "mindBomb": "心理拆弹内容"
   }
 }
-
-# Tone (语气)
-像一位身经百战的创业导师。**看透你的一切伪装（潜意识分析），并直接把枪（战术方案）塞到你手里逼你上战场。**
 
 只返回JSON，不要其他内容。`;
 
@@ -4206,7 +4247,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是生存心理战术大师。像一位身经百战的创业导师：看透用户的一切伪装（潜意识分析），并直接把枪（战术方案）塞到他手里逼他上战场。核心任务：分析变现动作、识别假快乐vs真快乐、给出冷启动和抗拒心理的实操解决方案。请以JSON格式返回分析报告。'
+              content: '你是生存心理战术大师，像一位技术总监+产品经理。肯定用户提升技术的野心，但严厉禁止把"学习"当成"逃避战斗"的防空洞。核心任务：分析研发转化率、识别伪勤奋vs战略研发、给出定点爆破式学习建议。口号：不为了考试而学，只为了杀敌而学。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -5086,17 +5127,17 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       </div>
                       
                       <div className="space-y-3">
-                        <div className="bg-red-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-red-600 mb-1">💰 变现动作</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.cashAction || viewingHistoryReport.profitLoss?.output || '暂无数据'}</p>
+                        <div className="bg-blue-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-blue-600 mb-1">📊 研发转化率</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.cashAction || viewingHistoryReport.profitLoss?.output || '暂无数据'}</p>
+                        </div>
+                        <div className="bg-green-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-green-600 mb-1">📈 资产/流量增量</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.assetIncrement || viewingHistoryReport.microscope?.energyLeak || '暂无数据'}</p>
                         </div>
                         <div className="bg-yellow-50 rounded-xl p-3">
                           <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
                           <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.joyQuality || '暂无数据'}</p>
-                        </div>
-                        <div className="bg-gray-100 rounded-xl p-3">
-                          <p className="text-xs font-bold text-gray-600 mb-1">🕳️ 能量漏点</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.energyLeak || '暂无数据'}</p>
                         </div>
                       </div>
                     </div>
@@ -5111,13 +5152,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       </div>
                       
                       <div className="space-y-3">
-                        <div className="bg-green-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-green-600 mb-1">🚀 变现加速</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.cashBoost || viewingHistoryReport.tomorrowOrder || '暂无建议'}</p>
+                        <div className="bg-purple-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-purple-600 mb-1">🎯 研发校准</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.rdCalibration || viewingHistoryReport.tactics?.cashBoost || viewingHistoryReport.tomorrowOrder || '暂无建议'}</p>
                         </div>
-                        <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">⏰ 冷启动秘籍</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.coldStart || '暂无建议'}</p>
+                        <div className="bg-green-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.cashCatalyst || viewingHistoryReport.tactics?.coldStart || '暂无建议'}</p>
                         </div>
                         <div className="bg-pink-50 rounded-xl p-3">
                           <p className="text-xs font-bold text-pink-600 mb-1">💣 心理拆弹</p>
@@ -5248,17 +5289,17 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                   
                   <div className="space-y-3">
-                    <div className="bg-red-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-red-600 mb-1">💰 变现动作</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.cashAction || reportData.profitLoss?.output || '暂无数据'}</p>
+                    <div className="bg-blue-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-blue-600 mb-1">📊 研发转化率</p>
+                      <p className="text-sm text-gray-700">{reportData.microscope?.rdConversion || reportData.microscope?.cashAction || reportData.profitLoss?.output || '暂无数据'}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-green-600 mb-1">📈 资产/流量增量</p>
+                      <p className="text-sm text-gray-700">{reportData.microscope?.assetIncrement || reportData.microscope?.energyLeak || '暂无数据'}</p>
                     </div>
                     <div className="bg-yellow-50 rounded-xl p-3">
                       <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
                       <p className="text-sm text-gray-700">{reportData.microscope?.joyQuality || '暂无数据'}</p>
-                    </div>
-                    <div className="bg-gray-100 rounded-xl p-3">
-                      <p className="text-xs font-bold text-gray-600 mb-1">🕳️ 能量漏点</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.energyLeak || '暂无数据'}</p>
                     </div>
                   </div>
                 </div>
@@ -5273,13 +5314,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </div>
                   
                   <div className="space-y-3">
-                    <div className="bg-green-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-green-600 mb-1">🚀 变现加速</p>
-                      <p className="text-sm text-gray-700">{reportData.tactics?.cashBoost || reportData.tomorrowOrder || '暂无建议'}</p>
+                    <div className="bg-purple-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-purple-600 mb-1">🎯 研发校准</p>
+                      <p className="text-sm text-gray-700">{reportData.tactics?.rdCalibration || reportData.tactics?.cashBoost || reportData.tomorrowOrder || '暂无建议'}</p>
                     </div>
-                    <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">⏰ 冷启动秘籍</p>
-                      <p className="text-sm text-gray-700">{reportData.tactics?.coldStart || '暂无建议'}</p>
+                    <div className="bg-green-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
+                      <p className="text-sm text-gray-700">{reportData.tactics?.cashCatalyst || reportData.tactics?.coldStart || '暂无建议'}</p>
                     </div>
                     <div className="bg-pink-50 rounded-xl p-3">
                       <p className="text-xs font-bold text-pink-600 mb-1">💣 心理拆弹</p>
