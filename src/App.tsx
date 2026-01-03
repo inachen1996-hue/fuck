@@ -4006,7 +4006,6 @@ const ReviewView = ({
     
     // 准备数据
     const days = periodDays[currentPeriod];
-    const totalActualHours = Object.values(actualDistribution).reduce((sum, h) => sum + h, 0);
     
     // 分析日记情绪
     const moodCounts: Record<string, number> = {};
