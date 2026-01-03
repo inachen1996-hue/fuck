@@ -207,6 +207,46 @@ const removeEmoji = (str: string) => {
   return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu, '').trim();
 };
 
+// 图片压缩函数 - 将图片压缩到指定大小以内
+const compressImage = (file: File, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // 如果图片宽度超过最大宽度，按比例缩小
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('无法创建canvas上下文'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // 转换为压缩后的base64
+        const compressedData = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedData);
+      };
+      img.onerror = () => reject(new Error('图片加载失败'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsDataURL(file);
+  });
+};
+
 // 根据事项名称查找已有的分类（从 timeRecords 和 globalTimers 中查找）
 const findExistingCategory = (
   name: string,
@@ -3448,18 +3488,20 @@ const JournalView = ({
                     id="journal-image-upload"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          const imageData = event.target?.result as string;
+                        try {
+                          // 压缩图片后再添加
+                          const compressedImage = await compressImage(file, 800, 0.7);
                           setCurrentJournal({
                             ...currentJournal,
-                            images: [...currentJournal.images, imageData]
+                            images: [...currentJournal.images, compressedImage]
                           });
-                        };
-                        reader.readAsDataURL(file);
+                        } catch (err) {
+                          console.error('图片压缩失败:', err);
+                          alert('图片处理失败，请重试');
+                        }
                       }
                       e.target.value = '';
                     }}
@@ -4134,51 +4176,53 @@ const ReviewView = ({
 # User Profile:
 1. **死线**：2026年4月必须变现。
 2. **商业模式**：
-   * **内容流**：视频流量变现（需要剪辑/拍摄能力支撑）。
-   * **资产流**：特效资产变现（需要建模/交互技术支撑）。
-3. **痛点**：腰肌劳损，容易用"盲目学习"代替"实际产出"，或因技术不足导致流量瓶颈，容易用简单的事情去逃避苦难的事情。
+   * **内容流**：视频流量变现。
+   * **资产流**：特效资产变现。
+3. **痛点**：腰肌劳损，需要精准区分"必要的生产劳动"和"无用的完美主义磨蹭"。
 
 # 🔋 Data Interpretation Rules (数据解读新规):
 
-**1. 动作价值分级 (Action Value Grading) - [重大逻辑修正]**
-* **原则**：不看你在做什么，只看**为了什么做**。
+**1. 动作价值分级 (Action Value Grading) - [核心修正]**
+* **原则**：**"结果"定义"过程"。** 只要产品最终上架/发布了，生产它的过程就是有效劳动。
 * **判定逻辑**：
-  * ✅ **核心变现动作 (Cash Cow)**：
-    * **[发布视频]**、**[上架特效]**。这是唯一的"结果"。
-  * 🔵 **战略研发动作 (Strategic R&D)** - *[新增合法输入]*：
-    * **定义**：为了解决**当下某个具体视频/特效的卡点**而进行的针对性学习。
-    * **判定**：
-      * [调研]：刷抖音是为了找"明天要拍的那个视频"的BGM或对标（需在日记中有明确产出）。
-      * [学习]：看Blender教程是为了解决"手头这个模型贴图不对"的问题。
-    * **特征**：**现学现卖，学完立刻应用。**
-  * 🟡 **库存积压动作 (Inventory)**：
-    * [制作特效但未上架]、[剪辑了一半]。（半成品也是库存，不流动就是成本）。
-  * ❌ **伪勤奋/学术逃避 (Academic Procrastination)**：
-    * [无明确目标的系统学习]：例如"今天我要把Blender基础课看完"。
-    * [无产出的调研]：刷了2小时抖音说是找灵感，结果一个选题都没定下来。
+  * ✅ **核心变现闭环 (The Closed Loop)**：
+    * **[发布/上架]** = **临门一脚**（高光时刻）。
+    * **[制作特效/拍摄/剪辑]** = **必要生产成本 (Essential Production)**。
+    * **判定法则**：
+      * 如果当天（或T+1日）完成了发布，那么前面的制作/拍摄时间自动升级为**"有效战斗时长"**，予以肯定。
+      * *（例如：花1.5小时做特效，花0.5小时发布。结论：今天高效工作了2小时。）*
+  * 🟡 **库存积压 (Inventory Risk)**：
+    * [制作了但没发]、[剪了一半没动了]。
+    * **判定法则**：只有当生产动作**没有形成闭环**时，才标记为"库存风险"。
+  * 🔵 **战略研发 (Strategic R&D)**：
+    * [针对性的学习/调研]。需遵循"现学现卖"原则。
+  * ❌ **伪勤奋 (Fake Busyness)**：
+    * [无目的的刷教程]、[过度打磨]（例如：一个简单的猫特效做了8个小时）。
 
-**2. 投入产出比扫描 (ROI Scan)**
-* **任务**：计算"研发成本"与"产品产出"的比例。
-* **黄金比例**：**1小时学习 : 3小时实操**。
-* **判定**：
-  * 如果用户"看教程"2小时，"做模型"只有30分钟 -> 判定为**"知识囤积症"**（焦虑性输入）。
-  * 如果用户"看教程"10分钟，马上试错1小时 -> 判定为**"特种兵式学习"**（高效研发）。
+**2. 生产效率审计 (Efficiency Audit)**
+* **任务**：不否认生产的价值，但**审计生产的效率**。
+* **逻辑**：
+  * 做一个特效花了 1.5 小时 -> **正常/高效**（这是干活）。
+  * 做一个特效花了 10 小时 -> **效率低下/完美主义**（这是钻牛角尖）。
+* **话术**：不要骂用户"为什么花时间做"，要帮用户算"时薪划不划算"。
 
 **3. 快乐质量质检 (Joy Quality Check)**
 * **判定**：日记里"开心/爽"的刷抖音 = ✅ 充电；"焦虑/空虚"的刷抖音 = ❌ 漏电。
 
 # 🛠️ Tactical Solution Library (战术解决方案库):
 
-* **针对"流量瓶颈（技术不够）"**：
-  * **建议**：**"定点爆破式学习"**。不要学"摄影构图全解"，去学"这一个镜头怎么运镜"。不要学"Blender全流程"，去学"怎么把这个猫耳朵材质调得更软"。**学一个知识点，立刻把它变成视频里的一个亮点。**
+* **针对"生产-发布割裂"**：
+  * **建议**：**"快餐店模式"**。不要想做满汉全席。把你的特效/视频当成汉堡包。**后厨（制作）做完一个，前台（发布）就卖一个。** 不要让后厨堆满了汉堡才开始卖。
 
-* **针对"调研上瘾（刷抖音停不下来）"**：
-  * **建议**：**"猎人模式"**。刷抖音前，必须在一张纸上写下："我今天要找3个适合猫的转场特效"。找到了就停，找不到也停。**不带任务进抖音，就是猎物进森林。**
+* **针对"不敢发布"**：
+  * **建议**：**"丑媳妇总要见公婆"**。这一行是概率游戏。你精心打磨的可能没人看，随手做的可能火了。**发布量 > 精致度**。
 
-* **针对"特效变现难"**：
-  * **建议**：**"MVP + 迭代"**。先用你现在的烂技术做一个勉强能用的上架。如果数据好，再花时间去学新技术优化它。**不要为了一个未经验证的市场需求去苦学高深技术。**
+* **针对"流量瓶颈"**：
+  * **建议**：**"定点爆破学习"**。缺什么补什么，学完立刻用。
 
 # Input Data (用户数据)
+- **当前日期**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+- **距离死线**：距离2026年4月还有约${Math.ceil((new Date('2026-04-01').getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30))}个月
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
 
@@ -4194,39 +4238,44 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 # Output Structure (输出结构):
 
 ## 1. 🔮 4月上岸概率：[ XX% ]
-*(不仅看产出（发布视频、发布特效视频），还要看'研发转化率'。学了能用，概率才高)*
+*(计算公式：有效战斗时长（含制作+发布）占全天工时的比例。如果完成了闭环，分数大幅提升)*
 
 ## 2. 🧠 潜意识深度病理 (Deep Psycho-Analysis)
-*(分析动作背后的意义)*
-* *示例：* "你今天花了3小时看《Blender光影大师课》，却没打开软件。这**不是学习，这是安慰剂**。你潜意识里觉得'只要我在学习，我就没有浪费时间'，但对于商业变现来说，**没有被执行的知识是负资产**。"
+*(分析深层动机)*
+* *示例（针对未发布情况）：* "你今天做了3小时特效却没发，这是**'囤积癖'**。你享受'制造'的过程，却恐惧'市场'的反馈。"
+* *示例（针对已发布情况）：* "今天你完成了**'制作-发布'的完整闭环**，干得漂亮！这1.5小时的制作时间没有被浪费，它们成功转化为了资产。"
 
 ## 3. 🔪 行为显微镜 (Behavioral Microscope)
-* **研发转化率**：[今日学习/调研了多久？是否直接转化为了作品的一部分？]
-* **资产/流量增量**：[是否发布/上架？]
+* **生产履约率**：[今日制作了多久？发布了多久？是否形成了闭环？]
+  * *（如果形成了闭环，请标注：✅ 有效生产）*
+* **研发转化率**：[学习是否转化为了产出？]
 * **真/假快乐**：[区分爽刷与瘫刷]
 
 ## 4. 🛡️ 战术行动处方 (Tactical Prescriptions)
 *(从战术库中调用建议)*
-* **研发校准**：[如果今天学偏了，告诉明天该学什么具体技术]
-* **变现催化**：[如何用现有的技术快速变现，别等学会了再做]
-* **心理拆弹**：[一句话打破'等我学会了再做'的幻想]
+* **效率优化**：[如果制作时间过长，给出提速建议]
+* **变现催化**：[如何让明天的生产更直接地指向变现]
 
 # Tone (语气):
-像一位**技术总监+产品经理**。肯定你提升技术的野心，但严厉禁止你把"学习"当成"逃避战斗"的防空洞。**口号：不为了考试而学，只为了杀敌而学。**
+像一位**务实的产品经理**。尊重每一分钟的伏案工作（制作/剪辑），但永远用**"是否上架"**作为衡量这些工作价值的唯一标准。**口号：不发布的视频是垃圾，不上市的特效是废代码。**
 
-请以JSON格式返回，结构如下：
+# ⚠️ JSON输出格式要求（重要）：
+- **不要在内容中重复标题或emoji**，因为UI已经显示了标题
+- survivalRate 只需要返回 "XX%（说明）" 格式，不要包含"🔮4月上岸概率："前缀
+- psychoAnalysis 只需要返回分析内容，不要包含"🧠潜意识深度病理："前缀
+
+请以JSON格式返回：
 {
-  "survivalRate": "🔮 4月上岸概率：XX%（说明）",
-  "psychoAnalysis": "🧠 潜意识深度病理内容",
+  "survivalRate": "XX%（简短说明，基于当前日期计算距离2026年4月的真实月数）",
+  "psychoAnalysis": "分析内容（不要重复标题）",
   "microscope": {
+    "productionRate": "生产履约率内容",
     "rdConversion": "研发转化率内容",
-    "assetIncrement": "资产/流量增量内容",
     "joyQuality": "真/假快乐内容"
   },
   "tactics": {
-    "rdCalibration": "研发校准内容",
-    "cashCatalyst": "变现催化内容",
-    "mindBomb": "心理拆弹内容"
+    "efficiency": "效率优化内容",
+    "cashCatalyst": "变现催化内容"
   }
 }
 
@@ -4247,7 +4296,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是生存心理战术大师，像一位技术总监+产品经理。肯定用户提升技术的野心，但严厉禁止把"学习"当成"逃避战斗"的防空洞。核心任务：分析研发转化率、识别伪勤奋vs战略研发、给出定点爆破式学习建议。口号：不为了考试而学，只为了杀敌而学。请以JSON格式返回分析报告。'
+              content: '你是生存心理战术大师，像一位务实的产品经理。尊重每一分钟的伏案工作（制作/剪辑），但永远用"是否上架"作为衡量这些工作价值的唯一标准。口号：不发布的视频是垃圾，不上市的特效是废代码。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -5128,12 +5177,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       
                       <div className="space-y-3">
                         <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">📊 研发转化率</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.cashAction || viewingHistoryReport.profitLoss?.output || '暂无数据'}</p>
+                          <p className="text-xs font-bold text-blue-600 mb-1">📦 生产履约率</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.productionRate || viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.cashAction || viewingHistoryReport.profitLoss?.output || '暂无数据'}</p>
                         </div>
                         <div className="bg-green-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-green-600 mb-1">📈 资产/流量增量</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.assetIncrement || viewingHistoryReport.microscope?.energyLeak || '暂无数据'}</p>
+                          <p className="text-xs font-bold text-green-600 mb-1">📊 研发转化率</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.assetIncrement || '暂无数据'}</p>
                         </div>
                         <div className="bg-yellow-50 rounded-xl p-3">
                           <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
@@ -5153,16 +5202,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       
                       <div className="space-y-3">
                         <div className="bg-purple-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-purple-600 mb-1">🎯 研发校准</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.rdCalibration || viewingHistoryReport.tactics?.cashBoost || viewingHistoryReport.tomorrowOrder || '暂无建议'}</p>
+                          <p className="text-xs font-bold text-purple-600 mb-1">⚡ 效率优化</p>
+                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.efficiency || viewingHistoryReport.tactics?.rdCalibration || viewingHistoryReport.tactics?.cashBoost || viewingHistoryReport.tomorrowOrder || '暂无建议'}</p>
                         </div>
                         <div className="bg-green-50 rounded-xl p-3">
                           <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
                           <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.cashCatalyst || viewingHistoryReport.tactics?.coldStart || '暂无建议'}</p>
-                        </div>
-                        <div className="bg-pink-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-pink-600 mb-1">💣 心理拆弹</p>
-                          <p className="text-sm text-gray-700 font-bold">{viewingHistoryReport.tactics?.mindBomb || '暂无建议'}</p>
                         </div>
                       </div>
                     </div>
@@ -5290,12 +5335,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   
                   <div className="space-y-3">
                     <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">📊 研发转化率</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.rdConversion || reportData.microscope?.cashAction || reportData.profitLoss?.output || '暂无数据'}</p>
+                      <p className="text-xs font-bold text-blue-600 mb-1">📦 生产履约率</p>
+                      <p className="text-sm text-gray-700">{reportData.microscope?.productionRate || reportData.microscope?.rdConversion || reportData.microscope?.cashAction || reportData.profitLoss?.output || '暂无数据'}</p>
                     </div>
                     <div className="bg-green-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-green-600 mb-1">📈 资产/流量增量</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.assetIncrement || reportData.microscope?.energyLeak || '暂无数据'}</p>
+                      <p className="text-xs font-bold text-green-600 mb-1">📊 研发转化率</p>
+                      <p className="text-sm text-gray-700">{reportData.microscope?.rdConversion || reportData.microscope?.assetIncrement || '暂无数据'}</p>
                     </div>
                     <div className="bg-yellow-50 rounded-xl p-3">
                       <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
@@ -5315,16 +5360,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   
                   <div className="space-y-3">
                     <div className="bg-purple-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-purple-600 mb-1">🎯 研发校准</p>
-                      <p className="text-sm text-gray-700">{reportData.tactics?.rdCalibration || reportData.tactics?.cashBoost || reportData.tomorrowOrder || '暂无建议'}</p>
+                      <p className="text-xs font-bold text-purple-600 mb-1">⚡ 效率优化</p>
+                      <p className="text-sm text-gray-700">{reportData.tactics?.efficiency || reportData.tactics?.rdCalibration || reportData.tactics?.cashBoost || reportData.tomorrowOrder || '暂无建议'}</p>
                     </div>
                     <div className="bg-green-50 rounded-xl p-3">
                       <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
                       <p className="text-sm text-gray-700">{reportData.tactics?.cashCatalyst || reportData.tactics?.coldStart || '暂无建议'}</p>
-                    </div>
-                    <div className="bg-pink-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-pink-600 mb-1">💣 心理拆弹</p>
-                      <p className="text-sm text-gray-700 font-bold">{reportData.tactics?.mindBomb || '暂无建议'}</p>
                     </div>
                   </div>
                 </div>
@@ -12171,13 +12212,26 @@ export default function App() {
 
   // 全局日记数据 - 持久化到localStorage
   const [journals, setJournals] = useState<Journal[]>(() => {
-    const saved = localStorage.getItem('journals');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('journals');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('加载日记失败:', e);
+      return [];
+    }
   });
 
   // 持久化journals到localStorage
   useEffect(() => {
-    localStorage.setItem('journals', JSON.stringify(journals));
+    try {
+      localStorage.setItem('journals', JSON.stringify(journals));
+    } catch (e) {
+      console.error('保存日记失败，可能是存储空间不足:', e);
+      // 如果存储失败，尝试提示用户
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        alert('存储空间不足！图片太大或日记太多，请删除一些旧日记或图片后重试。');
+      }
+    }
   }, [journals]);
 
   // PlanView 持久化状态 - 切换tab时保留，并持久化到localStorage
