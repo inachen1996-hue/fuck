@@ -121,6 +121,7 @@ interface TimeRecord {
   source: 'timer' | 'import' | 'manual';  // 数据来源
   categoryId?: CategoryId;
   createdAt: number;
+  note?: string;       // 感想/备注
 }
 
 // 持久化计时器状态接口 - 用于页面关闭后恢复计时器
@@ -1147,6 +1148,15 @@ const TimerView = ({
   // 下一阶段信息
   const [nextPhaseInfo, setNextPhaseInfo] = useState<{ phase: 'work' | 'break' | 'longBreak'; round: number } | null>(null);
   
+  // 计时完成后的感想弹窗状态
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [pendingRecord, setPendingRecord] = useState<{
+    timer: Timer;
+    startTime: Date;
+    endTime: Date;
+  } | null>(null);
+  const [timerNote, setTimerNote] = useState('');
+  
   // 常用emoji列表
   const commonEmojis = ['🎯', '💼', '📚', '✏️', '💻', '🎨', '🎵', '🏃', '🧘', '☕', '🍎', '💪', '🌟', '🔥', '⏰', '📝', '🎮', '📖', '🧠', '💡'];
   
@@ -1338,23 +1348,32 @@ const TimerView = ({
             const newRemaining = Math.max(0, initialDuration - elapsed);
             
             if (newRemaining <= 0) {
-              // 倒计时结束，保存记录
+              // 倒计时结束，先停止计时器状态，再显示弹窗
               const timerId = activeTimer?.id;
-              if (timerStartTime && activeTimer) {
-                saveTimeRecord(activeTimer, timerStartTime, new Date());
-              }
-              // 自动重置计时器
+              const timerRef = activeTimer;
+              const startTimeRef = timerStartTime;
+              
+              // 先重置计时器状态，防止 interval 继续触发
               setTimers(timers => timers.map(t => 
                 t.id === activeTimer?.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
               ));
-              // 倒计时结束，播放铃声
+              setActiveTimer(null);
+              setTimerStartTime(null);
+              setTimerStartTimestamp(null);
+              setElapsedTime(0);
+              
+              // 播放铃声
               alarmPlayer.play(10000);
               setAlarmTimerId(timerId || null);
               setIsAlarmPlaying(true);
               setTimeout(() => { setIsAlarmPlaying(false); setAlarmTimerId(null); }, 10000);
-              setTimerStartTime(null);
-              setElapsedTime(0);
-              setActiveTimer(null);
+              
+              // 显示感想弹窗
+              if (startTimeRef && timerRef) {
+                setPendingRecord({ timer: timerRef, startTime: startTimeRef, endTime: new Date() });
+                setTimerNote('');
+                setShowNoteModal(true);
+              }
             } else {
               const updated = { ...activeTimer, remainingTime: newRemaining };
               setTimers(timers => timers.map(t =>
@@ -1604,6 +1623,18 @@ const TimerView = ({
     }
     lastSavedRecordKey.current = recordKey;
     
+    // 显示感想弹窗，让用户填写
+    setPendingRecord({ timer, startTime, endTime });
+    setTimerNote('');
+    setShowNoteModal(true);
+  };
+  
+  // 确认保存记录（带感想）
+  const confirmSaveRecord = (skipNote: boolean = false) => {
+    if (!pendingRecord) return;
+    
+    const { timer, startTime, endTime } = pendingRecord;
+    
     const formatTimeStr = (date: Date) => {
       return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     };
@@ -1619,11 +1650,17 @@ const TimerView = ({
       endTime: formatTimeStr(endTime),
       source: 'timer',
       categoryId: timer.categoryId,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      note: skipNote ? undefined : (timerNote.trim() || undefined)
     };
     
-    console.log('TimerView saveTimeRecord: 保存记录', newRecord);
+    console.log('TimerView confirmSaveRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
+    
+    // 关闭弹窗并清理状态（计时器已在显示弹窗前停止）
+    setShowNoteModal(false);
+    setPendingRecord(null);
+    setTimerNote('');
   };
 
   // 停止响铃（不自动进入下一阶段）
@@ -2511,6 +2548,56 @@ const TimerView = ({
               >
                 创建分类
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 计时完成感想弹窗 */}
+      {showNoteModal && pendingRecord && (
+        <div 
+          className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in"
+          onClick={() => confirmSaveRecord(true)}
+        >
+          <div 
+            className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-3xl">✅</span>
+              </div>
+              <h3 className="text-xl font-black text-gray-800">计时完成！</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {pendingRecord.timer.name} · {Math.round((pendingRecord.endTime.getTime() - pendingRecord.startTime.getTime()) / 60000)}分钟
+              </p>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-600 mb-2">
+                这段时间完成了什么？有什么感想？（可选）
+              </label>
+              <textarea
+                value={timerNote}
+                onChange={(e) => setTimerNote(e.target.value)}
+                placeholder="记录一下这段时间的收获或感想..."
+                className="w-full h-24 px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-purple-300 focus:outline-none resize-none text-sm"
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => confirmSaveRecord(true)}
+                className="flex-1 py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                跳过
+              </button>
+              <button
+                onClick={() => confirmSaveRecord(false)}
+                className="flex-1 py-3 rounded-2xl text-white font-bold bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90 transition-opacity"
+              >
+                保存
+              </button>
             </div>
           </div>
         </div>
@@ -4141,7 +4228,7 @@ const ReviewView = ({
     const periodRecords = timeRecords.filter(r => r.date >= startDateStr && r.date <= todayStr);
     
     // 按分类整理具体事件
-    const eventsByCategory: Record<string, Array<{name: string, minutes: number, date: string, startTime: string, endTime: string}>> = {};
+    const eventsByCategory: Record<string, Array<{name: string, minutes: number, date: string, startTime: string, endTime: string, note?: string}>> = {};
     periodRecords.forEach(record => {
       const start = record.startTime.split(':').map(Number);
       const end = record.endTime.split(':').map(Number);
@@ -4158,15 +4245,23 @@ const ReviewView = ({
         minutes,
         date: record.date,
         startTime: record.startTime,
-        endTime: record.endTime
+        endTime: record.endTime,
+        note: record.note
       });
     });
     
-    // 生成具体事件列表文本
+    // 生成具体事件列表文本（包含感想）
     const eventDetailsText = Object.entries(eventsByCategory).map(([catId, events]) => {
       const catLabel = timeCategories.find(c => c.id === catId)?.label || '待分类';
       const totalMinutes = events.reduce((sum, e) => sum + e.minutes, 0);
-      const eventList = events.map(e => `    - "${e.name}" (${Math.floor(e.minutes / 60)}h${e.minutes % 60}m, ${e.date} ${e.startTime}-${e.endTime})`).join('\n');
+      const eventList = events.map(e => {
+        const baseInfo = `    - "${e.name}" (${Math.floor(e.minutes / 60)}h${e.minutes % 60}m, ${e.date} ${e.startTime}-${e.endTime})`;
+        // 如果有感想，添加到事件信息后面
+        if (e.note) {
+          return `${baseInfo}\n      💭 感想: ${e.note}`;
+        }
+        return baseInfo;
+      }).join('\n');
       return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
     }).join('\n\n');
     
@@ -5891,6 +5986,16 @@ const PlanView = ({
   // 是否已恢复计时器状态
   const hasRestoredPlanTimer = useRef(false);
   
+  // 计时完成后的感想弹窗状态
+  const [showPlanNoteModal, setShowPlanNoteModal] = useState(false);
+  const [pendingPlanRecord, setPendingPlanRecord] = useState<{
+    taskName: string;
+    startTime: Date;
+    endTime: Date;
+    categoryId?: CategoryId;
+  } | null>(null);
+  const [planTimerNote, setPlanTimerNote] = useState('');
+  
   // 防止重复保存记录的标志
   const lastSavedPlanRecordKey = useRef<string | null>(null);
 
@@ -6070,17 +6175,35 @@ const PlanView = ({
             const newRemaining = Math.max(0, countdownDuration * 60 - elapsed);
             
             if (newRemaining <= 0) {
-              // 倒计时结束，保存记录（传入当前值避免闭包问题）
-              saveTimeRecord(timerStartTime || undefined, currentTaskName || undefined);
+              // 倒计时结束，先保存引用再停止计时器
+              const startTimeRef = timerStartTime;
+              const taskNameRef = currentTaskName;
+              const categoryRef = findExistingCategory(currentTaskName || '', timeRecords, globalTimers);
+              
+              // 先停止计时器状态
               setTimerStatus('idle');
               setActiveTimerId(null);
-              // 倒计时结束，播放铃声
+              setRemainingTime(0);
+              setTimerStartTime(null);
+              setTimerStartTimestamp(null);
+              setCurrentTaskName('');
+              
+              // 播放铃声
               alarmPlayer.play(10000);
               setIsAlarmPlaying(true);
               setTimeout(() => setIsAlarmPlaying(false), 10000);
-              setRemainingTime(0);
-              setTimerStartTime(null);
-              setCurrentTaskName('');
+              
+              // 显示感想弹窗
+              if (startTimeRef && taskNameRef) {
+                setPendingPlanRecord({ 
+                  taskName: taskNameRef, 
+                  startTime: startTimeRef, 
+                  endTime: new Date(),
+                  categoryId: categoryRef
+                });
+                setPlanTimerNote('');
+                setShowPlanNoteModal(true);
+              }
             } else {
               setRemainingTime(newRemaining);
             }
@@ -6293,7 +6416,7 @@ const PlanView = ({
     setPendingTimerTask(null);
   };
 
-  // 保存计时记录到timeRecords
+  // 保存计时记录到timeRecords（显示感想弹窗）
   const saveTimeRecord = (startTimeParam?: Date | null, taskNameParam?: string) => {
     const startTime = startTimeParam;
     const taskName = taskNameParam;
@@ -6312,15 +6435,28 @@ const PlanView = ({
     lastSavedPlanRecordKey.current = recordKey;
     
     const endTime = new Date();
+    
+    // 查找该事项是否已有分类
+    const existingCategory = findExistingCategory(taskName, timeRecords, globalTimers);
+    
+    // 显示感想弹窗，让用户填写
+    setPendingPlanRecord({ taskName, startTime, endTime, categoryId: existingCategory });
+    setPlanTimerNote('');
+    setShowPlanNoteModal(true);
+  };
+  
+  // 确认保存记录（带感想）
+  const confirmSavePlanRecord = (skipNote: boolean = false) => {
+    if (!pendingPlanRecord) return;
+    
+    const { taskName, startTime, endTime, categoryId } = pendingPlanRecord;
+    
     const formatTimeStr = (date: Date) => {
       return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     };
     const formatDateStr = (date: Date) => {
       return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
     };
-    
-    // 查找该事项是否已有分类
-    const existingCategory = findExistingCategory(taskName, timeRecords, globalTimers);
     
     const newRecord: TimeRecord = {
       id: `plan_timer_${Date.now()}`,
@@ -6329,12 +6465,18 @@ const PlanView = ({
       startTime: formatTimeStr(startTime),
       endTime: formatTimeStr(endTime),
       source: 'timer',
-      categoryId: existingCategory,
-      createdAt: Date.now()
+      categoryId: categoryId,
+      createdAt: Date.now(),
+      note: skipNote ? undefined : (planTimerNote.trim() || undefined)
     };
     
-    console.log('PlanView saveTimeRecord: 保存记录', newRecord);
+    console.log('PlanView confirmSavePlanRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
+    
+    // 关闭弹窗并清理状态（计时器已在显示弹窗前停止）
+    setShowPlanNoteModal(false);
+    setPendingPlanRecord(null);
+    setPlanTimerNote('');
   };
 
   // 开始计时（旧方法保留兼容）
@@ -8819,6 +8961,56 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           </div>
         </div>
       )}
+
+      {/* 计时完成感想弹窗 */}
+      {showPlanNoteModal && pendingPlanRecord && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in"
+          onClick={() => confirmSavePlanRecord(true)}
+        >
+          <div 
+            className="bg-white w-[90%] rounded-3xl p-6 shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <span className="text-3xl">✅</span>
+              </div>
+              <h3 className="text-xl font-black text-gray-800">计时完成！</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {pendingPlanRecord.taskName} · {Math.round((pendingPlanRecord.endTime.getTime() - pendingPlanRecord.startTime.getTime()) / 60000)}分钟
+              </p>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-600 mb-2">
+                这段时间完成了什么？有什么感想？（可选）
+              </label>
+              <textarea
+                value={planTimerNote}
+                onChange={(e) => setPlanTimerNote(e.target.value)}
+                placeholder="记录一下这段时间的收获或感想..."
+                className="w-full h-24 px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-purple-300 focus:outline-none resize-none text-sm"
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => confirmSavePlanRecord(true)}
+                className="flex-1 py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                跳过
+              </button>
+              <button
+                onClick={() => confirmSavePlanRecord(false)}
+                className="flex-1 py-3 rounded-2xl text-white font-bold bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90 transition-opacity"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -9170,6 +9362,7 @@ const DataSourcePage = ({
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<string>('uncategorized');
+  const [editNote, setEditNote] = useState(''); // 感想/备注
   const hasInitialScrolledRef = useRef(false); // 使用 ref 而不是 state
   const scrollContainerRef = useRef<HTMLDivElement>(null); // 滚动容器的 ref
   const [deletingDate, setDeletingDate] = useState<string | null>(null); // 正在确认删除的日期
@@ -9373,6 +9566,7 @@ const DataSourcePage = ({
     setEditStartTime(record.startTime);
     setEditEndTime(record.endTime);
     setEditCategoryId(record.categoryId || 'uncategorized');
+    setEditNote(record.note || '');
   };
 
   // 保存编辑
@@ -9386,7 +9580,8 @@ const DataSourcePage = ({
       endDate: editEndDate || undefined,
       startTime: editStartTime,
       endTime: editEndTime,
-      categoryId: editCategoryId as CategoryId
+      categoryId: editCategoryId as CategoryId,
+      note: editNote.trim() || undefined
     };
     
     setTimeRecords(prev => prev.map(r => 
@@ -9970,6 +10165,11 @@ const DataSourcePage = ({
                                         ({Math.floor(durationMins / 60) > 0 ? `${Math.floor(durationMins / 60)}h` : ''}{durationMins % 60 > 0 ? `${durationMins % 60}m` : ''})
                                       </span>
                                     </div>
+                                    {record.note && (
+                                      <div className="text-[9px] text-purple-500 leading-tight mt-0.5 truncate" title={record.note}>
+                                        💭 {record.note}
+                                      </div>
+                                    )}
                                   </div>
                                   <button
                                     onClick={(e) => {
@@ -10255,6 +10455,15 @@ const DataSourcePage = ({
                     className="w-28 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1.5 block">感想/备注 <span className="text-gray-300">(可选)</span></label>
+                <textarea
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  placeholder="记录这段时间的收获或感想..."
+                  className="w-full h-20 bg-gray-50 rounded-xl px-3 py-2.5 text-sm border border-gray-200 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none"
+                />
               </div>
             </div>
             <div className="p-4 border-t border-gray-100 flex gap-3">
