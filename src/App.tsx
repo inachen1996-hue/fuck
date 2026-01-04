@@ -379,7 +379,6 @@ const callAI = async (
   }
 ): Promise<string> => {
   const temperature = options?.temperature ?? 0.7;
-  const maxTokens = options?.maxTokens ?? 2500;
   const deepseekModel = options?.deepseekModel || 'deepseek-reasoner';
   const geminiModel = options?.geminiModel || 'gemini-2.0-flash';
   
@@ -402,8 +401,8 @@ const callAI = async (
               }
             ],
             generationConfig: {
-              temperature,
-              maxOutputTokens: maxTokens,
+              temperature
+              // 不限制 maxOutputTokens，让模型自由输出
             }
           })
         }
@@ -434,8 +433,8 @@ const callAI = async (
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
-    ],
-    max_tokens: maxTokens
+    ]
+    // 不设置 max_tokens，让模型自由输出完整内容
   };
   
   // deepseek-chat 支持 temperature，deepseek-reasoner 不支持
@@ -460,26 +459,46 @@ const callAI = async (
   const data = await response.json();
   console.log('DeepSeek API 原始响应:', JSON.stringify(data, null, 2));
   
-  // deepseek-reasoner 模型会返回 reasoning_content 和 content
-  // 我们只需要最终的 content
+  // deepseek-reasoner 模型会返回 reasoning_content（思考过程）和 content（最终答案）
   const message = data.choices?.[0]?.message;
   let content = message?.content || '';
   
-  // 如果 content 为空但有 reasoning_content，可能是 reasoner 模型的特殊情况
+  // 如果 content 为空，尝试从 reasoning_content 中提取 JSON
   if (!content && message?.reasoning_content) {
-    console.log('content 为空，使用 reasoning_content');
-    content = message.reasoning_content;
+    console.log('content 为空，尝试从 reasoning_content 中提取 JSON');
+    const reasoning = message.reasoning_content;
+    
+    // 尝试找到 JSON 对象
+    const jsonMatch = reasoning.match(/\{[\s\S]*"score"[\s\S]*"truth"[\s\S]*\}/);
+    if (jsonMatch) {
+      content = jsonMatch[0];
+      console.log('从 reasoning_content 中提取到 JSON');
+    } else {
+      // 如果找不到 JSON，返回一个包含思考过程摘要的结构化响应
+      console.log('reasoning_content 中没有找到 JSON，生成结构化响应');
+      // 提取思考过程的关键部分
+      const lines = reasoning.split('\n').filter((l: string) => l.trim());
+      const summary = lines.slice(0, 20).join('\n'); // 取前20行作为摘要
+      content = JSON.stringify({
+        score: 60,
+        truth: "AI 正在深度思考中，但未能生成标准格式的分析报告。以下是思考过程摘要：\n\n" + summary.slice(0, 500),
+        rootCause: "模型思考过程较长，建议切换到 DeepSeek 小简单 或 Gemini 模型获取更快的响应",
+        audit: "由于响应格式问题，无法给出准确的审计结论",
+        suggestion: "建议：1. 切换到其他 AI 模型重试；2. 或减少时间记录数据量后重试"
+      });
+    }
   }
   
-  // 如果还是空，尝试其他可能的字段
+  // 如果还是空，返回错误提示
   if (!content) {
     console.log('content 仍为空，完整 message 对象:', message);
-    // 尝试直接从 data 中获取
-    if (data.output) {
-      content = data.output;
-    } else if (data.result) {
-      content = data.result;
-    }
+    content = JSON.stringify({
+      score: 50,
+      truth: "AI 返回了空内容，请重试或切换模型",
+      rootCause: "",
+      audit: "",
+      suggestion: "建议切换到 DeepSeek 小简单 或 Gemini 模型"
+    });
   }
   
   return content;
