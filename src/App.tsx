@@ -371,17 +371,23 @@ const callAI = async (
   systemPrompt: string,
   userPrompt: string,
   geminiApiKey?: string,
-  options?: { temperature?: number; maxTokens?: number; deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner' }
+  options?: { 
+    temperature?: number; 
+    maxTokens?: number; 
+    deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
+    geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+  }
 ): Promise<string> => {
   const temperature = options?.temperature ?? 0.7;
   const maxTokens = options?.maxTokens ?? 2500;
-  const model = options?.deepseekModel || 'deepseek-reasoner';
+  const deepseekModel = options?.deepseekModel || 'deepseek-reasoner';
+  const geminiModel = options?.geminiModel || 'gemini-2.0-flash';
   
   // 如果有 Gemini API Key，优先使用 Gemini
   if (geminiApiKey) {
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`,
         {
           method: 'POST',
           headers: {
@@ -424,7 +430,7 @@ const callAI = async (
   
   // 使用 DeepSeek API
   const requestBody: any = {
-    model: model,
+    model: deepseekModel,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
@@ -433,7 +439,7 @@ const callAI = async (
   };
   
   // deepseek-chat 支持 temperature，deepseek-reasoner 不支持
-  if (model === 'deepseek-chat') {
+  if (deepseekModel === 'deepseek-chat') {
     requestBody.temperature = temperature;
   }
   
@@ -452,7 +458,10 @@ const callAI = async (
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  // deepseek-reasoner 模型会返回 reasoning_content 和 content
+  // 我们只需要最终的 content
+  const content = data.choices?.[0]?.message?.content || '';
+  return content;
 };
 
 // 验证 Gemini API Key 是否有效
@@ -4094,6 +4103,7 @@ const ReviewView = ({
   reportHistory,
   setReportHistory,
   geminiApiKey,
+  geminiModel,
   deepseekModel
 }: { 
   journals: Journal[]; 
@@ -4125,6 +4135,7 @@ const ReviewView = ({
     report: any;
   }>>>;
   geminiApiKey?: string;
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
@@ -4542,9 +4553,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     try {
       const systemPrompt = '你是商业资产审计师，基于用户数据进行逻辑推理，寻找矛盾，计算真实商业价值。只说真话，只讲逻辑。不夸大困难，但绝不低估资产。冷静、精准、公允。请以JSON格式返回分析报告。';
       
+      // reasoner 模型较慢，降低 token 数量加快速度
+      const maxTokens = deepseekModel === 'deepseek-reasoner' ? 1500 : 2500;
+      
       const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
-        maxTokens: 2500,
+        maxTokens,
+        geminiModel,
         deepseekModel
       });
 
@@ -4553,15 +4568,48 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       // 解析AI返回的JSON
       let report;
       try {
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          report = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('无法解析AI响应');
+        // 尝试多种方式提取 JSON
+        let jsonStr = aiResponse;
+        
+        // 1. 如果响应被 ```json 包裹，提取内容
+        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (codeBlockMatch) {
+          jsonStr = codeBlockMatch[1].trim();
         }
+        
+        // 2. 尝试找到 JSON 对象
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[0];
+        }
+        
+        // 3. 清理可能的非法字符
+        jsonStr = jsonStr
+          .replace(/[\x00-\x1F\x7F]/g, '') // 移除控制字符
+          .replace(/,\s*}/g, '}') // 移除尾随逗号
+          .replace(/,\s*]/g, ']'); // 移除数组尾随逗号
+        
+        report = JSON.parse(jsonStr);
+        
+        // 验证必要字段
+        if (typeof report.score === 'undefined') {
+          report.score = 50; // 默认分数
+        }
+        if (!report.truth) report.truth = '数据不足，无法分析';
+        if (!report.rootCause) report.rootCause = '需要更多数据';
+        if (!report.audit) report.audit = '待评估';
+        if (!report.suggestion) report.suggestion = '继续记录数据';
+        
       } catch (parseError) {
-        console.error('解析AI响应失败:', parseError);
-        throw new Error('AI响应格式错误，请重试');
+        console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
+        // 如果解析失败，尝试构造一个基本报告
+        report = {
+          score: 50,
+          truth: aiResponse.slice(0, 500) || 'AI响应解析失败',
+          rootCause: '响应格式异常，建议切换到其他AI模型重试',
+          audit: '无法评估',
+          suggestion: '请在设置中尝试切换AI模型（如 Gemini 或 DeepSeek 小简单）'
+        };
       }
       
       // 添加period字段
@@ -6008,6 +6056,7 @@ const PlanView = ({
   setGlobalTimers,
   categories,
   geminiApiKey,
+  geminiModel,
   deepseekModel
 }: { 
   pomodoroSettings: PomodoroSettings;
@@ -6047,6 +6096,7 @@ const PlanView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
   geminiApiKey?: string;
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -6941,6 +6991,7 @@ const PlanView = ({
       const result = await callAI(systemPrompt, `请对以下任务进行分类：${taskName}`, geminiApiKey, {
         temperature: 0.3,
         maxTokens: 50,
+        geminiModel,
         deepseekModel
       });
       
@@ -7023,6 +7074,7 @@ const PlanView = ({
       const content = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
         maxTokens: 2000,
+        geminiModel,
         deepseekModel
       });
       
@@ -9158,6 +9210,7 @@ const AIChatPage = ({
   aiChatLoading,
   setAiChatLoading,
   geminiApiKey,
+  geminiModel,
   deepseekModel
 }: {
   onClose: () => void;
@@ -9172,6 +9225,7 @@ const AIChatPage = ({
   aiChatLoading: boolean;
   setAiChatLoading: React.Dispatch<React.SetStateAction<boolean>>;
   geminiApiKey?: string;
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   // 时间分类配置
@@ -9314,6 +9368,7 @@ ${journalSummary || '暂无日记'}
       const aiResponse = await callAI(systemPrompt, fullUserPrompt, geminiApiKey, {
         temperature: 0.7,
         maxTokens: 2000,
+        geminiModel,
         deepseekModel
       });
       
@@ -10621,6 +10676,8 @@ const SettingsView = ({
   onOpenAIChat,
   geminiApiKey,
   setGeminiApiKey,
+  geminiModel,
+  setGeminiModel,
   deepseekModel,
   setDeepseekModel
 }: { 
@@ -10638,6 +10695,8 @@ const SettingsView = ({
   onOpenAIChat: () => void;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
+  geminiModel: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+  setGeminiModel: (model: 'gemini-2.0-flash' | 'gemini-1.5-pro') => void;
   deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
   setDeepseekModel: (model: 'deepseek-chat' | 'deepseek-reasoner') => void;
 }) => {
@@ -11233,7 +11292,7 @@ END:VEVENT
               <div className="text-left">
                 <h3 className="font-semibold" style={{ color: '#5D4037' }}>AI 模型设置</h3>
                 <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
-                  当前：{geminiApiKey ? '✨ Gemini' : (deepseekModel === 'deepseek-reasoner' ? '🧠 大智慧' : '⚡ 小简单')}
+                  当前：{geminiApiKey ? (geminiModel === 'gemini-2.0-flash' ? '⚡ Gemini Flash' : '💎 Gemini Pro') : (deepseekModel === 'deepseek-reasoner' ? '🧠 大智慧' : '⚡ 小简单')}
                 </p>
               </div>
             </div>
@@ -12566,6 +12625,45 @@ END:VEVENT
                 </div>
               )}
               
+              {/* Gemini 模型选择 */}
+              {geminiApiKey && (
+                <div className="mb-3 space-y-2">
+                  <p className="text-xs text-gray-500 font-bold">选择模型：</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setGeminiModel('gemini-2.0-flash');
+                        showToastMessage('已切换到 ⚡ Flash（便宜）');
+                      }}
+                      className={`flex-1 p-2 rounded-xl border-2 transition-all text-center ${
+                        geminiModel === 'gemini-2.0-flash' 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : 'border-gray-200 bg-white hover:border-blue-300'
+                      }`}
+                    >
+                      <div className="text-lg">⚡</div>
+                      <div className="text-xs font-bold text-gray-700">Flash</div>
+                      <div className="text-xs text-green-600">便宜</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGeminiModel('gemini-1.5-pro');
+                        showToastMessage('已切换到 💎 Pro（贵）');
+                      }}
+                      className={`flex-1 p-2 rounded-xl border-2 transition-all text-center ${
+                        geminiModel === 'gemini-1.5-pro' 
+                          ? 'border-purple-500 bg-purple-50' 
+                          : 'border-gray-200 bg-white hover:border-purple-300'
+                      }`}
+                    >
+                      <div className="text-lg">💎</div>
+                      <div className="text-xs font-bold text-gray-700">Pro</div>
+                      <div className="text-xs text-orange-600">贵</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex gap-2">
                 {geminiApiKey && (
                   <button
@@ -12780,6 +12878,12 @@ export default function App() {
     return localStorage.getItem('geminiApiKey') || '';
   });
 
+  // Gemini 模型选择 - 持久化到localStorage
+  const [geminiModel, setGeminiModel] = useState<'gemini-2.0-flash' | 'gemini-1.5-pro'>(() => {
+    const saved = localStorage.getItem('geminiModel');
+    return (saved === 'gemini-2.0-flash' || saved === 'gemini-1.5-pro') ? saved : 'gemini-2.0-flash';
+  });
+
   // DeepSeek 模型选择 - 持久化到localStorage
   const [deepseekModel, setDeepseekModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>(() => {
     const saved = localStorage.getItem('deepseekModel');
@@ -12794,6 +12898,11 @@ export default function App() {
       localStorage.removeItem('geminiApiKey');
     }
   }, [geminiApiKey]);
+
+  // 持久化 Gemini 模型选择到 localStorage
+  useEffect(() => {
+    localStorage.setItem('geminiModel', geminiModel);
+  }, [geminiModel]);
 
   // 持久化 DeepSeek 模型选择到 localStorage
   useEffect(() => {
@@ -13070,7 +13179,7 @@ export default function App() {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} deepseekModel={deepseekModel} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -13097,9 +13206,10 @@ export default function App() {
         setGlobalTimers={setGlobalTimers}
         categories={categories}
         geminiApiKey={geminiApiKey}
+        geminiModel={geminiModel}
         deepseekModel={deepseekModel}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} deepseekModel={deepseekModel} setDeepseekModel={setDeepseekModel} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} geminiModel={geminiModel} setGeminiModel={setGeminiModel} deepseekModel={deepseekModel} setDeepseekModel={setDeepseekModel} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
@@ -13189,6 +13299,7 @@ export default function App() {
           aiChatLoading={aiChatLoading}
           setAiChatLoading={setAiChatLoading}
           geminiApiKey={geminiApiKey}
+          geminiModel={geminiModel}
           deepseekModel={deepseekModel}
         />
       ) : (
