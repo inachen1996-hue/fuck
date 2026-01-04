@@ -371,10 +371,11 @@ const callAI = async (
   systemPrompt: string,
   userPrompt: string,
   geminiApiKey?: string,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner' }
 ): Promise<string> => {
   const temperature = options?.temperature ?? 0.7;
   const maxTokens = options?.maxTokens ?? 2500;
+  const model = options?.deepseekModel || 'deepseek-reasoner';
   
   // 如果有 Gemini API Key，优先使用 Gemini
   if (geminiApiKey) {
@@ -422,21 +423,27 @@ const callAI = async (
   }
   
   // 使用 DeepSeek API
+  const requestBody: any = {
+    model: model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    max_tokens: maxTokens
+  };
+  
+  // deepseek-chat 支持 temperature，deepseek-reasoner 不支持
+  if (model === 'deepseek-chat') {
+    requestBody.temperature = temperature;
+  }
+  
   const response = await fetch('/api/deepseek', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
     },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature,
-      max_tokens: maxTokens
-    })
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -4086,7 +4093,8 @@ const ReviewView = ({
   setGeneratingProgress,
   reportHistory,
   setReportHistory,
-  geminiApiKey
+  geminiApiKey,
+  deepseekModel
 }: { 
   journals: Journal[]; 
   timeRecords: TimeRecord[];
@@ -4117,6 +4125,7 @@ const ReviewView = ({
     report: any;
   }>>>;
   geminiApiKey?: string;
+  deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
@@ -4464,49 +4473,40 @@ const ReviewView = ({
       return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
     }).join('\n\n');
     
-    // 构建AI提示词 - 直接使用用户定义的提示词模板
-    const prompt = `# Role: 生存心理战术大师 (Survival Psycho-Tactician) - High IQ Version
+    // 构建AI提示词 - 时间真相解码器
+    const prompt = `# Role: 时间真相解码器 (Time Truth Decoder)
 
 # Core Instruction (核心指令):
-你不是一个只会填空的机器人，你是一位**拥有极高情商和战略眼光的私人顾问**。**严禁**机械地套用规则。你必须结合用户的【数据源】、【日记】、【日程感想】、【特殊事件（如Bug/停电）】进行**综合侦探式分析**。**你的目标不是"评分"，而是从数据中挖掘出用户自己都没意识到的"战略真相"。**
+你不需要扮演任何角色，也不需要任何情感修饰。请直接阅读用户的时间轴数据、统计图和日记，利用**逻辑推理**寻找数据之间的**矛盾点**和**因果链**。**只说真话，只讲逻辑，直击本质。**
 
 # User Profile:
 1. **死线**：2026年4月必须变现。
-2. **商业模式**：视频内容流 + 特效资产流。
-3. **痛点**：腰肌劳损，且非常反感"机械式说教"。需要"懂我"的深度分析。
+2. **现状**：腰肌劳损，容易用"造工具/更倾向于去做简单的事情"逃避核心产出。
 
-# 🧠 五维深度分析框架:
+# 🧠 Analysis Logic (核心分析算法):
 
-## 维度一：资产"含金量"审计 (Asset Audit)
-**核心逻辑**：请把我的产出分为**"现金流资产"（已发布）和"战略库存"**（已做好但未发）。
-**必答题**：
-- 我今天手里是否握有"随时可发"的成品视频？
-- 如果有，请将其视为**"极高价值的弹药储备"**进行表扬，而不是判定为"库存积压"。
-- 计算我的**"实际生产力"**时，请务必包含这些未发布的成品。
+请按以下步骤进行逻辑推演：
 
-## 维度二：运营决策智商 (Operational IQ)
-**核心逻辑**：请结合日记中的突发事件（如平台Bug、停电、流量策略），评估我的决策质量。
-**必答题**：
-- 我今天的"不发布"或"推迟发布"，是出于懒惰，还是为了保护账号权重/避开Bug的理性决策？
-- 如果是理性决策，请给予加分，确认这是成熟运营者的表现。
+**第一步：寻找"行为"与"目标"的矛盾 (Action vs. Goal)**
+* *逻辑*：用户的目标是"变现"（视频/特效）。
+* *扫描*：检查所有非A类（非直接产出）时间。
+* *判定*：
+  * 如果"打造App" > 0，且当日核心产出 < 2小时 -> **矛盾**：这是用"优化工具"来逃避"使用工具"。
+  * 如果"调研" > 30分钟，且无Demo/灵感记录 -> **矛盾**：这是用"输入"来掩盖"输出困难"。
 
-## 维度三：研发有效性判定 (R&D Validity)
-**核心逻辑**：输入是为了更好的输出。不要把调研一刀切为浪费。
-**必答题**：
-- 我在调研/学习时，是否有明确的记录或灵感沉淀？（查看日记/备忘）
-- 如果有灵感记录，请将这段时间标记为**"必要的研发投资"**，并指出它对未来哪个环节有帮助。
+**第二步：寻找"日记"与"数据"的矛盾 (Diary vs. Data)**
+* *逻辑*：日记是主观感受，数据是客观事实。两者不符必有妖。
+* *扫描*：
+  * 用户说"今天很累/状态不好" + 数据显示"晚间大段刷手机/造App"。
+  * *推演*：这不是真的累（否则会去睡觉），这是**心力耗竭导致的报复性逃避**。
+  * 用户说"避开流量低谷所以没发" + 数据显示"剪辑完成"。
+  * *推演*：这是**有效的战术决策**，逻辑成立，不视为矛盾。
 
-## 维度四：生存概率的真实计算 (True Survival Rate)
-**核心逻辑**：基于 2026年4月 的死线。
-**必答题**：
-- 抛开表面数据，综合"已发布视频"+"手里的存货"+"学到的技术"+"健康的腰"，我今天离变现目标是更近了还是更远了？
-- 如果我手里有存货且腰没废，生存概率应当判定为 High。
-
-## 维度五：快乐的性质 (Quality of Joy)
-**核心逻辑**：区分"充电"与"耗电"。
-**必答题**：
-- 读取我的心情日记，我刷手机时的心情是"爽/解压"（充电）还是"焦虑/麻木"（耗电）？
-- 请据此给出休息建议。
+**第三步：计算"时间投资回报率" (Time ROI)**
+* *逻辑*：任何不产生"资产（存稿/发布）"的时间投入，都必须有合理的解释。
+* *计算*：
+  * **有效投资** = (制作 + 拍摄 + 剪辑 + 发布 + 有明确记录的调研) / 总投入时长。
+  * **纯损耗** = (无产出的调研 + 造App + 焦虑刷手机) / 总投入时长。
 
 # Input Data (用户数据)
 - **当前日期**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -4524,20 +4524,20 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
 # Tone (语气):
-**不要像个机器人！**要像《纸牌屋》里的幕僚长，或者你最信任的合伙人。**犀利、有洞察力、且极度护短（站在用户利益角度思考）。** 看到用户受委屈（Bug/停电）要同情，看到用户有策略（存稿）要激赏。
+**像那面从不撒谎的魔镜。**平实、直接、逻辑严密。没有情绪化的批评，也没有廉价的鼓励，只有冰冷的因果揭示。
 
 # ⚠️ JSON输出格式要求（重要）：
 - **不要在内容中重复标题或emoji**，因为UI已经显示了标题
 - 每个字段只需要返回分析内容，不要包含标题前缀
+- score 必须是 0-100 的整数
 
 请以JSON格式返回：
 {
-  "assetAudit": "资产含金量审计：分析现金流资产vs战略库存，评估实际生产力",
-  "operationalIQ": "运营决策智商：评估发布/不发布决策的质量",
-  "rdValidity": "研发有效性：判定学习/调研时间的价值",
-  "survivalRate": "生存概率：综合评估离变现目标的距离（High/Medium/Low + 理由）",
-  "qualityOfJoy": "快乐性质：分析休息是充电还是耗电，给出建议",
-  "command": "明日战术指令：基于以上分析给出具体行动指南"
+  "score": 75,
+  "truth": "数据背后的真相：直接点出数据里最反直觉或最矛盾的地方",
+  "rootCause": "深度归因：解释为什么会出现上述矛盾",
+  "audit": "商业审计结论：资产增量、负债增量、离4月死线是加速靠近还是原地踏步",
+  "suggestion": "纯逻辑建议：基于归因的直接解法"
 }
 
 只返回JSON，不要其他内容。`;
@@ -4545,11 +4545,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
     try {
-      const systemPrompt = '你是生存心理战术大师（High IQ Version），像《纸牌屋》里的幕僚长，或者用户最信任的合伙人。犀利、有洞察力、且极度护短（站在用户利益角度思考）。严禁机械套用规则，要进行综合侦探式分析。请以JSON格式返回分析报告。';
+      const systemPrompt = '你是时间真相解码器，只说真话，只讲逻辑，直击本质。利用逻辑推理寻找数据之间的矛盾点和因果链。像那面从不撒谎的魔镜，平实、直接、逻辑严密。请以JSON格式返回分析报告。';
       
       const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
-        maxTokens: 2500
+        maxTokens: 2500,
+        deepseekModel
       });
 
       setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在解析AI响应...' }));
@@ -5378,81 +5379,75 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 💰 资产含金量审计 */}
+                    {/* 📊 今日评分 */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border-2 border-indigo-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                            <span className="text-lg">📊</span>
+                          </div>
+                          <h4 className="font-black text-indigo-800 text-lg">变现进度评分</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-4xl font-black ${
+                            (viewingHistoryReport.score || 0) >= 80 ? 'text-green-500' :
+                            (viewingHistoryReport.score || 0) >= 60 ? 'text-yellow-500' :
+                            (viewingHistoryReport.score || 0) >= 40 ? 'text-orange-500' : 'text-red-500'
+                          }`}>{viewingHistoryReport.score || '?'}</span>
+                          <span className="text-lg text-gray-400">/100</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 🔍 数据背后的真相 */}
                     <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">💰</span>
+                          <span className="text-lg">🔍</span>
                         </div>
-                        <h4 className="font-black text-purple-800 text-lg">资产含金量审计</h4>
+                        <h4 className="font-black text-purple-800 text-lg">数据背后的真相</h4>
                       </div>
                       <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || viewingHistoryReport.survivalRate || viewingHistoryReport.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
+                        __html: (viewingHistoryReport.truth || viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🧠 运营决策智商 */}
+                    {/* 🧬 深度归因 */}
                     <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-5 border-2 border-blue-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🧠</span>
+                          <span className="text-lg">🧬</span>
                         </div>
-                        <h4 className="font-black text-blue-800 text-lg">运营决策智商</h4>
+                        <h4 className="font-black text-blue-800 text-lg">深度归因</h4>
                       </div>
                       <p className="text-sm text-blue-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.operationalIQ || viewingHistoryReport.sherlockScan?.assetStrategy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
+                        __html: (viewingHistoryReport.rootCause || viewingHistoryReport.operationalIQ || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🔬 研发有效性判定 */}
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border-2 border-green-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔬</span>
-                        </div>
-                        <h4 className="font-black text-green-800 text-lg">研发有效性判定</h4>
-                      </div>
-                      <p className="text-sm text-green-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.rdValidity || viewingHistoryReport.sherlockScan?.rdInvestment || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-900">$1</strong>') 
-                      }} />
-                    </div>
-
-                    {/* 📊 生存概率 */}
+                    {/* 📉 商业审计结论 */}
                     <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border-2 border-orange-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">📊</span>
+                          <span className="text-lg">📉</span>
                         </div>
-                        <h4 className="font-black text-orange-800 text-lg">生存概率评估</h4>
+                        <h4 className="font-black text-orange-800 text-lg">商业审计结论</h4>
                       </div>
                       <p className="text-sm text-orange-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.survivalRate || viewingHistoryReport.sherlockScan?.psychoBattle || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
+                        __html: (viewingHistoryReport.audit || viewingHistoryReport.survivalRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 😊 快乐性质分析 */}
-                    <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-2xl p-5 border-2 border-pink-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-pink-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">😊</span>
-                        </div>
-                        <h4 className="font-black text-pink-800 text-lg">快乐性质分析</h4>
-                      </div>
-                      <p className="text-sm text-pink-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.qualityOfJoy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-pink-900">$1</strong>') 
-                      }} />
-                    </div>
-
-                    {/* 🛡️ 明日战术指令 */}
+                    {/* 🚀 纯逻辑建议 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🛡️</span>
+                          <span className="text-lg">🚀</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">明日战术指令</h4>
+                        <h4 className="font-black text-sky-800 text-lg">纯逻辑建议</h4>
                       </div>
                       <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.command || viewingHistoryReport.tactics?.efficiency || viewingHistoryReport.tomorrowOrder || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
+                        __html: (viewingHistoryReport.suggestion || viewingHistoryReport.command || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
                       }} />
                     </div>
                   </div>
@@ -5542,81 +5537,76 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 💰 资产含金量审计 ===== */}
+                {/* ===== 📊 今日评分 ===== */}
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border-2 border-indigo-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                        <span className="text-lg">📊</span>
+                      </div>
+                      <h4 className="font-black text-indigo-800 text-lg">变现进度评分</h4>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-4xl font-black ${
+                        (reportData.score || 0) >= 80 ? 'text-green-500' :
+                        (reportData.score || 0) >= 60 ? 'text-yellow-500' :
+                        (reportData.score || 0) >= 40 ? 'text-orange-500' : 'text-red-500'
+                      }`}>{reportData.score || '?'}</span>
+                      <span className="text-lg text-gray-400">/100</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-indigo-600 mt-2">距离2026年4月变现目标的进度分数</p>
+                </div>
+
+                {/* ===== 🔍 数据背后的真相 ===== */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">💰</span>
+                      <span className="text-lg">🔍</span>
                     </div>
-                    <h4 className="font-black text-purple-800 text-lg">资产含金量审计</h4>
+                    <h4 className="font-black text-purple-800 text-lg">数据背后的真相</h4>
                   </div>
                   <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.assetAudit || reportData.situationRoom || reportData.survivalRate || reportData.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
+                    __html: (reportData.truth || reportData.assetAudit || reportData.situationRoom || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
                   }} />
                 </div>
 
-                {/* ===== 🧠 运营决策智商 ===== */}
+                {/* ===== 🧬 深度归因 ===== */}
                 <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-5 border-2 border-blue-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🧠</span>
+                      <span className="text-lg">🧬</span>
                     </div>
-                    <h4 className="font-black text-blue-800 text-lg">运营决策智商</h4>
+                    <h4 className="font-black text-blue-800 text-lg">深度归因</h4>
                   </div>
                   <p className="text-sm text-blue-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.operationalIQ || reportData.sherlockScan?.assetStrategy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
+                    __html: (reportData.rootCause || reportData.operationalIQ || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
                   }} />
                 </div>
 
-                {/* ===== 🔬 研发有效性判定 ===== */}
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-5 border-2 border-green-100">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔬</span>
-                    </div>
-                    <h4 className="font-black text-green-800 text-lg">研发有效性判定</h4>
-                  </div>
-                  <p className="text-sm text-green-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.rdValidity || reportData.sherlockScan?.rdInvestment || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-900">$1</strong>') 
-                  }} />
-                </div>
-
-                {/* ===== 📊 生存概率 ===== */}
+                {/* ===== 📉 商业审计结论 ===== */}
                 <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border-2 border-orange-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">📊</span>
+                      <span className="text-lg">📉</span>
                     </div>
-                    <h4 className="font-black text-orange-800 text-lg">生存概率评估</h4>
+                    <h4 className="font-black text-orange-800 text-lg">商业审计结论</h4>
                   </div>
                   <p className="text-sm text-orange-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.survivalRate || reportData.sherlockScan?.psychoBattle || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
+                    __html: (reportData.audit || reportData.survivalRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
                   }} />
                 </div>
 
-                {/* ===== 😊 快乐性质分析 ===== */}
-                <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-2xl p-5 border-2 border-pink-100">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-pink-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">😊</span>
-                    </div>
-                    <h4 className="font-black text-pink-800 text-lg">快乐性质分析</h4>
-                  </div>
-                  <p className="text-sm text-pink-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.qualityOfJoy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-pink-900">$1</strong>') 
-                  }} />
-                </div>
-
-                {/* ===== 🛡️ 明日战术指令 ===== */}
+                {/* ===== 🚀 纯逻辑建议 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🛡️</span>
+                      <span className="text-lg">🚀</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">明日战术指令</h4>
+                    <h4 className="font-black text-sky-800 text-lg">纯逻辑建议</h4>
                   </div>
                   <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.command || reportData.tactics?.efficiency || reportData.tomorrowOrder || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
+                    __html: (reportData.suggestion || reportData.command || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
                   }} />
                 </div>
               </div>
@@ -6022,7 +6012,8 @@ const PlanView = ({
   globalTimers,
   setGlobalTimers,
   categories,
-  geminiApiKey
+  geminiApiKey,
+  deepseekModel
 }: { 
   pomodoroSettings: PomodoroSettings;
   step: 'setup' | 'generating' | 'schedule';
@@ -6061,6 +6052,7 @@ const PlanView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
   geminiApiKey?: string;
+  deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
@@ -6953,7 +6945,8 @@ const PlanView = ({
 
       const result = await callAI(systemPrompt, `请对以下任务进行分类：${taskName}`, geminiApiKey, {
         temperature: 0.3,
-        maxTokens: 50
+        maxTokens: 50,
+        deepseekModel
       });
       
       const category = result.trim().toLowerCase() as CategoryId;
@@ -7034,7 +7027,8 @@ const PlanView = ({
       
       const content = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
-        maxTokens: 2000
+        maxTokens: 2000,
+        deepseekModel
       });
       
       // 调用进度回调
@@ -9168,7 +9162,8 @@ const AIChatPage = ({
   setAiChatInput,
   aiChatLoading,
   setAiChatLoading,
-  geminiApiKey
+  geminiApiKey,
+  deepseekModel
 }: {
   onClose: () => void;
   timeRecords: TimeRecord[];
@@ -9182,6 +9177,7 @@ const AIChatPage = ({
   aiChatLoading: boolean;
   setAiChatLoading: React.Dispatch<React.SetStateAction<boolean>>;
   geminiApiKey?: string;
+  deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   // 时间分类配置
   const defaultCategoryIcons: Record<string, string> = {
@@ -9322,7 +9318,8 @@ ${journalSummary || '暂无日记'}
       
       const aiResponse = await callAI(systemPrompt, fullUserPrompt, geminiApiKey, {
         temperature: 0.7,
-        maxTokens: 2000
+        maxTokens: 2000,
+        deepseekModel
       });
       
       setAiChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
@@ -10628,7 +10625,9 @@ const SettingsView = ({
   categories,
   onOpenAIChat,
   geminiApiKey,
-  setGeminiApiKey
+  setGeminiApiKey,
+  deepseekModel,
+  setDeepseekModel
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -10644,6 +10643,8 @@ const SettingsView = ({
   onOpenAIChat: () => void;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
+  deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
+  setDeepseekModel: (model: 'deepseek-chat' | 'deepseek-reasoner') => void;
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
@@ -10662,7 +10663,7 @@ const SettingsView = ({
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
-  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [showAIModelModal, setShowAIModelModal] = useState(false);
   const [geminiKeyInput, setGeminiKeyInput] = useState(geminiApiKey);
   const [geminiValidating, setGeminiValidating] = useState(false);
   const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -10673,12 +10674,12 @@ const SettingsView = ({
     setGeminiUsageStats(getGeminiUsageStats());
   };
   
-  // 打开 Gemini 弹窗时刷新统计
+  // 打开 AI 模型弹窗时刷新统计
   useEffect(() => {
-    if (showGeminiModal) {
+    if (showAIModelModal) {
       refreshGeminiUsageStats();
     }
-  }, [showGeminiModal]);
+  }, [showAIModelModal]);
   
   // 获取当前布局大小
   const getCurrentLayoutSize = (): 'large' | 'small' => {
@@ -11214,23 +11215,23 @@ END:VEVENT
           {/* 分割线 */}
           <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
 
-          {/* Gemini API 设置 */}
+          {/* AI 模型设置 - 合并 Gemini 和 DeepSeek */}
           <button 
             onClick={() => {
               setGeminiKeyInput(geminiApiKey);
               setGeminiStatus(geminiApiKey ? 'success' : 'idle');
-              setShowGeminiModal(true);
+              setShowAIModelModal(true);
             }}
             className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
           >
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)' }}>
-                <Sparkles size={24} style={{ color: '#1976D2' }} />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #E8F5E9 0%, #BBDEFB 100%)' }}>
+                <Brain size={24} style={{ color: '#1976D2' }} />
               </div>
               <div className="text-left">
-                <h3 className="font-semibold" style={{ color: '#5D4037' }}>连接 Gemini</h3>
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>AI 模型设置</h3>
                 <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
-                  {geminiApiKey ? '✅ 已连接 Google AI' : '使用 Google AI 增强体验'}
+                  当前：{geminiApiKey ? '✨ Gemini' : (deepseekModel === 'deepseek-reasoner' ? '🧠 大智慧' : '⚡ 小简单')}
                 </p>
               </div>
             </div>
@@ -12485,129 +12486,211 @@ END:VEVENT
         />
       )}
 
-      {/* Gemini API 设置弹窗 */}
-      {showGeminiModal && (
+      {/* AI 模型设置弹窗 - 合并 Gemini 和 DeepSeek */}
+      {showAIModelModal && (
         <div 
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in"
           style={{ paddingBottom: '100px' }}
-          onClick={() => setShowGeminiModal(false)}
+          onClick={() => setShowAIModelModal(false)}
         >
           <div 
-            className="bg-white w-[90%] max-h-[70vh] overflow-y-auto rounded-3xl p-6 shadow-2xl animate-scale-in"
+            className="bg-white w-[90%] max-h-[80vh] overflow-y-auto rounded-3xl p-6 shadow-2xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <Sparkles size={32} className="text-blue-500" />
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Brain size={32} className="text-blue-600" />
               </div>
-              <h3 className="text-xl font-black text-gray-800">连接 Google Gemini</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                输入你的 API Key 以使用 Gemini AI
-              </p>
+              <h3 className="text-xl font-black text-gray-800">AI 模型设置</h3>
             </div>
             
-            <div className="mb-4">
-              <label className="block text-sm font-bold text-gray-600 mb-2">
-                Gemini API Key
-              </label>
-              <input
-                type="password"
-                value={geminiKeyInput}
-                onChange={(e) => {
-                  setGeminiKeyInput(e.target.value);
-                  setGeminiStatus('idle');
-                }}
-                placeholder="输入你的 Google AI API Key..."
-                className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-blue-300 focus:outline-none text-sm"
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                获取 API Key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Google AI Studio</a>
-              </p>
-            </div>
-            
-            {/* 状态提示 */}
-            {geminiStatus === 'success' && (
-              <div className="mb-4 p-3 bg-green-50 rounded-xl flex items-center gap-2">
-                <span className="text-green-500">✅</span>
-                <span className="text-sm text-green-700 font-bold">连接成功！已切换到 Gemini AI</span>
-              </div>
-            )}
-            {geminiStatus === 'error' && (
-              <div className="mb-4 p-3 bg-red-50 rounded-xl flex items-center gap-2">
-                <span className="text-red-500">❌</span>
-                <span className="text-sm text-red-700 font-bold">连接失败，请检查 API Key 是否正确</span>
-              </div>
-            )}
-            
-            {/* Gemini 使用统计 */}
-            {geminiApiKey && (
-              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">📊</span>
-                  <span className="text-sm font-bold text-gray-700">API 调用统计</span>
+            {/* Gemini 设置区域 */}
+            <div className={`mb-4 p-4 rounded-2xl border-2 transition-all ${geminiApiKey ? 'border-blue-500 bg-gradient-to-r from-blue-50 to-purple-50' : 'border-gray-200 bg-gray-50'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={20} className="text-blue-500" />
+                  <span className="font-bold text-gray-700">Google Gemini</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/80 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-black text-blue-500">{geminiUsageStats.daily.count}</div>
-                    <div className="text-xs text-gray-500 mt-1">今日调用</div>
-                  </div>
-                  <div className="bg-white/80 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-black text-purple-500">{geminiUsageStats.monthly.count}</div>
-                    <div className="text-xs text-gray-500 mt-1">本月调用</div>
-                  </div>
-                </div>
-                <div className="mt-3 text-center">
-                  <span className="text-xs text-gray-400">累计调用: {geminiUsageStats.total} 次</span>
-                </div>
+                {geminiApiKey && (
+                  <span className="text-xs px-3 py-1 bg-blue-500 text-white rounded-full font-bold">✓ 正在使用</span>
+                )}
               </div>
-            )}
-            
-            <div className="flex gap-3">
+              
+              <div className="mb-3">
+                <input
+                  type="password"
+                  value={geminiKeyInput}
+                  onChange={(e) => {
+                    setGeminiKeyInput(e.target.value);
+                    setGeminiStatus('idle');
+                  }}
+                  placeholder="输入 Gemini API Key..."
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 focus:border-blue-300 focus:outline-none text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  获取: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Google AI Studio</a>
+                </p>
+              </div>
+              
+              {/* 状态提示 */}
+              {geminiStatus === 'success' && (
+                <div className="mb-3 p-2 bg-green-100 rounded-lg flex items-center gap-2">
+                  <span className="text-green-500">✅</span>
+                  <span className="text-xs text-green-700 font-bold">验证成功！</span>
+                </div>
+              )}
+              {geminiStatus === 'error' && (
+                <div className="mb-3 p-2 bg-red-100 rounded-lg flex items-center gap-2">
+                  <span className="text-red-500">❌</span>
+                  <span className="text-xs text-red-700 font-bold">验证失败，请检查 API Key</span>
+                </div>
+              )}
+              
+              {/* Gemini 使用统计 */}
               {geminiApiKey && (
+                <div className="mb-3 grid grid-cols-3 gap-2">
+                  <div className="bg-white/80 rounded-lg p-2 text-center">
+                    <div className="text-lg font-black text-blue-500">{geminiUsageStats.daily.count}</div>
+                    <div className="text-xs text-gray-500">今日</div>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-2 text-center">
+                    <div className="text-lg font-black text-purple-500">{geminiUsageStats.monthly.count}</div>
+                    <div className="text-xs text-gray-500">本月</div>
+                  </div>
+                  <div className="bg-white/80 rounded-lg p-2 text-center">
+                    <div className="text-lg font-black text-gray-500">{geminiUsageStats.total}</div>
+                    <div className="text-xs text-gray-500">累计</div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                {geminiApiKey && (
+                  <button
+                    onClick={() => {
+                      setGeminiApiKey('');
+                      setGeminiStatus('idle');
+                      showToastMessage('已切换到 DeepSeek');
+                    }}
+                    className="flex-1 py-2 rounded-xl text-red-500 font-bold bg-red-50 hover:bg-red-100 transition-colors text-sm"
+                  >
+                    断开连接
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!geminiKeyInput.trim()) {
+                      showToastMessage('请输入 API Key');
+                      return;
+                    }
+                    
+                    setGeminiValidating(true);
+                    setGeminiStatus('idle');
+                    
+                    const isValid = await validateGeminiApiKey(geminiKeyInput.trim());
+                    
+                    setGeminiValidating(false);
+                    
+                    if (isValid) {
+                      setGeminiApiKey(geminiKeyInput.trim());
+                      setGeminiStatus('success');
+                      showToastMessage('🎉 已切换到 Gemini！');
+                    } else {
+                      setGeminiStatus('error');
+                    }
+                  }}
+                  disabled={geminiValidating || !geminiKeyInput.trim()}
+                  className="flex-1 py-2 rounded-xl text-white font-bold bg-gradient-to-r from-blue-500 to-purple-500 hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                >
+                  {geminiValidating ? '验证中...' : (geminiApiKey ? '重新验证' : '连接并使用')}
+                </button>
+              </div>
+            </div>
+            
+            {/* DeepSeek 设置区域 */}
+            <div className={`mb-6 p-4 rounded-2xl border-2 transition-all ${!geminiApiKey ? 'border-green-500 bg-gradient-to-r from-green-50 to-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Brain size={20} className="text-green-600" />
+                  <span className="font-bold text-gray-700">DeepSeek</span>
+                </div>
+                {!geminiApiKey && (
+                  <span className="text-xs px-3 py-1 bg-green-500 text-white rounded-full font-bold">✓ 正在使用</span>
+                )}
+              </div>
+              
+              {geminiApiKey && (
+                <p className="text-xs text-gray-500 mb-3">
+                  💡 Gemini 调用失败时会自动切换到 DeepSeek
+                </p>
+              )}
+              
+              <div className="space-y-2">
+                {/* 大智慧 - deepseek-reasoner */}
                 <button
                   onClick={() => {
-                    setGeminiApiKey('');
-                    setGeminiKeyInput('');
-                    setGeminiStatus('idle');
-                    showToastMessage('已断开 Gemini 连接');
+                    setDeepseekModel('deepseek-reasoner');
+                    if (!geminiApiKey) {
+                      showToastMessage('已切换到 🧠 大智慧');
+                    } else {
+                      showToastMessage('DeepSeek 备用模型已设为 🧠 大智慧');
+                    }
                   }}
-                  className="flex-1 py-3 rounded-2xl text-red-500 font-bold bg-red-50 hover:bg-red-100 transition-colors"
+                  className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                    deepseekModel === 'deepseek-reasoner' 
+                      ? 'border-green-500 bg-green-50' 
+                      : 'border-gray-200 bg-white hover:border-green-300'
+                  }`}
                 >
-                  断开连接
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🧠</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                        大智慧
+                        {deepseekModel === 'deepseek-reasoner' && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500 text-white rounded-full">已选择</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">深度推理，适合复杂分析</div>
+                    </div>
+                  </div>
                 </button>
-              )}
-              <button
-                onClick={async () => {
-                  if (!geminiKeyInput.trim()) {
-                    showToastMessage('请输入 API Key');
-                    return;
-                  }
-                  
-                  setGeminiValidating(true);
-                  setGeminiStatus('idle');
-                  
-                  const isValid = await validateGeminiApiKey(geminiKeyInput.trim());
-                  
-                  setGeminiValidating(false);
-                  
-                  if (isValid) {
-                    setGeminiApiKey(geminiKeyInput.trim());
-                    setGeminiStatus('success');
-                    showToastMessage('🎉 Gemini 连接成功！');
-                  } else {
-                    setGeminiStatus('error');
-                  }
-                }}
-                disabled={geminiValidating || !geminiKeyInput.trim()}
-                className="flex-1 py-3 rounded-2xl text-white font-bold bg-gradient-to-r from-blue-500 to-purple-500 hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {geminiValidating ? '验证中...' : '验证并保存'}
-              </button>
+                
+                {/* 小简单 - deepseek-chat */}
+                <button
+                  onClick={() => {
+                    setDeepseekModel('deepseek-chat');
+                    if (!geminiApiKey) {
+                      showToastMessage('已切换到 ⚡ 小简单');
+                    } else {
+                      showToastMessage('DeepSeek 备用模型已设为 ⚡ 小简单');
+                    }
+                  }}
+                  className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                    deepseekModel === 'deepseek-chat' 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 bg-white hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">⚡</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                        小简单
+                        {deepseekModel === 'deepseek-chat' && (
+                          <span className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded-full">已选择</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">快速响应，适合日常对话</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
             
             <button
-              onClick={() => setShowGeminiModal(false)}
-              className="w-full mt-3 py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
+              onClick={() => setShowAIModelModal(false)}
+              className="w-full py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
             >
               关闭
             </button>
@@ -12695,6 +12778,12 @@ export default function App() {
     return localStorage.getItem('geminiApiKey') || '';
   });
 
+  // DeepSeek 模型选择 - 持久化到localStorage
+  const [deepseekModel, setDeepseekModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>(() => {
+    const saved = localStorage.getItem('deepseekModel');
+    return (saved === 'deepseek-chat' || saved === 'deepseek-reasoner') ? saved : 'deepseek-reasoner';
+  });
+
   // 持久化 Gemini API Key 到 localStorage
   useEffect(() => {
     if (geminiApiKey) {
@@ -12703,6 +12792,11 @@ export default function App() {
       localStorage.removeItem('geminiApiKey');
     }
   }, [geminiApiKey]);
+
+  // 持久化 DeepSeek 模型选择到 localStorage
+  useEffect(() => {
+    localStorage.setItem('deepseekModel', deepseekModel);
+  }, [deepseekModel]);
 
   // 持久化pomodoroSettings到localStorage
   useEffect(() => {
@@ -12974,7 +13068,7 @@ export default function App() {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} deepseekModel={deepseekModel} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -13001,8 +13095,9 @@ export default function App() {
         setGlobalTimers={setGlobalTimers}
         categories={categories}
         geminiApiKey={geminiApiKey}
+        deepseekModel={deepseekModel}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} deepseekModel={deepseekModel} setDeepseekModel={setDeepseekModel} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
@@ -13092,6 +13187,7 @@ export default function App() {
           aiChatLoading={aiChatLoading}
           setAiChatLoading={setAiChatLoading}
           geminiApiKey={geminiApiKey}
+          deepseekModel={deepseekModel}
         />
       ) : (
         <>
