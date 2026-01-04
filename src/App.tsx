@@ -375,7 +375,7 @@ const callAI = async (
     temperature?: number; 
     maxTokens?: number; 
     deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
-    geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+    geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   }
 ): Promise<string> => {
   const temperature = options?.temperature ?? 0.7;
@@ -4156,7 +4156,7 @@ const ReviewView = ({
     report: any;
   }>>>;
   geminiApiKey?: string;
-  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
@@ -4766,20 +4766,20 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
         
-        // 当 JSON 解析失败时，直接显示 AI 的原始响应
-        // 这样用户可以看到 deepseek-reasoner 返回的完整内容
+        // 当 JSON 解析失败时，直接把 AI 原始响应作为完整分析结果显示
         const rawContent = aiResponse || '(AI 返回空内容)';
         
         // 尝试提取 score（如果有的话）
         const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
         const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
         
+        // 直接显示完整的 AI 原始响应，不截断
         report = {
           score: score,
-          truth: `【AI原始响应】\n${rawContent.slice(0, 800)}${rawContent.length > 800 ? '...(内容过长已截断)' : ''}`,
-          rootCause: '响应格式非标准JSON，上方显示AI原始输出',
-          audit: '请查看上方AI原始响应内容',
-          suggestion: '如需标准格式，可尝试切换到 DeepSeek 小简单 或 Gemini 模型'
+          truth: rawContent,  // 完整显示 AI 响应
+          rootCause: '',      // 留空，因为内容都在 truth 里了
+          audit: '',
+          suggestion: ''
         };
       }
       
@@ -6283,7 +6283,7 @@ const PlanView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
   geminiApiKey?: string;
-  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -9412,7 +9412,7 @@ const AIChatPage = ({
   aiChatLoading: boolean;
   setAiChatLoading: React.Dispatch<React.SetStateAction<boolean>>;
   geminiApiKey?: string;
-  geminiModel?: 'gemini-2.0-flash' | 'gemini-1.5-pro';
+  geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
   // 时间分类配置
@@ -10882,8 +10882,8 @@ const SettingsView = ({
   onOpenAIChat: () => void;
   geminiApiKey: string;
   setGeminiApiKey: (key: string) => void;
-  geminiModel: 'gemini-2.0-flash' | 'gemini-1.5-pro';
-  setGeminiModel: (model: 'gemini-2.0-flash' | 'gemini-1.5-pro') => void;
+  geminiModel: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
+  setGeminiModel: (model: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro') => void;
   deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
   setDeepseekModel: (model: 'deepseek-chat' | 'deepseek-reasoner') => void;
 }) => {
@@ -12834,6 +12834,21 @@ END:VEVENT
                     </button>
                     <button
                       onClick={() => {
+                        setGeminiModel('gemini-2.0-flash-thinking-exp');
+                        showToastMessage('已切换到 🧠 思考（强逻辑）');
+                      }}
+                      className={`flex-1 p-2 rounded-xl border-2 transition-all text-center ${
+                        geminiModel === 'gemini-2.0-flash-thinking-exp' 
+                          ? 'border-indigo-500 bg-indigo-50' 
+                          : 'border-gray-200 bg-white hover:border-indigo-300'
+                      }`}
+                    >
+                      <div className="text-lg">🧠</div>
+                      <div className="text-xs font-bold text-gray-700">思考</div>
+                      <div className="text-xs text-indigo-600">强逻辑</div>
+                    </button>
+                    <button
+                      onClick={() => {
                         setGeminiModel('gemini-1.5-pro');
                         showToastMessage('已切换到 💎 Pro（贵）');
                       }}
@@ -13066,9 +13081,9 @@ export default function App() {
   });
 
   // Gemini 模型选择 - 持久化到localStorage
-  const [geminiModel, setGeminiModel] = useState<'gemini-2.0-flash' | 'gemini-1.5-pro'>(() => {
+  const [geminiModel, setGeminiModel] = useState<'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro'>(() => {
     const saved = localStorage.getItem('geminiModel');
-    return (saved === 'gemini-2.0-flash' || saved === 'gemini-1.5-pro') ? saved : 'gemini-2.0-flash';
+    return (saved === 'gemini-2.0-flash' || saved === 'gemini-2.0-flash-thinking-exp' || saved === 'gemini-1.5-pro') ? saved : 'gemini-2.0-flash';
   });
 
   // DeepSeek 模型选择 - 持久化到localStorage
