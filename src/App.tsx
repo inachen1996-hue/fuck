@@ -1657,10 +1657,21 @@ const TimerView = ({
     console.log('TimerView confirmSaveRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
     
-    // 关闭弹窗并清理状态（计时器已在显示弹窗前停止）
+    // 关闭弹窗并清理状态
     setShowNoteModal(false);
     setPendingRecord(null);
     setTimerNote('');
+    
+    // 停止计时器
+    setTimers(timers => timers.map(t => 
+      t.id === timer.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
+    ));
+    setActiveTimer(null);
+    setTimerStartTime(null);
+    setTimerStartTimestamp(null);
+    setElapsedTime(0);
+    setPomodoroPhase('work');
+    setCurrentPomodoroRound(1);
   };
 
   // 停止响铃（不自动进入下一阶段）
@@ -1784,10 +1795,15 @@ const TimerView = ({
     // 注意：如果是暂停状态，记录已经在暂停时保存过了
     if (timerStartTime && activeTimer?.id === timer.id && timer.status === 'running') {
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
-        saveTimeRecord(timer, timerStartTime, new Date());
+        // 显示感想弹窗，弹窗关闭后会停止计时器
+        setPendingRecord({ timer, startTime: timerStartTime, endTime: new Date() });
+        setTimerNote('');
+        setShowNoteModal(true);
+        return; // 等待弹窗关闭后再停止计时器
       }
     }
     
+    // 如果没有需要保存的记录，直接停止
     const updatedTimer = { 
       ...timer, 
       status: 'idle' as TimerStatus, 
@@ -4266,54 +4282,43 @@ const ReviewView = ({
     }).join('\n\n');
     
     // 构建AI提示词 - 直接使用用户定义的提示词模板
-    const prompt = `# Role: 生存心理战术大师 (Survival Psycho-Tactician)
+    const prompt = `# Role: 生存心理战术大师 (Survival Psycho-Tactician) - High IQ Version
+
+# Core Instruction (核心指令):
+你不是一个只会填空的机器人，你是一位**拥有极高情商和战略眼光的私人顾问**。**严禁**机械地套用规则。你必须结合用户的【数据源】、【日记】、【日程感想】、【特殊事件（如Bug/停电）】进行**综合侦探式分析**。**你的目标不是"评分"，而是从数据中挖掘出用户自己都没意识到的"战略真相"。**
 
 # User Profile:
 1. **死线**：2026年4月必须变现。
-2. **商业模式**：
-   * **内容流**：视频流量变现。
-   * **资产流**：特效资产变现。
-3. **痛点**：腰肌劳损，需要精准区分"必要的生产劳动"和"无用的完美主义磨蹭"。
+2. **商业模式**：视频内容流 + 特效资产流。
+3. **痛点**：腰肌劳损，且非常反感"机械式说教"。需要"懂我"的深度分析。
 
-# 🔋 Data Interpretation Rules (数据解读新规):
+# 🧠 Intelligent Analysis Protocols (高智商分析协议):
 
-**1. 动作价值分级 (Action Value Grading) - [核心修正]**
-* **原则**：**"结果"定义"过程"。** 只要产品最终上架/发布了，生产它的过程就是有效劳动。
-* **判定逻辑**：
-  * ✅ **核心变现闭环 (The Closed Loop)**：
-    * **[发布/上架]** = **临门一脚**（高光时刻）。
-    * **[制作特效/拍摄/剪辑]** = **必要生产成本 (Essential Production)**。
-    * **判定法则**：
-      * 如果当天（或T+1日）完成了发布，那么前面的制作/拍摄时间自动升级为**"有效战斗时长"**，予以肯定。
-      * *（例如：花1.5小时做特效，花0.5小时发布。结论：今天高效工作了2小时。）*
-  * 🟡 **库存积压 (Inventory Risk)**：
-    * [制作了但没发]、[剪了一半没动了]。
-    * **判定法则**：只有当生产动作**没有形成闭环**时，才标记为"库存风险"。
-  * 🔵 **战略研发 (Strategic R&D)**：
-    * [针对性的学习/调研]。需遵循"现学现卖"原则。
-  * ❌ **伪勤奋 (Fake Busyness)**：
-    * [无目的的刷教程]、[过度打磨]（例如：一个简单的猫特效做了8个小时）。
+**1. 资产价值的"动态评估" (Dynamic Asset Valuation)**
+* **死板规则**："没发布=没产出"。(已废除)
+* **高智商逻辑**：
+  * **存稿是顶级资产**：如果检测到用户制作了视频但未发，且日记提到"存着明天发"或"避开Bug"，这是**极高水平的运营控制力**。请大力表扬这种"手里有粮"的从容感。
+  * **发布是战术动作**：如果因为平台Bug发重了，或者因为不想破坏流量而推迟，这叫**"战术性撤退"**，是加分项！不要扣分！
 
-**2. 生产效率审计 (Efficiency Audit)**
-* **任务**：不否认生产的价值，但**审计生产的效率**。
-* **逻辑**：
-  * 做一个特效花了 1.5 小时 -> **正常/高效**（这是干活）。
-  * 做一个特效花了 10 小时 -> **效率低下/完美主义**（这是钻牛角尖）。
-* **话术**：不要骂用户"为什么花时间做"，要帮用户算"时薪划不划算"。
+**2. 研发投入的"黄金线索" (The Golden Thread of R&D)**
+* **死板规则**："看教程=浪费时间"。(已废除)
+* **高智商逻辑**：**寻找"输入"与"输出"的连接线。**
+  * **线索匹配**：用户看了一个"Blender猫毛教程"，而他正在做的视频也是"猫"。-> 结论：**"这是精准的军火采购，完全有效。"**
+  * **日记佐证**：如果日记里写了"对下个特效有灵感了"，哪怕他发呆了20分钟，这也是**"灵感孵化期"**，不是发呆。
+  * *只有那种"看了俩小时教程却说不出学了啥"的情况，才叫浪费。*
 
-**3. 快乐质量质检 (Joy Quality Check)**
-* **判定**：日记里"开心/爽"的刷抖音 = ✅ 充电；"焦虑/空虚"的刷抖音 = ❌ 漏电。
+**3. 快乐与逃避的"微表情识别" (Micro-Expression Analysis)**
+* **死板规则**："刷抖音=不好"。(已废除)
+* **高智商逻辑**：
+  * **看日记心情**：日记说"开心/解压" -> 这是**"战略充电"**，为了下一场战斗回血。
+  * **看刷的内容**：如果刷的是"竞品/热点"，且之后有记录想法 -> 这是**"市场调研"**。
+  * **看时间点**：如果是完成工作后的刷，是**"奖赏"**；如果是工作前的刷，是**"畏难"**。
 
-# 🛠️ Tactical Solution Library (战术解决方案库):
-
-* **针对"生产-发布割裂"**：
-  * **建议**：**"快餐店模式"**。不要想做满汉全席。把你的特效/视频当成汉堡包。**后厨（制作）做完一个，前台（发布）就卖一个。** 不要让后厨堆满了汉堡才开始卖。
-
-* **针对"不敢发布"**：
-  * **建议**：**"丑媳妇总要见公婆"**。这一行是概率游戏。你精心打磨的可能没人看，随手做的可能火了。**发布量 > 精致度**。
-
-* **针对"流量瓶颈"**：
-  * **建议**：**"定点爆破学习"**。缺什么补什么，学完立刻用。
+# 🛠️ Strategic Advice (战略建议逻辑):
+*不要给通用的废话（如"建议多喝水"）。给出的建议必须基于**今日的具体痛点**。*
+* 如果今日**"有存稿"** -> 建议：利用明天的空档期，冲击一个高难度的技术点。
+* 如果今日**"被Bug干扰"** -> 建议：如何平复心态，利用这个意外去做点别的（如整理素材库）。
+* 如果今日**"研发高效"** -> 建议：趁热打铁，明天直接把学到的东西变现。
 
 # Input Data (用户数据)
 - **当前日期**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -4321,7 +4326,7 @@ const ReviewView = ({
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
 
-## 具体时间记录详情（按分类）
+## 具体时间记录详情（按分类，含感想）
 ${eventDetailsText || '暂无具体时间记录'}
 
 ## 情绪记录
@@ -4330,48 +4335,41 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ## 日记内容摘要
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
-# Output Structure (输出结构):
+# Output Structure (输出结构 - 拒绝模板化):
 
-## 1. 🔮 4月上岸概率：[ XX% ]
-*(计算公式：有效战斗时长（含制作+发布）占全天工时的比例。如果完成了闭环，分数大幅提升)*
+## 1. 🩸 局势研判 (Situation Room)
+*(不要报数字！用一段话，像真人一样评价今天的战局。)*
+* *Bad:* "今日上岸概率33%，工作时长3小时。"
+* *Good:* "虽然今天只发了一个视频，数据看着一般，但我看到了你压箱底的那个存稿。**你在遭遇平台Bug和停电的双重打击下，依然完成了'1发1存'的战绩，这比风平浪静时的满勤更显功力。** 你的上岸概率实则在 80% 以上。"
 
-## 2. 🧠 潜意识深度病理 (Deep Psycho-Analysis)
-*(分析深层动机)*
-* *示例（针对未发布情况）：* "你今天做了3小时特效却没发，这是**'囤积癖'**。你享受'制造'的过程，却恐惧'市场'的反馈。"
-* *示例（针对已发布情况）：* "今天你完成了**'制作-发布'的完整闭环**，干得漂亮！这1.5小时的制作时间没有被浪费，它们成功转化为了资产。"
+## 2. 🕵️‍♂️ 深度侦探分析 (Sherlock Scan)
+* **关于存稿与发布**：[分析今日的发布策略是否明智？存稿让你获得了什么主动权？]
+* **关于研发与输入**：[指出今日的学习/调研，是如何服务于未来变现的？]
+  * *话术示例：* "你下午那74分钟调研不是浪费，你是在为明天的特效'磨刀'。日记里的灵感记录就是铁证。"
+* **关于心理博弈**：[分析面对干扰（Bug/腰痛）时的心理表现]
 
-## 3. 🔪 行为显微镜 (Behavioral Microscope)
-* **生产履约率**：[今日制作了多久？发布了多久？是否形成了闭环？]
-  * *（如果形成了闭环，请标注：✅ 有效生产）*
-* **研发转化率**：[学习是否转化为了产出？]
-* **真/假快乐**：[区分爽刷与瘫刷]
-
-## 4. 🛡️ 战术行动处方 (Tactical Prescriptions)
-*(从战术库中调用建议)*
-* **效率优化**：[如果制作时间过长，给出提速建议]
-* **变现催化**：[如何让明天的生产更直接地指向变现]
+## 3. 🛡️ 明日战术指令 (The Command)
+*(基于今日情况，给出一个让人无法拒绝的行动指南)*
+* *示例：* "既然手里有存稿，明天上午允许你睡个懒觉。下午用满血状态，死磕那个一直想做的高级特效。"
 
 # Tone (语气):
-像一位**务实的产品经理**。尊重每一分钟的伏案工作（制作/剪辑），但永远用**"是否上架"**作为衡量这些工作价值的唯一标准。**口号：不发布的视频是垃圾，不上市的特效是废代码。**
+**不要像个机器人！**要像《纸牌屋》里的幕僚长，或者你最信任的合伙人。**犀利、有洞察力、且极度护短（站在用户利益角度思考）。** 看到用户受委屈（Bug/停电）要同情，看到用户有策略（存稿）要激赏。
 
 # ⚠️ JSON输出格式要求（重要）：
 - **不要在内容中重复标题或emoji**，因为UI已经显示了标题
-- survivalRate 只需要返回 "XX%（说明）" 格式，不要包含"🔮4月上岸概率："前缀
-- psychoAnalysis 只需要返回分析内容，不要包含"🧠潜意识深度病理："前缀
+- situationRoom 只需要返回分析内容，不要包含"🩸局势研判："前缀
+- sherlockScan 的每个字段只需要返回分析内容，不要包含标题前缀
+- command 只需要返回行动指南内容，不要包含"🛡️明日战术指令："前缀
 
 请以JSON格式返回：
 {
-  "survivalRate": "XX%（简短说明，基于当前日期计算距离2026年4月的真实月数）",
-  "psychoAnalysis": "分析内容（不要重复标题）",
-  "microscope": {
-    "productionRate": "生产履约率内容",
-    "rdConversion": "研发转化率内容",
-    "joyQuality": "真/假快乐内容"
+  "situationRoom": "局势研判内容（像真人一样的一段话，不要报数字）",
+  "sherlockScan": {
+    "assetStrategy": "关于存稿与发布的分析",
+    "rdInvestment": "关于研发与输入的分析",
+    "psychoBattle": "关于心理博弈的分析"
   },
-  "tactics": {
-    "efficiency": "效率优化内容",
-    "cashCatalyst": "变现催化内容"
-  }
+  "command": "明日战术指令内容"
 }
 
 只返回JSON，不要其他内容。`;
@@ -4391,7 +4389,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           messages: [
             {
               role: 'system',
-              content: '你是生存心理战术大师，像一位务实的产品经理。尊重每一分钟的伏案工作（制作/剪辑），但永远用"是否上架"作为衡量这些工作价值的唯一标准。口号：不发布的视频是垃圾，不上市的特效是废代码。请以JSON格式返回分析报告。'
+              content: '你是生存心理战术大师（High IQ Version），像《纸牌屋》里的幕僚长，或者用户最信任的合伙人。犀利、有洞察力、且极度护短（站在用户利益角度思考）。严禁机械套用规则，要进行综合侦探式分析。请以JSON格式返回分析报告。'
             },
             {
               role: 'user',
@@ -5235,76 +5233,61 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       返回历史列表
                     </button>
                     
-                    {/* 🔮 4月上岸概率 */}
+                    {/* 🩸 局势研判 */}
                     <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔮</span>
+                          <span className="text-lg">🩸</span>
                         </div>
-                        <h4 className="font-black text-purple-800 text-lg">4月上岸概率</h4>
+                        <h4 className="font-black text-purple-800 text-lg">局势研判</h4>
                       </div>
-                      <p className="text-xl font-black text-purple-700" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.survivalRate || viewingHistoryReport.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
+                      <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.situationRoom || viewingHistoryReport.survivalRate || viewingHistoryReport.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🧠 潜意识深度病理 */}
+                    {/* 🕵️‍♂️ 深度侦探分析 */}
                     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🧠</span>
+                        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center">
+                          <span className="text-lg">🕵️</span>
                         </div>
-                        <h4 className="font-black text-gray-800 text-lg">潜意识深度病理</h4>
-                      </div>
-                      <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                        __html: (viewingHistoryReport.psychoAnalysis || viewingHistoryReport.biopsy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                      }} />
-                    </div>
-
-                    {/* 🔪 行为显微镜 */}
-                    <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔪</span>
-                        </div>
-                        <h4 className="font-black text-gray-800 text-lg">行为显微镜</h4>
+                        <h4 className="font-black text-gray-800 text-lg">深度侦探分析</h4>
                       </div>
                       
                       <div className="space-y-3">
                         <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-blue-600 mb-1">📦 生产履约率</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.productionRate || viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.cashAction || viewingHistoryReport.profitLoss?.output || '暂无数据'}</p>
+                          <p className="text-xs font-bold text-blue-600 mb-1">📦 存稿与发布</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.sherlockScan?.assetStrategy || viewingHistoryReport.microscope?.productionRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                          }} />
                         </div>
                         <div className="bg-green-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-green-600 mb-1">📊 研发转化率</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.rdConversion || viewingHistoryReport.microscope?.assetIncrement || '暂无数据'}</p>
+                          <p className="text-xs font-bold text-green-600 mb-1">📊 研发与输入</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.sherlockScan?.rdInvestment || viewingHistoryReport.microscope?.rdConversion || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
+                          }} />
                         </div>
-                        <div className="bg-yellow-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.microscope?.joyQuality || '暂无数据'}</p>
+                        <div className="bg-orange-50 rounded-xl p-3">
+                          <p className="text-xs font-bold text-orange-600 mb-1">🧠 心理博弈</p>
+                          <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                            __html: (viewingHistoryReport.sherlockScan?.psychoBattle || viewingHistoryReport.psychoAnalysis || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                          }} />
                         </div>
                       </div>
                     </div>
 
-                    {/* 🛡️ 战术行动处方 */}
+                    {/* 🛡️ 明日战术指令 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
                           <span className="text-lg">🛡️</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">战术行动处方</h4>
+                        <h4 className="font-black text-sky-800 text-lg">明日战术指令</h4>
                       </div>
-                      
-                      <div className="space-y-3">
-                        <div className="bg-purple-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-purple-600 mb-1">⚡ 效率优化</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.efficiency || viewingHistoryReport.tactics?.rdCalibration || viewingHistoryReport.tactics?.cashBoost || viewingHistoryReport.tomorrowOrder || '暂无建议'}</p>
-                        </div>
-                        <div className="bg-green-50 rounded-xl p-3">
-                          <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
-                          <p className="text-sm text-gray-700">{viewingHistoryReport.tactics?.cashCatalyst || viewingHistoryReport.tactics?.coldStart || '暂无建议'}</p>
-                        </div>
-                      </div>
+                      <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                        __html: (viewingHistoryReport.command || viewingHistoryReport.tactics?.efficiency || viewingHistoryReport.tomorrowOrder || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
+                      }} />
                     </div>
                   </div>
                 ) : (
@@ -5393,76 +5376,61 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
-                {/* ===== 🔮 4月上岸概率 ===== */}
+                {/* ===== 🩸 局势研判 ===== */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔮</span>
+                      <span className="text-lg">🩸</span>
                     </div>
-                    <h4 className="font-black text-purple-800 text-lg">4月上岸概率</h4>
+                    <h4 className="font-black text-purple-800 text-lg">局势研判</h4>
                   </div>
-                  <p className="text-xl font-black text-purple-700" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.survivalRate || reportData.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
+                  <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.situationRoom || reportData.survivalRate || reportData.verdict || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
                   }} />
                 </div>
 
-                {/* ===== 🧠 潜意识深度病理 ===== */}
+                {/* ===== 🕵️‍♂️ 深度侦探分析 ===== */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-50">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🧠</span>
+                    <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center">
+                      <span className="text-lg">🕵️</span>
                     </div>
-                    <h4 className="font-black text-gray-800 text-lg">潜意识深度病理</h4>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.psychoAnalysis || reportData.biopsy || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-red-700">$1</strong>') 
-                  }} />
-                </div>
-
-                {/* ===== 🔪 行为显微镜 ===== */}
-                <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-2xl p-5 border-2 border-gray-100">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔪</span>
-                    </div>
-                    <h4 className="font-black text-gray-800 text-lg">行为显微镜</h4>
+                    <h4 className="font-black text-gray-800 text-lg">深度侦探分析</h4>
                   </div>
                   
                   <div className="space-y-3">
                     <div className="bg-blue-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-blue-600 mb-1">📦 生产履约率</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.productionRate || reportData.microscope?.rdConversion || reportData.microscope?.cashAction || reportData.profitLoss?.output || '暂无数据'}</p>
+                      <p className="text-xs font-bold text-blue-600 mb-1">📦 存稿与发布</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.sherlockScan?.assetStrategy || reportData.microscope?.productionRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-700">$1</strong>') 
+                      }} />
                     </div>
                     <div className="bg-green-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-green-600 mb-1">📊 研发转化率</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.rdConversion || reportData.microscope?.assetIncrement || '暂无数据'}</p>
+                      <p className="text-xs font-bold text-green-600 mb-1">📊 研发与输入</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.sherlockScan?.rdInvestment || reportData.microscope?.rdConversion || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-green-700">$1</strong>') 
+                      }} />
                     </div>
-                    <div className="bg-yellow-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-yellow-600 mb-1">😊 真/假快乐</p>
-                      <p className="text-sm text-gray-700">{reportData.microscope?.joyQuality || '暂无数据'}</p>
+                    <div className="bg-orange-50 rounded-xl p-3">
+                      <p className="text-xs font-bold text-orange-600 mb-1">🧠 心理博弈</p>
+                      <p className="text-sm text-gray-700" dangerouslySetInnerHTML={{ 
+                        __html: (reportData.sherlockScan?.psychoBattle || reportData.psychoAnalysis || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-700">$1</strong>') 
+                      }} />
                     </div>
                   </div>
                 </div>
 
-                {/* ===== 🛡️ 战术行动处方 ===== */}
+                {/* ===== 🛡️ 明日战术指令 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
                       <span className="text-lg">🛡️</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">战术行动处方</h4>
+                    <h4 className="font-black text-sky-800 text-lg">明日战术指令</h4>
                   </div>
-                  
-                  <div className="space-y-3">
-                    <div className="bg-purple-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-purple-600 mb-1">⚡ 效率优化</p>
-                      <p className="text-sm text-gray-700">{reportData.tactics?.efficiency || reportData.tactics?.rdCalibration || reportData.tactics?.cashBoost || reportData.tomorrowOrder || '暂无建议'}</p>
-                    </div>
-                    <div className="bg-green-50 rounded-xl p-3">
-                      <p className="text-xs font-bold text-green-600 mb-1">🚀 变现催化</p>
-                      <p className="text-sm text-gray-700">{reportData.tactics?.cashCatalyst || reportData.tactics?.coldStart || '暂无建议'}</p>
-                    </div>
-                  </div>
+                  <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
+                    __html: (reportData.command || reportData.tactics?.efficiency || reportData.tomorrowOrder || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
+                  }} />
                 </div>
               </div>
             ) : (
@@ -6473,10 +6441,21 @@ const PlanView = ({
     console.log('PlanView confirmSavePlanRecord: 保存记录', newRecord);
     setTimeRecords(prev => [...prev, newRecord]);
     
-    // 关闭弹窗并清理状态（计时器已在显示弹窗前停止）
+    // 关闭弹窗并清理状态
     setShowPlanNoteModal(false);
     setPendingPlanRecord(null);
     setPlanTimerNote('');
+    
+    // 停止计时器
+    setActiveTimerId(null);
+    setRemainingTime(0);
+    setElapsedTime(0);
+    setTimerStatus('idle');
+    setPomodoroPhase('work');
+    setCurrentPomodoroRound(1);
+    setTimerStartTime(null);
+    setTimerStartTimestamp(null);
+    setCurrentTaskName('');
   };
 
   // 开始计时（旧方法保留兼容）
@@ -6606,10 +6585,21 @@ const PlanView = ({
     // 正计时、倒计时都保存，番茄钟只保存工作阶段
     if (timerStartTime && currentTaskName) {
       if (timerMode !== 'pomodoro' || pomodoroPhase === 'work') {
-        saveTimeRecord(timerStartTime, currentTaskName);
+        // 显示感想弹窗，弹窗关闭后会停止计时器
+        const categoryRef = findExistingCategory(currentTaskName, timeRecords, globalTimers);
+        setPendingPlanRecord({ 
+          taskName: currentTaskName, 
+          startTime: timerStartTime, 
+          endTime: new Date(),
+          categoryId: categoryRef
+        });
+        setPlanTimerNote('');
+        setShowPlanNoteModal(true);
+        return; // 等待弹窗关闭后再停止计时器
       }
     }
     
+    // 如果没有需要保存的记录，直接停止
     setActiveTimerId(null);
     setRemainingTime(0);
     setElapsedTime(0);
