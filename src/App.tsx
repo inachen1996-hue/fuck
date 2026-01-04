@@ -306,6 +306,180 @@ let audioBuffer: AudioBuffer | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 let isAlarmCurrentlyPlaying = false; // 全局标志：铃声是否正在播放
 
+// Gemini API 调用次数统计
+interface GeminiUsageStats {
+  daily: { date: string; count: number };
+  monthly: { month: string; count: number };
+  total: number;
+}
+
+const GEMINI_USAGE_KEY = 'geminiUsageStats';
+
+// 获取当前日期字符串 YYYY-MM-DD
+const getTodayStr = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+};
+
+// 获取当前月份字符串 YYYY-MM
+const getCurrentMonthStr = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+};
+
+// 读取 Gemini 使用统计
+const getGeminiUsageStats = (): GeminiUsageStats => {
+  const saved = localStorage.getItem(GEMINI_USAGE_KEY);
+  const today = getTodayStr();
+  const currentMonth = getCurrentMonthStr();
+  
+  if (saved) {
+    try {
+      const stats = JSON.parse(saved) as GeminiUsageStats;
+      // 检查日期是否需要重置
+      if (stats.daily.date !== today) {
+        stats.daily = { date: today, count: 0 };
+      }
+      if (stats.monthly.month !== currentMonth) {
+        stats.monthly = { month: currentMonth, count: 0 };
+      }
+      return stats;
+    } catch {
+      // 解析失败，返回默认值
+    }
+  }
+  
+  return {
+    daily: { date: today, count: 0 },
+    monthly: { month: currentMonth, count: 0 },
+    total: 0
+  };
+};
+
+// 增加 Gemini 调用次数
+const incrementGeminiUsage = () => {
+  const stats = getGeminiUsageStats();
+  stats.daily.count += 1;
+  stats.monthly.count += 1;
+  stats.total += 1;
+  localStorage.setItem(GEMINI_USAGE_KEY, JSON.stringify(stats));
+  return stats;
+};
+
+// AI API 调用函数 - 支持 Gemini 和 DeepSeek
+const callAI = async (
+  systemPrompt: string,
+  userPrompt: string,
+  geminiApiKey?: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<string> => {
+  const temperature = options?.temperature ?? 0.7;
+  const maxTokens = options?.maxTokens ?? 2500;
+  
+  // 如果有 Gemini API Key，优先使用 Gemini
+  if (geminiApiKey) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: `${systemPrompt}\n\n${userPrompt}` }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature,
+              maxOutputTokens: maxTokens,
+            }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Gemini API 错误:', errorText);
+        throw new Error(`Gemini API 请求失败: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // 成功调用 Gemini，增加使用次数
+      incrementGeminiUsage();
+      
+      return content;
+    } catch (error) {
+      console.error('Gemini API 调用失败，回退到 DeepSeek:', error);
+      // 如果 Gemini 失败，回退到 DeepSeek
+    }
+  }
+  
+  // 使用 DeepSeek API
+  const response = await fetch('/api/deepseek', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature,
+      max_tokens: maxTokens
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`DeepSeek API 请求失败: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+};
+
+// 验证 Gemini API Key 是否有效
+const validateGeminiApiKey = async (apiKey: string): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: 'Hello' }
+              ]
+            }
+          ],
+          generationConfig: {
+            maxOutputTokens: 10,
+          }
+        })
+      }
+    );
+
+    return response.ok;
+  } catch (error) {
+    console.error('验证 Gemini API Key 失败:', error);
+    return false;
+  }
+};
+
 // 铃声播放器 - 优化移动端兼容性（双引擎：HTML5 Audio + Web Audio API）
 const alarmPlayer = {
   // 获取或创建 audio 元素
@@ -3904,7 +4078,8 @@ const ReviewView = ({
   generatingProgress,
   setGeneratingProgress,
   reportHistory,
-  setReportHistory
+  setReportHistory,
+  geminiApiKey
 }: { 
   journals: Journal[]; 
   timeRecords: TimeRecord[];
@@ -3934,6 +4109,7 @@ const ReviewView = ({
     createdAt: number;
     report: any;
   }>>>;
+  geminiApiKey?: string;
 }) => {
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
@@ -4377,37 +4553,14 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
     try {
-      // 调用DeepSeek API（通过代理）
-      const response = await fetch('/api/deepseek', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: '你是生存心理战术大师（High IQ Version），像《纸牌屋》里的幕僚长，或者用户最信任的合伙人。犀利、有洞察力、且极度护短（站在用户利益角度思考）。严禁机械套用规则，要进行综合侦探式分析。请以JSON格式返回分析报告。'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2500
-        })
+      const systemPrompt = '你是生存心理战术大师（High IQ Version），像《纸牌屋》里的幕僚长，或者用户最信任的合伙人。犀利、有洞察力、且极度护短（站在用户利益角度思考）。严禁机械套用规则，要进行综合侦探式分析。请以JSON格式返回分析报告。';
+      
+      const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
+        temperature: 0.7,
+        maxTokens: 2500
       });
 
-      if (!response.ok) {
-        throw new Error(`API请求失败: ${response.status}`);
-      }
-
       setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在解析AI响应...' }));
-      const data = await response.json();
-      const aiResponse = data.choices[0].message.content;
       
       // 解析AI返回的JSON
       let report;
@@ -5834,7 +5987,8 @@ const PlanView = ({
   setTimeRecords,
   globalTimers,
   setGlobalTimers,
-  categories
+  categories,
+  geminiApiKey
 }: { 
   pomodoroSettings: PomodoroSettings;
   step: 'setup' | 'generating' | 'schedule';
@@ -5872,6 +6026,7 @@ const PlanView = ({
   globalTimers: Timer[];
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
+  geminiApiKey?: string;
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState<string>('');
@@ -6744,18 +6899,7 @@ const PlanView = ({
     
     // 使用 AI 进行分类
     try {
-      const response = await fetch('/api/deepseek', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: `你是一个任务分类助手。根据任务名称，将其分类到以下类别之一：
+      const systemPrompt = `你是一个任务分类助手。根据任务名称，将其分类到以下类别之一：
 - work: 工作相关（如开会、写报告、处理邮件等）
 - study: 学习相关（如看书、上课、做作业、背单词等）
 - sleep: 睡眠相关（如午睡、小憩等）
@@ -6765,26 +6909,17 @@ const PlanView = ({
 - health: 健康相关（如运动、健身、看医生等）
 - hobby: 兴趣爱好（如画画、弹琴、摄影等）
 
-只返回分类ID，不要返回其他内容。如果无法确定，返回 uncategorized。`
-            },
-            {
-              role: 'user',
-              content: `请对以下任务进行分类：${taskName}`
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 50,
-          stream: false
-        })
-      });
+只返回分类ID，不要返回其他内容。如果无法确定，返回 uncategorized。`;
 
-      if (response.ok) {
-        const data = await response.json();
-        const category = data.choices?.[0]?.message?.content?.trim().toLowerCase() as CategoryId;
-        const validCategories: CategoryId[] = ['work', 'study', 'sleep', 'life', 'rest', 'entertainment', 'health', 'hobby'];
-        if (validCategories.includes(category)) {
-          return category;
-        }
+      const result = await callAI(systemPrompt, `请对以下任务进行分类：${taskName}`, geminiApiKey, {
+        temperature: 0.3,
+        maxTokens: 50
+      });
+      
+      const category = result.trim().toLowerCase() as CategoryId;
+      const validCategories: CategoryId[] = ['work', 'study', 'sleep', 'life', 'rest', 'entertainment', 'health', 'hobby'];
+      if (validCategories.includes(category)) {
+        return category;
       }
     } catch (error) {
       console.error('AI分类失败:', error);
@@ -6855,44 +6990,19 @@ const PlanView = ({
 
   const callDeepSeekAPI = async (prompt: string, onProgress?: (text: string) => void) => {
     try {
-      const response = await fetch('/api/deepseek', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个专业的时间管理助手，擅长根据用户的任务、生活状态和精神状态制定合理的时间安排。请以JSON格式返回时间安排，包含每个时间段的开始时间、结束时间、任务名称、类型和图标。'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-          stream: false
-        })
+      const systemPrompt = '你是一个专业的时间管理助手，擅长根据用户的任务、生活状态和精神状态制定合理的时间安排。请以JSON格式返回时间安排，包含每个时间段的开始时间、结束时间、任务名称、类型和图标。';
+      
+      const content = await callAI(systemPrompt, prompt, geminiApiKey, {
+        temperature: 0.7,
+        maxTokens: 2000
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
       
       // 调用进度回调
       onProgress?.(content);
       
       return content;
     } catch (error) {
-      console.error('DeepSeek API调用失败:', error);
+      console.error('AI API调用失败:', error);
       throw error;
     }
   };
@@ -9017,7 +9127,8 @@ const AIChatPage = ({
   aiChatInput,
   setAiChatInput,
   aiChatLoading,
-  setAiChatLoading
+  setAiChatLoading,
+  geminiApiKey
 }: {
   onClose: () => void;
   timeRecords: TimeRecord[];
@@ -9030,6 +9141,7 @@ const AIChatPage = ({
   setAiChatInput: React.Dispatch<React.SetStateAction<string>>;
   aiChatLoading: boolean;
   setAiChatLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  geminiApiKey?: string;
 }) => {
   // 时间分类配置
   const defaultCategoryIcons: Record<string, string> = {
@@ -9164,30 +9276,14 @@ ${journalSummary || '暂无日记'}
 【语气要求】
 像一个懂你的朋友在跟你说话，温暖但不腻歪，直接但不冷漠。回复要简洁有力，不要啰嗦。`;
 
-      const response = await fetch('/api/deepseek', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer sk-d1fdb210d0424ffdbad83f1ebe4e283b'
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...aiChatMessages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        })
+      // 构建完整的用户消息（包含历史对话）
+      const conversationHistory = aiChatMessages.map(m => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n');
+      const fullUserPrompt = conversationHistory ? `${conversationHistory}\n用户: ${userMessage}` : userMessage;
+      
+      const aiResponse = await callAI(systemPrompt, fullUserPrompt, geminiApiKey, {
+        temperature: 0.7,
+        maxTokens: 2000
       });
-
-      if (!response.ok) {
-        throw new Error(`API请求失败: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const aiResponse = data.choices[0].message.content;
       
       setAiChatMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
     } catch (error) {
@@ -10490,7 +10586,9 @@ const SettingsView = ({
   globalTimers,
   setGlobalTimers,
   categories,
-  onOpenAIChat
+  onOpenAIChat,
+  geminiApiKey,
+  setGeminiApiKey
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -10504,6 +10602,8 @@ const SettingsView = ({
   setGlobalTimers: React.Dispatch<React.SetStateAction<Timer[]>>;
   categories: Category[];
   onOpenAIChat: () => void;
+  geminiApiKey: string;
+  setGeminiApiKey: (key: string) => void;
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
@@ -10522,6 +10622,23 @@ const SettingsView = ({
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [geminiKeyInput, setGeminiKeyInput] = useState(geminiApiKey);
+  const [geminiValidating, setGeminiValidating] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [geminiUsageStats, setGeminiUsageStats] = useState<GeminiUsageStats>(getGeminiUsageStats);
+  
+  // 刷新 Gemini 使用统计
+  const refreshGeminiUsageStats = () => {
+    setGeminiUsageStats(getGeminiUsageStats());
+  };
+  
+  // 打开 Gemini 弹窗时刷新统计
+  useEffect(() => {
+    if (showGeminiModal) {
+      refreshGeminiUsageStats();
+    }
+  }, [showGeminiModal]);
   
   // 获取当前布局大小
   const getCurrentLayoutSize = (): 'large' | 'small' => {
@@ -11052,6 +11169,32 @@ END:VEVENT
               </div>
             </div>
             <ChevronRight size={20} style={{ color: '#FFA000' }} />
+          </button>
+
+          {/* 分割线 */}
+          <div className="h-px mx-5" style={{ backgroundColor: '#FFF8E1' }}></div>
+
+          {/* Gemini API 设置 */}
+          <button 
+            onClick={() => {
+              setGeminiKeyInput(geminiApiKey);
+              setGeminiStatus(geminiApiKey ? 'success' : 'idle');
+              setShowGeminiModal(true);
+            }}
+            className="w-full p-5 flex items-center justify-between hover:bg-[#FFFAF0] focus:bg-transparent active:bg-[#FFFAF0] transition-all outline-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)' }}>
+                <Sparkles size={24} style={{ color: '#1976D2' }} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold" style={{ color: '#5D4037' }}>连接 Gemini</h3>
+                <p className="text-xs mt-1" style={{ color: '#A1887F' }}>
+                  {geminiApiKey ? '✅ 已连接 Google AI' : '使用 Google AI 增强体验'}
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={20} style={{ color: '#1976D2' }} />
           </button>
 
           {/* 分割线 */}
@@ -12302,6 +12445,136 @@ END:VEVENT
         />
       )}
 
+      {/* Gemini API 设置弹窗 */}
+      {showGeminiModal && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in"
+          style={{ paddingBottom: '100px' }}
+          onClick={() => setShowGeminiModal(false)}
+        >
+          <div 
+            className="bg-white w-[90%] max-h-[70vh] overflow-y-auto rounded-3xl p-6 shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Sparkles size={32} className="text-blue-500" />
+              </div>
+              <h3 className="text-xl font-black text-gray-800">连接 Google Gemini</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                输入你的 API Key 以使用 Gemini AI
+              </p>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-600 mb-2">
+                Gemini API Key
+              </label>
+              <input
+                type="password"
+                value={geminiKeyInput}
+                onChange={(e) => {
+                  setGeminiKeyInput(e.target.value);
+                  setGeminiStatus('idle');
+                }}
+                placeholder="输入你的 Google AI API Key..."
+                className="w-full px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-blue-300 focus:outline-none text-sm"
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                获取 API Key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Google AI Studio</a>
+              </p>
+            </div>
+            
+            {/* 状态提示 */}
+            {geminiStatus === 'success' && (
+              <div className="mb-4 p-3 bg-green-50 rounded-xl flex items-center gap-2">
+                <span className="text-green-500">✅</span>
+                <span className="text-sm text-green-700 font-bold">连接成功！已切换到 Gemini AI</span>
+              </div>
+            )}
+            {geminiStatus === 'error' && (
+              <div className="mb-4 p-3 bg-red-50 rounded-xl flex items-center gap-2">
+                <span className="text-red-500">❌</span>
+                <span className="text-sm text-red-700 font-bold">连接失败，请检查 API Key 是否正确</span>
+              </div>
+            )}
+            
+            {/* Gemini 使用统计 */}
+            {geminiApiKey && (
+              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">📊</span>
+                  <span className="text-sm font-bold text-gray-700">API 调用统计</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white/80 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-blue-500">{geminiUsageStats.daily.count}</div>
+                    <div className="text-xs text-gray-500 mt-1">今日调用</div>
+                  </div>
+                  <div className="bg-white/80 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-black text-purple-500">{geminiUsageStats.monthly.count}</div>
+                    <div className="text-xs text-gray-500 mt-1">本月调用</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-center">
+                  <span className="text-xs text-gray-400">累计调用: {geminiUsageStats.total} 次</span>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              {geminiApiKey && (
+                <button
+                  onClick={() => {
+                    setGeminiApiKey('');
+                    setGeminiKeyInput('');
+                    setGeminiStatus('idle');
+                    showToastMessage('已断开 Gemini 连接');
+                  }}
+                  className="flex-1 py-3 rounded-2xl text-red-500 font-bold bg-red-50 hover:bg-red-100 transition-colors"
+                >
+                  断开连接
+                </button>
+              )}
+              <button
+                onClick={async () => {
+                  if (!geminiKeyInput.trim()) {
+                    showToastMessage('请输入 API Key');
+                    return;
+                  }
+                  
+                  setGeminiValidating(true);
+                  setGeminiStatus('idle');
+                  
+                  const isValid = await validateGeminiApiKey(geminiKeyInput.trim());
+                  
+                  setGeminiValidating(false);
+                  
+                  if (isValid) {
+                    setGeminiApiKey(geminiKeyInput.trim());
+                    setGeminiStatus('success');
+                    showToastMessage('🎉 Gemini 连接成功！');
+                  } else {
+                    setGeminiStatus('error');
+                  }
+                }}
+                disabled={geminiValidating || !geminiKeyInput.trim()}
+                className="flex-1 py-3 rounded-2xl text-white font-bold bg-gradient-to-r from-blue-500 to-purple-500 hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {geminiValidating ? '验证中...' : '验证并保存'}
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setShowGeminiModal(false)}
+              className="w-full mt-3 py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Toast 提示 */}
       <Toast message={toastMessage} visible={showToast} onClose={() => setShowToast(false)} />
     </div>
@@ -12376,6 +12649,20 @@ export default function App() {
       longBreakDuration: 15
     };
   });
+
+  // Gemini API Key - 持久化到localStorage
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
+    return localStorage.getItem('geminiApiKey') || '';
+  });
+
+  // 持久化 Gemini API Key 到 localStorage
+  useEffect(() => {
+    if (geminiApiKey) {
+      localStorage.setItem('geminiApiKey', geminiApiKey);
+    } else {
+      localStorage.removeItem('geminiApiKey');
+    }
+  }, [geminiApiKey]);
 
   // 持久化pomodoroSettings到localStorage
   useEffect(() => {
@@ -12647,7 +12934,7 @@ export default function App() {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
       case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} />;
+      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -12673,8 +12960,9 @@ export default function App() {
         globalTimers={globalTimers}
         setGlobalTimers={setGlobalTimers}
         categories={categories}
+        geminiApiKey={geminiApiKey}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
@@ -12763,6 +13051,7 @@ export default function App() {
           setAiChatInput={setAiChatInput}
           aiChatLoading={aiChatLoading}
           setAiChatLoading={setAiChatLoading}
+          geminiApiKey={geminiApiKey}
         />
       ) : (
         <>
