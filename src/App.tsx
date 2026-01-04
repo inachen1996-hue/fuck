@@ -4763,14 +4763,16 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           throw new Error('无法从响应中提取有效的 JSON');
         }
         
-        // 验证必要字段
+        // 验证必要字段，检测并替换占位符
         if (typeof report.score === 'undefined') {
           report.score = 50; // 默认分数
         }
-        if (!report.truth) report.truth = '数据不足，无法分析';
-        if (!report.rootCause) report.rootCause = '需要更多数据';
-        if (!report.audit) report.audit = '待评估';
-        if (!report.suggestion) report.suggestion = '继续记录数据';
+        // 检测空值或占位符（如 "...", "..."）
+        const isEmptyOrPlaceholder = (val: any) => !val || val === '...' || val === '…' || val.trim() === '';
+        if (isEmptyOrPlaceholder(report.truth)) report.truth = '数据不足，无法分析';
+        if (isEmptyOrPlaceholder(report.rootCause)) report.rootCause = '需要更多数据';
+        if (isEmptyOrPlaceholder(report.audit)) report.audit = '待评估';
+        if (isEmptyOrPlaceholder(report.suggestion)) report.suggestion = '继续记录数据';
         
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
@@ -4781,6 +4783,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         // 检查是否包含 JSON 结构
         const hasJsonStructure = rawContent.includes('"score"') && rawContent.includes('"truth"');
         
+        console.log('解析失败，尝试回退方案。hasJsonStructure:', hasJsonStructure);
+        console.log('rawContent 前200字符:', rawContent.slice(0, 200));
+        
         if (hasJsonStructure) {
           // 尝试手动提取 JSON 字段
           const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
@@ -4790,7 +4795,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           const extractField = (fieldName: string): string => {
             const fieldPattern = `"${fieldName}"`;
             const fieldIndex = aiResponse.indexOf(fieldPattern);
-            if (fieldIndex === -1) return '';
+            if (fieldIndex === -1) {
+              console.log(`字段 ${fieldName} 未找到`);
+              return '';
+            }
             
             const colonIndex = aiResponse.indexOf(':', fieldIndex + fieldPattern.length);
             if (colonIndex === -1) return '';
@@ -4816,9 +4824,14 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               i++;
             }
             
-            if (endQuoteIndex === -1) return '';
+            if (endQuoteIndex === -1) {
+              console.log(`字段 ${fieldName} 结束引号未找到`);
+              return '';
+            }
             
             let value = aiResponse.slice(firstQuoteIndex + 1, endQuoteIndex);
+            console.log(`字段 ${fieldName} 提取成功，长度:`, value.length);
+            
             value = value
               .replace(/\\n/g, '\n')
               .replace(/\\r/g, '')
@@ -4829,12 +4842,24 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             return value;
           };
           
+          const truth = extractField('truth');
+          const rootCause = extractField('rootCause');
+          const audit = extractField('audit');
+          const suggestion = extractField('suggestion');
+          
+          console.log('手动提取结果:', { 
+            truthLen: truth.length, 
+            rootCauseLen: rootCause.length, 
+            auditLen: audit.length, 
+            suggestionLen: suggestion.length 
+          });
+          
           report = {
             score: score,
-            truth: extractField('truth') || '(未能提取)',
-            rootCause: extractField('rootCause') || '(未能提取)',
-            audit: extractField('audit') || '(未能提取)',
-            suggestion: extractField('suggestion') || '(未能提取)'
+            truth: truth || rawContent,  // 如果提取失败，显示完整原始内容
+            rootCause: rootCause || '',
+            audit: audit || '',
+            suggestion: suggestion || ''
           };
         } else {
           // 纯文本格式，按提示词中定义的标题智能分段
@@ -4920,6 +4945,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           const suggestion = extractSection(rawContent, section4Patterns, []);
           
           // 如果按标题分段失败，尝试按换行分段或显示完整内容
+          console.log('纯文本解析结果:', { 
+            truthLen: truth.length, 
+            rootCauseLen: rootCause.length, 
+            auditLen: audit.length, 
+            suggestionLen: suggestion.length 
+          });
+          
           if (!truth && !rootCause && !audit && !suggestion) {
             // 完全无法按标题分段，显示完整内容在 truth 中
             report = {
@@ -4932,7 +4964,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           } else {
             report = {
               score: score,
-              truth: truth || '',
+              truth: truth || rawContent.slice(0, Math.floor(rawContent.length / 4)),
               rootCause: rootCause || '',
               audit: audit || '',
               suggestion: suggestion || ''
