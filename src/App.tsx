@@ -4607,16 +4607,62 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         
         // 智能 JSON 提取函数
         const extractJSON = (text: string): any => {
+          // 预处理：修复 JSON 字符串中的换行符问题
+          const fixJsonNewlines = (jsonStr: string): string => {
+            // 在 JSON 字符串值中，换行符需要被转义为 \n
+            // 但要小心不要破坏已经正确转义的 \n
+            let result = '';
+            let inString = false;
+            let escape = false;
+            
+            for (let i = 0; i < jsonStr.length; i++) {
+              const char = jsonStr[i];
+              
+              if (escape) {
+                result += char;
+                escape = false;
+                continue;
+              }
+              
+              if (char === '\\') {
+                escape = true;
+                result += char;
+                continue;
+              }
+              
+              if (char === '"') {
+                inString = !inString;
+                result += char;
+                continue;
+              }
+              
+              if (inString && (char === '\n' || char === '\r')) {
+                // 在字符串内部的换行符，替换为空格
+                result += ' ';
+                continue;
+              }
+              
+              result += char;
+            }
+            
+            return result;
+          };
+          
           // 策略1: 直接尝试解析整个响应
           try {
             return JSON.parse(text.trim());
+          } catch {}
+          
+          // 策略1.5: 修复换行符后再尝试
+          try {
+            return JSON.parse(fixJsonNewlines(text.trim()));
           } catch {}
           
           // 策略2: 提取 ```json 代码块
           const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
           if (codeBlockMatch) {
             try {
-              return JSON.parse(codeBlockMatch[1].trim());
+              return JSON.parse(fixJsonNewlines(codeBlockMatch[1].trim()));
             } catch {}
           }
           
@@ -4625,12 +4671,18 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           const lastBrace = text.lastIndexOf('}');
           if (firstBrace !== -1 && lastBrace > firstBrace) {
             const jsonCandidate = text.slice(firstBrace, lastBrace + 1);
+            
+            // 先尝试修复换行符
+            try {
+              return JSON.parse(fixJsonNewlines(jsonCandidate));
+            } catch {}
+            
             try {
               return JSON.parse(jsonCandidate);
             } catch {}
             
             // 策略4: 清理后再尝试
-            const cleaned = jsonCandidate
+            const cleaned = fixJsonNewlines(jsonCandidate)
               .replace(/,\s*}/g, '}')
               .replace(/,\s*]/g, ']');
             try {
@@ -4645,7 +4697,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           if (matches) {
             for (const match of matches) {
               try {
-                return JSON.parse(match);
+                return JSON.parse(fixJsonNewlines(match));
               } catch {}
             }
           }
@@ -4663,7 +4715,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 const candidate = text.slice(start, i + 1);
                 if (candidate.includes('"score"')) {
                   try {
-                    return JSON.parse(candidate);
+                    return JSON.parse(fixJsonNewlines(candidate));
                   } catch {}
                 }
               }
@@ -4693,25 +4745,20 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
         
-        // 尝试从响应中提取有用信息构造报告
-        let extractedContent = aiResponse;
+        // 当 JSON 解析失败时，直接显示 AI 的原始响应
+        // 这样用户可以看到 deepseek-reasoner 返回的完整内容
+        const rawContent = aiResponse || '(AI 返回空内容)';
         
-        // 尝试提取 score
+        // 尝试提取 score（如果有的话）
         const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
         const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
         
-        // 尝试提取各个字段
-        const truthMatch = aiResponse.match(/"truth"\s*:\s*"([^"]+)"/);
-        const rootCauseMatch = aiResponse.match(/"rootCause"\s*:\s*"([^"]+)"/);
-        const auditMatch = aiResponse.match(/"audit"\s*:\s*"([^"]+)"/);
-        const suggestionMatch = aiResponse.match(/"suggestion"\s*:\s*"([^"]+)"/);
-        
         report = {
           score: score,
-          truth: truthMatch ? truthMatch[1] : (extractedContent.slice(0, 300) || 'AI响应解析失败'),
-          rootCause: rootCauseMatch ? rootCauseMatch[1] : '响应格式异常',
-          audit: auditMatch ? auditMatch[1] : '无法评估',
-          suggestion: suggestionMatch ? suggestionMatch[1] : '请重试或切换AI模型'
+          truth: `【AI原始响应】\n${rawContent.slice(0, 800)}${rawContent.length > 800 ? '...(内容过长已截断)' : ''}`,
+          rootCause: '响应格式非标准JSON，上方显示AI原始输出',
+          audit: '请查看上方AI原始响应内容',
+          suggestion: '如需标准格式，可尝试切换到 DeepSeek 小简单 或 Gemini 模型'
         };
       }
       
