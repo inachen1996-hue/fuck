@@ -4159,8 +4159,17 @@ const ReviewView = ({
   geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
 }) => {
-  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>('progress');
+  // 从 localStorage 恢复上次的复盘子页面
+  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>(() => {
+    const saved = localStorage.getItem('reviewActiveTab');
+    return (saved === 'progress' || saved === 'ai' || saved === 'habits') ? saved : 'progress';
+  });
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
+  
+  // 持久化复盘子页面到 localStorage
+  useEffect(() => {
+    localStorage.setItem('reviewActiveTab', activeTab);
+  }, [activeTab]);
   
   // 当前进度时间周期
   const [progressPeriod, setProgressPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
@@ -4828,35 +4837,58 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             suggestion: extractField('suggestion') || '(未能提取)'
           };
         } else {
-          // 纯文本格式，按标题智能分段
-          // 尝试从文本中提取分数
-          const scoreMatch = rawContent.match(/(\d+)\s*[分\/]/) || rawContent.match(/评分[：:]\s*(\d+)/);
-          const score = scoreMatch ? parseInt(scoreMatch[1]) : 65;
+          // 纯文本格式，按提示词中定义的标题智能分段
+          // 提示词中的输出结构：
+          // ## 0. 4月上岸评分表
+          // ## 1. ⚖️ 真实资产负债表 (The Real Balance Sheet)
+          // ## 2. 🔍 时序病理分析 (Timing Analysis)
+          // ## 3. 📉 商业审计结论 (Audit Verdict)
+          // ## 4. 🚀 纯逻辑建议 (Logical Suggestion)
           
-          // 按标题关键词分段
+          // 尝试从文本中提取分数
+          const scorePatterns = [
+            /评分[：:]\s*(\d+)/,
+            /(\d+)\s*[分\/]\s*100/,
+            /(\d+)\s*分/,
+            /满分100.*?(\d+)/,
+            /(\d+)\/100/
+          ];
+          let score = 65;
+          for (const pattern of scorePatterns) {
+            const match = rawContent.match(pattern);
+            if (match) {
+              score = parseInt(match[1]);
+              break;
+            }
+          }
+          
+          // 按标题关键词分段（不限制字数）
           const extractSection = (text: string, startPatterns: string[], endPatterns: string[]): string => {
             let startIndex = -1;
-            let endIndex = text.length;
+            let matchedPattern = '';
             
-            // 找到开始位置
+            // 找到开始位置（匹配最早出现的标题）
             for (const pattern of startPatterns) {
               const regex = new RegExp(pattern, 'i');
               const match = text.match(regex);
               if (match && match.index !== undefined) {
                 if (startIndex === -1 || match.index < startIndex) {
                   startIndex = match.index;
+                  matchedPattern = match[0];
                 }
               }
             }
             
             if (startIndex === -1) return '';
             
-            // 找到结束位置（下一个段落的开始）
+            // 找到结束位置（下一个段落标题的开始）
+            let endIndex = text.length;
             for (const pattern of endPatterns) {
               const regex = new RegExp(pattern, 'gi');
               let match;
               while ((match = regex.exec(text)) !== null) {
-                if (match.index > startIndex + 10) {
+                // 确保是在开始位置之后，且不是同一个标题
+                if (match.index > startIndex + matchedPattern.length + 5) {
                   if (match.index < endIndex) {
                     endIndex = match.index;
                   }
@@ -4868,23 +4900,31 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             return text.slice(startIndex, endIndex).trim();
           };
           
-          // 定义各部分的标题模式
-          const section2Patterns = ['1\\.|资产负债|资产盘点|全口径|⚖️|真实资产'];
-          const section3Patterns = ['2\\.|时序|病理|🔍|白名单|行为分析'];
-          const section4Patterns = ['3\\.|审计|结论|📉|盈利|亏损'];
-          const section5Patterns = ['4\\.|建议|🚀|纯逻辑'];
+          // 定义各部分的标题模式（基于提示词中的输出结构）
+          // 第0部分：评分（已单独提取）
+          // 第1部分：资产负债表 -> truth
+          const section1Patterns = ['##?\\s*1\\.?', '⚖️', '资产负债表', '真实资产负债', 'Balance Sheet', '资产入库', '资产盘点'];
+          // 第2部分：时序病理分析 -> rootCause
+          const section2Patterns = ['##?\\s*2\\.?', '🔍', '时序病理', 'Timing Analysis', '时序分析', '病理分析'];
+          // 第3部分：商业审计结论 -> audit
+          const section3Patterns = ['##?\\s*3\\.?', '📉', '商业审计', 'Audit Verdict', '审计结论', '盈利.*亏损', '亏损.*盈利'];
+          // 第4部分：纯逻辑建议 -> suggestion
+          const section4Patterns = ['##?\\s*4\\.?', '🚀', '纯逻辑建议', 'Logical Suggestion', '逻辑建议', '建议'];
           
-          // 提取各部分
-          const truth = extractSection(rawContent, section2Patterns, [...section3Patterns, ...section4Patterns, ...section5Patterns]);
-          const rootCause = extractSection(rawContent, section3Patterns, [...section4Patterns, ...section5Patterns]);
-          const audit = extractSection(rawContent, section4Patterns, section5Patterns);
-          const suggestion = extractSection(rawContent, section5Patterns, []);
+          // 所有可能的段落标题（用于确定结束位置）
           
-          // 如果按标题分段失败，回退到显示完整内容
+          // 提取各部分（不限制字数）
+          const truth = extractSection(rawContent, section1Patterns, [...section2Patterns, ...section3Patterns, ...section4Patterns]);
+          const rootCause = extractSection(rawContent, section2Patterns, [...section3Patterns, ...section4Patterns]);
+          const audit = extractSection(rawContent, section3Patterns, section4Patterns);
+          const suggestion = extractSection(rawContent, section4Patterns, []);
+          
+          // 如果按标题分段失败，尝试按换行分段或显示完整内容
           if (!truth && !rootCause && !audit && !suggestion) {
+            // 完全无法按标题分段，显示完整内容在 truth 中
             report = {
               score: score,
-              truth: rawContent,
+              truth: rawContent,  // 完整显示，不截断
               rootCause: '',
               audit: '',
               suggestion: ''
@@ -4892,10 +4932,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           } else {
             report = {
               score: score,
-              truth: truth || '(未找到相关内容)',
-              rootCause: rootCause || '(未找到相关内容)',
-              audit: audit || '(未找到相关内容)',
-              suggestion: suggestion || '(未找到相关内容)'
+              truth: truth || '',
+              rootCause: rootCause || '',
+              audit: audit || '',
+              suggestion: suggestion || ''
             };
           }
         }
