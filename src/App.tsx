@@ -4146,6 +4146,27 @@ const ReviewView = ({
   
   const [viewingHistoryReport, setViewingHistoryReport] = useState<any>(null);
   
+  // 记录生成开始时间，用于检测超时
+  const generatingStartTime = useRef<number | null>(null);
+  
+  // 监听页面可见性变化，处理后台切换导致的生成中断
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && generatingPeriods.size > 0) {
+        // 页面切回前台，检查是否生成超时（超过60秒认为已中断）
+        if (generatingStartTime.current && Date.now() - generatingStartTime.current > 60000) {
+          // 清除生成状态，让用户可以重试
+          setGeneratingPeriods(new Set());
+          setGeneratingProgress({});
+          generatingStartTime.current = null;
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [generatingPeriods, setGeneratingPeriods, setGeneratingProgress]);
+  
   // 根据当前时间段获取对应的报告
   const reportData = useMemo(() => {
     const historyItem = reportHistory.find(h => h.period === aiPeriod);
@@ -4376,6 +4397,9 @@ const ReviewView = ({
   const generateReport = async () => {
     const currentPeriod = aiPeriod as 'yesterday' | 'today' | 'week' | 'month';
     
+    // 记录生成开始时间
+    generatingStartTime.current = Date.now();
+    
     // 添加到正在生成的时间段集合
     setGeneratingPeriods(prev => new Set([...prev, currentPeriod]));
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在收集数据...' }));
@@ -4484,35 +4508,47 @@ const ReviewView = ({
       return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
     }).join('\n\n');
     
-    // 构建AI提示词 - 时间真相解码器 (Precision Valuation)
-    const prompt = `# Role: 时间真相解码器 (Time Truth Decoder - Precision Valuation)
+    // 构建AI提示词 - 时间真相解码器 (Bio-Calibrated v22)
+    const prompt = `# Role: 时间真相解码器 (Time Truth Decoder - Bio-Calibrated)
 
 # Core Instruction (核心指令):
-你是一个**商业资产审计师**。你的任务是基于用户数据，进行**逻辑推理**，寻找矛盾，并计算**真实的商业价值**。**只说真话，只讲逻辑。不夸大困难，但绝不低估资产。**
+你是一个**懂人性的商业审计师**。你的审计对象是一个**碳基生物**（有生理需求），而不是机器。在分析时间时，必须严格执行**"白名单豁免机制"**，严禁把必要的生存动作和战术动作误判为"逃避"或"中断"。
 
 # User Profile:
 1. **死线**：2026年4月必须变现。
-2. **现状**：腰肌劳损，存在用简单的事情逃避困难事情的心态。
+2. **现状**：腰肌劳损，需要区分"真逃避（造效率/计划工具）"和"假逃避（做计划/生理需求）"。
 
-# 🧠 Analysis Logic (核心分析算法):
+# 🧠 Analysis Logic (核心分析算法 - v22修正版):
 
 **第一步：全口径资产盘点 (Asset Valuation)**
-* **原则**：**成品即资产。** 只要视频/特效已制作完成（Ready to Publish），无论是否发布，其商业价值 **等同于** 已发布。
-* **计算逻辑**：
-  * **今日资产增量** = 已发布数量 + **待发布成品数量**。
-  * *修正*：如果用户有"待发布成品"，严禁评价为"原地踏步"。必须定义为**"库存增长"**。
-  * **今日负债增量** = 无效调研 + 造App + 焦虑刷手机。注意定义无效调研就是流于形式的刷热门或者其他类似行为。
+* **原则**：**成品与研发均为资产。**
+* **判定逻辑**：
+  * **🟢 有形资产 (Hard Assets)**：
+    * [已发布视频] + [待发布成品 (存稿)]。
+    * *评价*：商业价值极高。
+  * **🔵 无形资产 (R&D Assets) - [修复调研误判]**：
+    * **判定条件**：[调研/学习]时长，且**日记/备注中有具体的灵感、观点或笔记**。
+    * *评价*：这是"研发投资"，计入资产栏。**严禁归类为负债。**
+  * **🔴 商业负债 (Liabilities)**：
+    * **判定条件**：[无记录的盲目调研] + [造计划App] + [焦虑刷手机]。
+    * *评价*：只有这些才是真正的"亏损"。
 
-**第二步：时序因果侦测 (Chronological Detective)**
-* **任务**：不仅看"做了什么"，要看**"什么时候做的"**。
-* **逻辑推演**：
-  * *情况A（畏难）*：在"核心工作"开始前，先"造了1小时App"。 -> **结论：启动逃避。**
-  * *情况B（奖赏错位）*：在"核心工作"完成后，连续"造了2小时App"。 -> **结论：垃圾时间填充。** 用户把本该用于休息/复盘的宝贵精力，浪费在了低价值劳动上。
-  * *情况C（中断）*：工作中间穿插了大量碎片化刷手机。 -> **结论：心流破碎。**
+**第二步：行为白名单过滤 (The White-List Filter) - [修复误判]**
+* **在分析"时序/拖延"前，必须先剔除以下"合法动作"：**
+* **1. 生理维护 (Bio-Maintenance)**：
+  * [吃饭]、[拉屎/上厕所]、[洗澡]、[睡觉]。
+  * *定性*：这是**"固定运营成本"**（Fixed Cost），就像工厂要交电费一样。**严禁标记为"心流中断"或"浪费"。但各项时间不能超过标准视角。例如睡觉10个小时，需要提醒用户注意。吃饭超过半个小时，需要提醒用户注意。拉屎超过半个小时，需要提醒用户注意。**
+* **2. 战术校准 (Tactical Calibration)**：
+  * [制定今日核心产出计划/kpi]、[指定目标]。
+  * *定性*：这是**"磨刀不误砍柴工"**。这是开战前的地图校准，不是"启动仪式拖延"。只有当"做计划"变成了"写代码/改App功能"时，才算拖延。
 
-**第三步：矛盾与谎言粉碎 (Truth Serum)**
-* **任务**：对比日记与数据。
-* *示例*：日记喊累（主观） vs 熬夜写代码（客观）。 -> **结论：** 身体不累，是心累；或者是在用"假勤奋"麻醉焦虑。
+**第三步：时序病理侦测 (Chronological Detective)**
+* **任务**：排除白名单后，寻找真正的病灶。
+* **真逃避模型**：
+  * *战前逃避*：在"做计划"和"正式干活"之间，插入了"造App"或"刷手机"。
+  * *战后放纵*：核心工作结束后，立即陷入长时间的"造App"（伪装成工作的娱乐）。
+* **真中断模型**：
+  * 在核心工作（如剪辑）中间，插入了"刷抖音/看八卦"（非生理需求）。
 
 # Input Data (用户数据)
 - **当前日期**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
@@ -4530,7 +4566,7 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
 # Tone (语气):
-**冷静、精准、公允。** 像一位拿着计算器的审计师。既不放过你的浪费，也不抹杀你的功劳（存稿）。
+**像一位通情达理的CFO（首席财务官）。** 明白人是要吃饭拉屎的，明白打仗是要看地图的。但对那些挪用公款（时间）去造玩具（App）的行为，依旧冷血无情。
 
 # ⚠️ JSON输出格式要求（重要）：
 - **不要在内容中重复标题或emoji**，因为UI已经显示了标题
@@ -4540,10 +4576,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 请以JSON格式返回：
 {
   "score": 75,
-  "truth": "资产负债表：🟢资产入库（发布X个，存稿X个）的评价 + 🔴负债累积（造App时长、无效调研时长）的评价",
-  "rootCause": "时序病理分析：用户是在什么时候开始造App/刷手机的？这揭示了什么心理机制？是战前逃兵还是战后放纵？",
-  "audit": "商业审计结论：今日是盈利（资产>负债）还是亏损？注意：只要有成品存稿，今日绝不可能是亏损，顶多是利润被成本侵蚀",
-  "suggestion": "纯逻辑建议：基于时序的精准打击，符合用户当下情况的具体建议"
+  "truth": "真实资产负债表：🟢资产入库（成品存稿X个 + 有效研发X小时）的评价 + 🔴负债累积（仅列出：造App、无效刷手机、无记录调研）。注意：不要把制定计划列为负债！",
+  "rootCause": "时序病理分析：排除吃饭拉屎后，用户在工作间隙到底干了什么？是流程顺畅（生理需求未影响战斗节奏），还是启动前的真正拖延？",
+  "audit": "商业审计结论：今日是盈利还是亏损？标准：资产（含研发）> 负债（造App+废操作）= 盈利",
+  "suggestion": "纯逻辑建议：只针对真正的负债项提出建议，如针对战后放纵建议设置物理阻断"
 }
 
 只返回JSON，不要其他内容。`;
@@ -4551,14 +4587,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
     try {
-      const systemPrompt = '你是商业资产审计师，基于用户数据进行逻辑推理，寻找矛盾，计算真实商业价值。只说真话，只讲逻辑。不夸大困难，但绝不低估资产。冷静、精准、公允。请以JSON格式返回分析报告。';
-      
-      // reasoner 模型较慢，降低 token 数量加快速度
-      const maxTokens = deepseekModel === 'deepseek-reasoner' ? 1500 : 2500;
+      // 针对 deepseek-reasoner 模型，强调只输出 JSON
+      const systemPrompt = '你是懂人性的商业审计师，审计对象是碳基生物。请直接输出JSON格式的分析报告，不要输出任何推理过程、解释或其他文字。只输出一个JSON对象，以{开头，以}结尾。';
       
       const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
-        maxTokens,
+        maxTokens: 2500,
         geminiModel,
         deepseekModel
       });
@@ -4568,28 +4602,84 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       // 解析AI返回的JSON
       let report;
       try {
-        // 尝试多种方式提取 JSON
-        let jsonStr = aiResponse;
+        console.log('AI原始响应长度:', aiResponse.length);
+        console.log('AI原始响应前500字符:', aiResponse.slice(0, 500));
         
-        // 1. 如果响应被 ```json 包裹，提取内容
-        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-          jsonStr = codeBlockMatch[1].trim();
+        // 智能 JSON 提取函数
+        const extractJSON = (text: string): any => {
+          // 策略1: 直接尝试解析整个响应
+          try {
+            return JSON.parse(text.trim());
+          } catch {}
+          
+          // 策略2: 提取 ```json 代码块
+          const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (codeBlockMatch) {
+            try {
+              return JSON.parse(codeBlockMatch[1].trim());
+            } catch {}
+          }
+          
+          // 策略3: 找到第一个 { 和最后一个 } 之间的内容
+          const firstBrace = text.indexOf('{');
+          const lastBrace = text.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace > firstBrace) {
+            const jsonCandidate = text.slice(firstBrace, lastBrace + 1);
+            try {
+              return JSON.parse(jsonCandidate);
+            } catch {}
+            
+            // 策略4: 清理后再尝试
+            const cleaned = jsonCandidate
+              .replace(/,\s*}/g, '}')
+              .replace(/,\s*]/g, ']');
+            try {
+              return JSON.parse(cleaned);
+            } catch {}
+          }
+          
+          // 策略5: 使用正则找到包含 score 字段的 JSON 对象
+          // 匹配从 { 开始，包含 "score" 的完整 JSON
+          const jsonPattern = /\{[^{}]*"score"\s*:\s*\d+[^{}]*\}/g;
+          const matches = text.match(jsonPattern);
+          if (matches) {
+            for (const match of matches) {
+              try {
+                return JSON.parse(match);
+              } catch {}
+            }
+          }
+          
+          // 策略6: 逐字符解析找到平衡的 JSON 对象
+          let depth = 0;
+          let start = -1;
+          for (let i = 0; i < text.length; i++) {
+            if (text[i] === '{') {
+              if (depth === 0) start = i;
+              depth++;
+            } else if (text[i] === '}') {
+              depth--;
+              if (depth === 0 && start !== -1) {
+                const candidate = text.slice(start, i + 1);
+                if (candidate.includes('"score"')) {
+                  try {
+                    return JSON.parse(candidate);
+                  } catch {}
+                }
+              }
+            }
+          }
+          
+          return null;
+        };
+        
+        const parsed = extractJSON(aiResponse);
+        
+        if (parsed && typeof parsed === 'object') {
+          report = parsed;
+        } else {
+          throw new Error('无法从响应中提取有效的 JSON');
         }
-        
-        // 2. 尝试找到 JSON 对象
-        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          jsonStr = jsonMatch[0];
-        }
-        
-        // 3. 清理可能的非法字符
-        jsonStr = jsonStr
-          .replace(/[\x00-\x1F\x7F]/g, '') // 移除控制字符
-          .replace(/,\s*}/g, '}') // 移除尾随逗号
-          .replace(/,\s*]/g, ']'); // 移除数组尾随逗号
-        
-        report = JSON.parse(jsonStr);
         
         // 验证必要字段
         if (typeof report.score === 'undefined') {
@@ -4602,13 +4692,26 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
-        // 如果解析失败，尝试构造一个基本报告
+        
+        // 尝试从响应中提取有用信息构造报告
+        let extractedContent = aiResponse;
+        
+        // 尝试提取 score
+        const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
+        const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
+        
+        // 尝试提取各个字段
+        const truthMatch = aiResponse.match(/"truth"\s*:\s*"([^"]+)"/);
+        const rootCauseMatch = aiResponse.match(/"rootCause"\s*:\s*"([^"]+)"/);
+        const auditMatch = aiResponse.match(/"audit"\s*:\s*"([^"]+)"/);
+        const suggestionMatch = aiResponse.match(/"suggestion"\s*:\s*"([^"]+)"/);
+        
         report = {
-          score: 50,
-          truth: aiResponse.slice(0, 500) || 'AI响应解析失败',
-          rootCause: '响应格式异常，建议切换到其他AI模型重试',
-          audit: '无法评估',
-          suggestion: '请在设置中尝试切换AI模型（如 Gemini 或 DeepSeek 小简单）'
+          score: score,
+          truth: truthMatch ? truthMatch[1] : (extractedContent.slice(0, 300) || 'AI响应解析失败'),
+          rootCause: rootCauseMatch ? rootCauseMatch[1] : '响应格式异常',
+          audit: auditMatch ? auditMatch[1] : '无法评估',
+          suggestion: suggestionMatch ? suggestionMatch[1] : '请重试或切换AI模型'
         };
       }
       
@@ -4657,6 +4760,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         }
       });
       
+      // 清除生成开始时间
+      generatingStartTime.current = null;
+      
       // 从正在生成的集合中移除
       setGeneratingPeriods(prev => {
         const newSet = new Set(prev);
@@ -4671,6 +4777,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       
     } catch (error) {
       console.error('生成复盘报告失败:', error);
+      
+      // 清除生成开始时间
+      generatingStartTime.current = null;
+      
       // 从正在生成的集合中移除
       setGeneratingPeriods(prev => {
         const newSet = new Set(prev);
@@ -4682,7 +4792,14 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         delete newProgress[currentPeriod];
         return newProgress;
       });
-      const errorMessage = error instanceof Error ? error.message : 'AI复盘生成失败，请检查网络连接后重试';
+      let errorMessage = 'AI复盘生成失败，请检查网络连接后重试';
+      if (error instanceof Error) {
+        if (error.message.includes('JSON')) {
+          errorMessage = 'AI响应格式解析失败，请重试。如果问题持续，可尝试切换到其他AI模型。';
+        } else {
+          errorMessage = error.message;
+        }
+      }
       alert(errorMessage);
     }
   };
@@ -5548,7 +5665,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             ) : generatingPeriods.has(aiPeriod) ? (
               <div className="text-center py-12">
                 <h3 className="text-lg font-black text-sky-600 mb-3">{generatingProgress[aiPeriod] || '正在生成...'}</h3>
-                <div className="flex justify-center gap-1">
+                <div className="flex justify-center gap-1 mb-4">
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
@@ -5557,6 +5674,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     />
                   ))}
                 </div>
+                <p className="text-orange-500 text-xs font-bold">⚠️ 请保持页面在前台，切换到后台会导致生成中断</p>
               </div>
             ) : reportData ? (
               <div className="space-y-4">
@@ -5668,6 +5786,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   <Sparkles size={20} />
                   生成 AI 复盘报告
                 </Button>
+                <p className="text-gray-400 text-xs mt-4">💡 生成期间请保持页面在前台，切换到后台可能导致生成失败</p>
               </div>
             )}
           </div>
