@@ -458,9 +458,30 @@ const callAI = async (
   }
 
   const data = await response.json();
+  console.log('DeepSeek API 原始响应:', JSON.stringify(data, null, 2));
+  
   // deepseek-reasoner 模型会返回 reasoning_content 和 content
   // 我们只需要最终的 content
-  const content = data.choices?.[0]?.message?.content || '';
+  const message = data.choices?.[0]?.message;
+  let content = message?.content || '';
+  
+  // 如果 content 为空但有 reasoning_content，可能是 reasoner 模型的特殊情况
+  if (!content && message?.reasoning_content) {
+    console.log('content 为空，使用 reasoning_content');
+    content = message.reasoning_content;
+  }
+  
+  // 如果还是空，尝试其他可能的字段
+  if (!content) {
+    console.log('content 仍为空，完整 message 对象:', message);
+    // 尝试直接从 data 中获取
+    if (data.output) {
+      content = data.output;
+    } else if (data.result) {
+      content = data.result;
+    }
+  }
+  
   return content;
 };
 
