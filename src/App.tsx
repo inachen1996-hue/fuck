@@ -4766,21 +4766,53 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
         
-        // 当 JSON 解析失败时，直接把 AI 原始响应作为完整分析结果显示
+        // 当 JSON 解析失败时，尝试用正则提取各个字段
         const rawContent = aiResponse || '(AI 返回空内容)';
         
-        // 尝试提取 score（如果有的话）
+        // 尝试提取 score
         const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
         const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
         
-        // 直接显示完整的 AI 原始响应，不截断
-        report = {
-          score: score,
-          truth: rawContent,  // 完整显示 AI 响应
-          rootCause: '',      // 留空，因为内容都在 truth 里了
-          audit: '',
-          suggestion: ''
+        // 尝试提取各个字段的值（支持多行内容）
+        const extractField = (fieldName: string): string => {
+          // 匹配 "fieldName": "内容" 或 "fieldName": "内容（可能跨行）"
+          const regex = new RegExp(`"${fieldName}"\\s*:\\s*"([^"]*(?:\\\\.[^"]*)*)"`, 's');
+          const match = aiResponse.match(regex);
+          if (match) {
+            // 处理转义字符
+            return match[1]
+              .replace(/\\n/g, '\n')
+              .replace(/\\r/g, '')
+              .replace(/\\t/g, '  ')
+              .replace(/\\"/g, '"');
+          }
+          return '';
         };
+        
+        const truth = extractField('truth');
+        const rootCause = extractField('rootCause');
+        const audit = extractField('audit');
+        const suggestion = extractField('suggestion');
+        
+        // 如果成功提取到字段，使用提取的值；否则显示原始响应
+        if (truth || rootCause || audit || suggestion) {
+          report = {
+            score: score,
+            truth: truth || '(未能提取)',
+            rootCause: rootCause || '(未能提取)',
+            audit: audit || '(未能提取)',
+            suggestion: suggestion || '(未能提取)'
+          };
+        } else {
+          // 完全无法提取，显示原始响应
+          report = {
+            score: score,
+            truth: rawContent,
+            rootCause: '',
+            audit: '',
+            suggestion: ''
+          };
+        }
       }
       
       // 添加period字段
