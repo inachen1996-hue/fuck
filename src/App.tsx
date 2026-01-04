@@ -4869,13 +4869,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
           };
           
           // 定义各部分的标题模式
-          const section1Patterns = ['0\\.|评分|上岸评分|变现'];
           const section2Patterns = ['1\\.|资产负债|资产盘点|全口径|⚖️|真实资产'];
           const section3Patterns = ['2\\.|时序|病理|🔍|白名单|行为分析'];
           const section4Patterns = ['3\\.|审计|结论|📉|盈利|亏损'];
           const section5Patterns = ['4\\.|建议|🚀|纯逻辑'];
-          
-          const allEndPatterns = [...section1Patterns, ...section2Patterns, ...section3Patterns, ...section4Patterns, ...section5Patterns];
           
           // 提取各部分
           const truth = extractSection(rawContent, section2Patterns, [...section3Patterns, ...section4Patterns, ...section5Patterns]);
