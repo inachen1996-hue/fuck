@@ -4766,87 +4766,141 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       } catch (parseError) {
         console.error('解析AI响应失败:', parseError, '\n原始响应:', aiResponse);
         
-        // 当 JSON 解析失败时，尝试手动提取各个字段
+        // 当 JSON 解析失败时，检查是否是纯文本格式的分析
         const rawContent = aiResponse || '(AI 返回空内容)';
         
-        // 尝试提取 score
-        const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
-        const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
+        // 检查是否包含 JSON 结构
+        const hasJsonStructure = rawContent.includes('"score"') && rawContent.includes('"truth"');
         
-        // 手动提取 JSON 字段值（更可靠的方法）
-        const extractField = (fieldName: string): string => {
-          // 找到字段名的位置
-          const fieldPattern = `"${fieldName}"`;
-          const fieldIndex = aiResponse.indexOf(fieldPattern);
-          if (fieldIndex === -1) return '';
+        if (hasJsonStructure) {
+          // 尝试手动提取 JSON 字段
+          const scoreMatch = aiResponse.match(/"score"\s*:\s*(\d+)/);
+          const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
           
-          // 找到冒号后的第一个引号
-          const colonIndex = aiResponse.indexOf(':', fieldIndex + fieldPattern.length);
-          if (colonIndex === -1) return '';
-          
-          const firstQuoteIndex = aiResponse.indexOf('"', colonIndex);
-          if (firstQuoteIndex === -1) return '';
-          
-          // 从第一个引号后开始，找到未转义的结束引号
-          let endQuoteIndex = -1;
-          let i = firstQuoteIndex + 1;
-          while (i < aiResponse.length) {
-            if (aiResponse[i] === '"') {
-              // 检查是否是转义的引号
-              let backslashCount = 0;
-              let j = i - 1;
-              while (j >= 0 && aiResponse[j] === '\\') {
-                backslashCount++;
-                j--;
+          // 手动提取 JSON 字段值
+          const extractField = (fieldName: string): string => {
+            const fieldPattern = `"${fieldName}"`;
+            const fieldIndex = aiResponse.indexOf(fieldPattern);
+            if (fieldIndex === -1) return '';
+            
+            const colonIndex = aiResponse.indexOf(':', fieldIndex + fieldPattern.length);
+            if (colonIndex === -1) return '';
+            
+            const firstQuoteIndex = aiResponse.indexOf('"', colonIndex);
+            if (firstQuoteIndex === -1) return '';
+            
+            let endQuoteIndex = -1;
+            let i = firstQuoteIndex + 1;
+            while (i < aiResponse.length) {
+              if (aiResponse[i] === '"') {
+                let backslashCount = 0;
+                let j = i - 1;
+                while (j >= 0 && aiResponse[j] === '\\') {
+                  backslashCount++;
+                  j--;
+                }
+                if (backslashCount % 2 === 0) {
+                  endQuoteIndex = i;
+                  break;
+                }
               }
-              // 如果前面有偶数个反斜杠，这是真正的结束引号
-              if (backslashCount % 2 === 0) {
-                endQuoteIndex = i;
-                break;
-              }
+              i++;
             }
-            i++;
-          }
+            
+            if (endQuoteIndex === -1) return '';
+            
+            let value = aiResponse.slice(firstQuoteIndex + 1, endQuoteIndex);
+            value = value
+              .replace(/\\n/g, '\n')
+              .replace(/\\r/g, '')
+              .replace(/\\t/g, '  ')
+              .replace(/\\"/g, '"')
+              .replace(/\\\\/g, '\\');
+            
+            return value;
+          };
           
-          if (endQuoteIndex === -1) return '';
-          
-          // 提取值并处理转义字符
-          let value = aiResponse.slice(firstQuoteIndex + 1, endQuoteIndex);
-          value = value
-            .replace(/\\n/g, '\n')
-            .replace(/\\r/g, '')
-            .replace(/\\t/g, '  ')
-            .replace(/\\"/g, '"')
-            .replace(/\\\\/g, '\\');
-          
-          return value;
-        };
-        
-        const truth = extractField('truth');
-        const rootCause = extractField('rootCause');
-        const audit = extractField('audit');
-        const suggestion = extractField('suggestion');
-        
-        console.log('手动提取结果:', { truth: truth.slice(0, 50), rootCause: rootCause.slice(0, 50), audit: audit.slice(0, 50), suggestion: suggestion.slice(0, 50) });
-        
-        // 如果成功提取到字段，使用提取的值；否则显示原始响应
-        if (truth || rootCause || audit || suggestion) {
           report = {
             score: score,
-            truth: truth || '(未能提取)',
-            rootCause: rootCause || '(未能提取)',
-            audit: audit || '(未能提取)',
-            suggestion: suggestion || '(未能提取)'
+            truth: extractField('truth') || '(未能提取)',
+            rootCause: extractField('rootCause') || '(未能提取)',
+            audit: extractField('audit') || '(未能提取)',
+            suggestion: extractField('suggestion') || '(未能提取)'
           };
         } else {
-          // 完全无法提取，显示原始响应
-          report = {
-            score: score,
-            truth: rawContent,
-            rootCause: '',
-            audit: '',
-            suggestion: ''
+          // 纯文本格式，按标题智能分段
+          // 尝试从文本中提取分数
+          const scoreMatch = rawContent.match(/(\d+)\s*[分\/]/) || rawContent.match(/评分[：:]\s*(\d+)/);
+          const score = scoreMatch ? parseInt(scoreMatch[1]) : 65;
+          
+          // 按标题关键词分段
+          const extractSection = (text: string, startPatterns: string[], endPatterns: string[]): string => {
+            let startIndex = -1;
+            let endIndex = text.length;
+            
+            // 找到开始位置
+            for (const pattern of startPatterns) {
+              const regex = new RegExp(pattern, 'i');
+              const match = text.match(regex);
+              if (match && match.index !== undefined) {
+                if (startIndex === -1 || match.index < startIndex) {
+                  startIndex = match.index;
+                }
+              }
+            }
+            
+            if (startIndex === -1) return '';
+            
+            // 找到结束位置（下一个段落的开始）
+            for (const pattern of endPatterns) {
+              const regex = new RegExp(pattern, 'gi');
+              let match;
+              while ((match = regex.exec(text)) !== null) {
+                if (match.index > startIndex + 10) {
+                  if (match.index < endIndex) {
+                    endIndex = match.index;
+                  }
+                  break;
+                }
+              }
+            }
+            
+            return text.slice(startIndex, endIndex).trim();
           };
+          
+          // 定义各部分的标题模式
+          const section1Patterns = ['0\\.|评分|上岸评分|变现'];
+          const section2Patterns = ['1\\.|资产负债|资产盘点|全口径|⚖️|真实资产'];
+          const section3Patterns = ['2\\.|时序|病理|🔍|白名单|行为分析'];
+          const section4Patterns = ['3\\.|审计|结论|📉|盈利|亏损'];
+          const section5Patterns = ['4\\.|建议|🚀|纯逻辑'];
+          
+          const allEndPatterns = [...section1Patterns, ...section2Patterns, ...section3Patterns, ...section4Patterns, ...section5Patterns];
+          
+          // 提取各部分
+          const truth = extractSection(rawContent, section2Patterns, [...section3Patterns, ...section4Patterns, ...section5Patterns]);
+          const rootCause = extractSection(rawContent, section3Patterns, [...section4Patterns, ...section5Patterns]);
+          const audit = extractSection(rawContent, section4Patterns, section5Patterns);
+          const suggestion = extractSection(rawContent, section5Patterns, []);
+          
+          // 如果按标题分段失败，回退到显示完整内容
+          if (!truth && !rootCause && !audit && !suggestion) {
+            report = {
+              score: score,
+              truth: rawContent,
+              rootCause: '',
+              audit: '',
+              suggestion: ''
+            };
+          } else {
+            report = {
+              score: score,
+              truth: truth || '(未找到相关内容)',
+              rootCause: rootCause || '(未找到相关内容)',
+              audit: audit || '(未找到相关内容)',
+              suggestion: suggestion || '(未找到相关内容)'
+            };
+          }
         }
       }
       
