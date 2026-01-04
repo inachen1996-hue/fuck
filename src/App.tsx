@@ -5985,8 +5985,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-purple-800 text-lg">数据背后的真相</h4>
                   </div>
-                  <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.truth || reportData.assetAudit || reportData.situationRoom || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
+                  <p className="text-sm text-purple-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
+                    __html: (() => {
+                      const content = reportData.truth || reportData.assetAudit || reportData.situationRoom || '';
+                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
+                      return isInvalid ? '暂无数据，请点击"重新生成"' : content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>');
+                    })()
                   }} />
                 </div>
 
@@ -5998,8 +6002,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-blue-800 text-lg">深度归因</h4>
                   </div>
-                  <p className="text-sm text-blue-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.rootCause || reportData.operationalIQ || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
+                  <p className="text-sm text-blue-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
+                    __html: (() => {
+                      const content = reportData.rootCause || reportData.operationalIQ || '';
+                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
+                      return isInvalid ? '暂无数据' : content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>');
+                    })()
                   }} />
                 </div>
 
@@ -6011,8 +6019,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-orange-800 text-lg">商业审计结论</h4>
                   </div>
-                  <p className="text-sm text-orange-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.audit || reportData.survivalRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
+                  <p className="text-sm text-orange-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
+                    __html: (() => {
+                      const content = reportData.audit || reportData.survivalRate || '';
+                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
+                      return isInvalid ? '暂无数据' : content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>');
+                    })()
                   }} />
                 </div>
 
@@ -6024,8 +6036,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-sky-800 text-lg">纯逻辑建议</h4>
                   </div>
-                  <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
-                    __html: (reportData.suggestion || reportData.command || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
+                  <p className="text-sm text-sky-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
+                    __html: (() => {
+                      const content = reportData.suggestion || reportData.command || '';
+                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
+                      return isInvalid ? '暂无建议' : content.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>');
+                    })()
                   }} />
                 </div>
               </div>
