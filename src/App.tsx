@@ -4557,50 +4557,54 @@ const ReviewView = ({
       return `### ${catLabel} (共${(totalMinutes / 60).toFixed(1)}小时)\n${eventList}`;
     }).join('\n\n');
     
-    // 构建AI提示词 - 时间真相解码器 (Bio-Calibrated v22)
-    const prompt = `# Role: 时间真相解码器 (Time Truth Decoder - Bio-Calibrated)
+    // 构建AI提示词 - 全栈人生战略家 (Full-Stack Life Strategist)
+    const currentHour = new Date().getHours();
+    const currentMinute = new Date().getMinutes();
+    const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+    
+    const prompt = `# Role: 全栈人生战略家 (Full-Stack Life Strategist)
 
 # Core Instruction (核心指令):
-你是一个**懂人性的商业审计师**。你的审计对象是一个**碳基生物**（有生理需求），而不是机器。在分析时间时，必须严格执行**"白名单豁免机制"**，严禁把必要的生存动作和战术动作误判为"逃避"或"中断"。
+你不是一个简单的统计机器，你是用户的**私人幕僚长**。用户不仅上传了时间数据，还上传了**日记（Feeling）、任务名称/时间（Detail）和任务感想（Sensation）**。你的核心能力是**"文本显微镜"**：
+1. **读懂细节**：不要只看分类标签（如"工作"），要看具体做了什么（日程名称）和感想（如"感觉脚本写得很顺"）。
+2. **挖掘模式**：从碎片化细节中，分析用户的性格优势、隐形弱点和行为模式。
+3. **全息指导**：将"生活状态（睡/吃/心情）"与"商业目标（4月变现）"强关联，提供涵盖身心的综合建议。
 
 # User Profile:
 1. **死线**：2026年4月必须变现。
-2. **现状**：腰肌劳损，需要区分"真逃避（造效率/计划工具）"和"假逃避（做计划/生理需求）"。
+2. **特质**：腰肌劳损，敏感细腻，有技术逃避倾向，也有倾向去做更简单事情的倾向，但也具备极强的瞬间爆发力（心流）。
 
-# 🧠 Analysis Logic (核心分析算法 - v22修正版):
+# 🧠 Deep Semantic Analysis Logic (深度语义分析逻辑):
 
-**第一步：全口径资产盘点 (Asset Valuation)**
-* **原则**：**成品与研发均为资产。**
-* **判定逻辑**：
-  * **🟢 有形资产 (Hard Assets)**：
-    * [已发布视频] + [待发布成品 (存稿)]。
-    * *评价*：商业价值极高。
-  * **🔵 无形资产 (R&D Assets) - [修复调研误判]**：
-    * **判定条件**：[调研/学习]时长，且**日记/备注中有具体的灵感、观点或笔记**。
-    * *评价*：这是"研发投资"，计入资产栏。**严禁归类为负债。**
-  * **🔴 商业负债 (Liabilities)**：
-    * **判定条件**：[无记录的盲目调研] + [造计划App] + [焦虑刷手机]。
-    * *评价*：只有这些才是真正的"亏损"。
+**第一步：全息数据关联 (Connecting the Dots)**
+* **原则**：**心情 x 身体 x 动作 = 真相。**
+* **侦测维度**：
+  * **心情与产出**：用户在做哪件事时记录了"开心/轻松"？（这是他的**天赋区/高能区**）。在做哪件事时记录了"烦躁/累"？（这是他的**耗能区/弱点**）。
+  * **身体与决策**：身体不适（头疼/腰疼）是否直接导致了后续的"逃避行为（造App/刷手机）"？如果是，说明**"体能管理"**是商业成败的关键。
+  * **备注挖掘**：
+    * *示例*：时间块叫"调研"，备注写"看了很多但没灵感"。 -> 结论：**方法论缺失**。
+    * *示例*：时间块叫"造App"，备注写"想自动化某个流程"。 -> 结论：**工具思维过重，产品思维不足**。
 
-**第二步：行为白名单过滤 (The White-List Filter) - [修复误判]**
-* **在分析"时序/拖延"前，必须先剔除以下"合法动作"：**
-* **1. 生理维护 (Bio-Maintenance)**：
-  * [吃饭]、[拉屎/上厕所]、[洗澡]、[睡觉]。
-  * *定性*：这是**"固定运营成本"**（Fixed Cost），就像工厂要交电费一样。**严禁标记为"心流中断"或"浪费"。但各项时间不能超过标准视角。例如睡觉10个小时，需要提醒用户注意。吃饭超过半个小时，需要提醒用户注意。拉屎超过半个小时，需要提醒用户注意。**
-* **2. 战术校准 (Tactical Calibration)**：
-  * [制定今日核心产出计划/kpi]、[指定目标]。
-  * *定性*：这是**"磨刀不误砍柴工"**。这是开战前的地图校准，不是"启动仪式拖延"。只有当"做计划"变成了"写代码/改App功能"时，才算拖延。
+**第二步：SWOT 动态扫描 (Daily SWOT)**
+*基于今日的具体表现，提取用户的优劣势：*
+* **⚡️ 优势 (Strengths)**：今天在哪件事上体现了极高的效率或愉悦感？（如：剪辑时进入心流）。
+* **⚠️ 劣势 (Weaknesses)**：今天被什么绊倒了？（如：完美主义导致不敢发布、因身体疼痛导致情绪崩溃）。
+* **💣 威胁 (Threats)**：哪些生活习惯正在威胁4月的死线？（如：熬夜导致次日报废）。
+* **🚀 机会 (Opportunities)**：日记里是否闪现了什么灵感或复盘，可能成为明天的增长点？
 
-**第三步：时序病理侦测 (Chronological Detective)**
-* **任务**：排除白名单后，寻找真正的病灶。
-* **真逃避模型**：
-  * *战前逃避*：在"做计划"和"正式干活"之间，插入了"造App"或"刷手机"。
-  * *战后放纵*：核心工作结束后，立即陷入长时间的"造App"（伪装成工作的娱乐）。
-* **真中断模型**：
-  * 在核心工作（如剪辑）中间，插入了"刷抖音/看八卦"（非生理需求）。
+**第三步：资产价值终审 (Valuation with Context)**
+* *在v22的基础上，加入"内容质量"判断：*
+* **资产**：[发布] + [存稿] + [**有深度思考记录的研发**]。
+* **负债**：[纯逃避的造App] + [无记录的消耗]。
+* *修正*：如果用户备注说"虽然没做完，但想通了关键逻辑"，这算**"无形资产增值"**，予以肯定。
+
+# ⚠️ 重要时间上下文：
+- **当前系统时间**：${currentTimeStr}
+- **分析周期**：${periodLabels[currentPeriod]}
+- **重要提醒**：如果是"今日"复盘，用户的一天还没结束！现在才${currentTimeStr}，请只分析00:00到${currentTimeStr}之间的数据，**不要批评用户${currentTimeStr}之后"没做事"**，因为那段时间还没到。本周、本月同理，只分析到当前时刻为止的数据。
 
 # Input Data (用户数据)
-- **当前日期**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+- **当前日期时间**：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })} ${currentTimeStr}
 - **距离死线**：距离2026年4月还有约${Math.ceil((new Date('2026-04-01').getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30))}个月
 - 时间周期：${periodLabels[currentPeriod]}（${days}天）
 - 日记数量：${periodJournals.length}篇
@@ -4615,7 +4619,7 @@ ${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood,
 ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}
 
 # Tone (语气):
-**像一位通情达理的CFO（首席财务官）。** 明白人是要吃饭拉屎的，明白打仗是要看地图的。但对那些挪用公款（时间）去造玩具（App）的行为，依旧冷血无情。
+像一位**深谙人性的幕僚长**。既有商业精英的犀利（盯紧目标），又有心理医生的细腻（读懂情绪）。**不仅告诉你"怎么做"，更告诉你"为什么要这么做（基于你现在的状态）"。**
 
 # ⚠️ JSON输出格式要求（重要）：
 - **不要在内容中重复标题或emoji**，因为UI已经显示了标题
@@ -4625,10 +4629,10 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 请以JSON格式返回：
 {
   "score": 75,
-  "truth": "真实资产负债表：🟢资产入库（成品存稿X个 + 有效研发X小时）的评价 + 🔴负债累积（仅列出：造App、无效刷手机、无记录调研）。注意：不要把制定计划列为负债！",
-  "rootCause": "时序病理分析：排除吃饭拉屎后，用户在工作间隙到底干了什么？是流程顺畅（生理需求未影响战斗节奏），还是启动前的真正拖延？",
-  "audit": "商业审计结论：今日是盈利还是亏损？标准：资产（含研发）> 负债（造App+废操作）= 盈利",
-  "suggestion": "纯逻辑建议：只针对真正的负债项提出建议，如针对战后放纵建议设置物理阻断"
+  "truth": "🧬 本我洞察：挖掘用户没意识到的自己。分析用户在哪件事上感到愉悦（天赋区），在哪件事上感到烦躁（耗能区）。基于备注和感想，分析用户的性格优势和隐形弱点。",
+  "rootCause": "⚖️ 商业战况：资产盘点（成品/存稿/有效灵感）+ 负债警示（被情绪或身体吞噬的时间）+ 成败关键（今天离4月变现更近还是被拖累了）",
+  "audit": "🛡️ 身心联合处方：针对身体（如腰疼给出物理调整建议）+ 针对情绪（如焦虑给出心理疏导）+ 针对工作（基于今日优势给出明天的舒适区打法）",
+  "suggestion": "🚀 明日战略指令：一句话的最高优先级指令，告诉用户明天起床第一件事做什么，用多巴胺启动大脑"
 }
 
 只返回JSON，不要其他内容。`;
@@ -4637,7 +4641,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 
     try {
       // 针对 deepseek-reasoner 模型，强调只输出 JSON
-      const systemPrompt = '你是懂人性的商业审计师，审计对象是碳基生物。请直接输出JSON格式的分析报告，不要输出任何推理过程、解释或其他文字。只输出一个JSON对象，以{开头，以}结尾。';
+      const systemPrompt = '你是用户的私人幕僚长，深谙人性。请直接输出JSON格式的分析报告，不要输出任何推理过程、解释或其他文字。只输出一个JSON对象，以{开头，以}结尾。';
       
       const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
@@ -4944,16 +4948,15 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             return text.slice(startIndex, endIndex).trim();
           };
           
-          // 定义各部分的标题模式（基于提示词中的输出结构）
-          // 第0部分：评分（已单独提取）
-          // 第1部分：资产负债表 -> truth
-          const section1Patterns = ['##?\\s*1\\.?', '⚖️', '资产负债表', '真实资产负债', 'Balance Sheet', '资产入库', '资产盘点'];
-          // 第2部分：时序病理分析 -> rootCause
-          const section2Patterns = ['##?\\s*2\\.?', '🔍', '时序病理', 'Timing Analysis', '时序分析', '病理分析'];
-          // 第3部分：商业审计结论 -> audit
-          const section3Patterns = ['##?\\s*3\\.?', '📉', '商业审计', 'Audit Verdict', '审计结论', '盈利.*亏损', '亏损.*盈利'];
-          // 第4部分：纯逻辑建议 -> suggestion
-          const section4Patterns = ['##?\\s*4\\.?', '🚀', '纯逻辑建议', 'Logical Suggestion', '逻辑建议', '建议'];
+          // 定义各部分的标题模式（基于新提示词的输出结构）
+          // 第1部分：本我洞察 -> truth
+          const section1Patterns = ['##?\\s*1\\.?', '🧬', '本我洞察', 'Self.*Insight', '优势', '劣势', '天赋区'];
+          // 第2部分：商业战况 -> rootCause
+          const section2Patterns = ['##?\\s*2\\.?', '⚖️', '商业战况', 'Business War', '资产盘点', '负债警示'];
+          // 第3部分：身心联合处方 -> audit
+          const section3Patterns = ['##?\\s*3\\.?', '🛡️', '身心联合处方', 'Body-Mind', '针对身体', '针对情绪'];
+          // 第4部分：明日战略指令 -> suggestion
+          const section4Patterns = ['##?\\s*4\\.?', '🚀', '明日战略', 'Strategic Order', '战略指令', '最高优先级'];
           
           // 所有可能的段落标题（用于确定结束位置）
           
@@ -5836,52 +5839,52 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       </div>
                     </div>
 
-                    {/* 🔍 数据背后的真相 */}
+                    {/* 🧬 本我洞察 */}
                     <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🔍</span>
+                          <span className="text-lg">🧬</span>
                         </div>
-                        <h4 className="font-black text-purple-800 text-lg">数据背后的真相</h4>
+                        <h4 className="font-black text-purple-800 text-lg">本我洞察</h4>
                       </div>
                       <p className="text-sm text-purple-700 leading-relaxed" dangerouslySetInnerHTML={{ 
                         __html: (viewingHistoryReport.truth || viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🧬 深度归因 */}
+                    {/* ⚖️ 商业战况 */}
                     <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-5 border-2 border-blue-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🧬</span>
+                          <span className="text-lg">⚖️</span>
                         </div>
-                        <h4 className="font-black text-blue-800 text-lg">深度归因</h4>
+                        <h4 className="font-black text-blue-800 text-lg">商业战况</h4>
                       </div>
                       <p className="text-sm text-blue-700 leading-relaxed" dangerouslySetInnerHTML={{ 
                         __html: (viewingHistoryReport.rootCause || viewingHistoryReport.operationalIQ || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 📉 商业审计结论 */}
+                    {/* 🛡️ 身心联合处方 */}
                     <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border-2 border-orange-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">📉</span>
+                          <span className="text-lg">🛡️</span>
                         </div>
-                        <h4 className="font-black text-orange-800 text-lg">商业审计结论</h4>
+                        <h4 className="font-black text-orange-800 text-lg">身心联合处方</h4>
                       </div>
                       <p className="text-sm text-orange-700 leading-relaxed" dangerouslySetInnerHTML={{ 
                         __html: (viewingHistoryReport.audit || viewingHistoryReport.survivalRate || '暂无数据').replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
                       }} />
                     </div>
 
-                    {/* 🚀 纯逻辑建议 */}
+                    {/* 🚀 明日战略指令 */}
                     <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
                           <span className="text-lg">🚀</span>
                         </div>
-                        <h4 className="font-black text-sky-800 text-lg">纯逻辑建议</h4>
+                        <h4 className="font-black text-sky-800 text-lg">明日战略指令</h4>
                       </div>
                       <p className="text-sm text-sky-700 leading-relaxed" dangerouslySetInnerHTML={{ 
                         __html: (viewingHistoryReport.suggestion || viewingHistoryReport.command || '暂无建议').replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
@@ -5996,13 +5999,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   <p className="text-xs text-indigo-600 mt-2">距离2026年4月变现目标的进度分数</p>
                 </div>
 
-                {/* ===== 🔍 数据背后的真相 ===== */}
+                {/* ===== 🧬 本我洞察 ===== */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🔍</span>
+                      <span className="text-lg">🧬</span>
                     </div>
-                    <h4 className="font-black text-purple-800 text-lg">数据背后的真相</h4>
+                    <h4 className="font-black text-purple-800 text-lg">本我洞察</h4>
                   </div>
                   <p className="text-sm text-purple-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
                     __html: (() => {
@@ -6013,13 +6016,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   }} />
                 </div>
 
-                {/* ===== 🧬 深度归因 ===== */}
+                {/* ===== ⚖️ 商业战况 ===== */}
                 <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-5 border-2 border-blue-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">🧬</span>
+                      <span className="text-lg">⚖️</span>
                     </div>
-                    <h4 className="font-black text-blue-800 text-lg">深度归因</h4>
+                    <h4 className="font-black text-blue-800 text-lg">商业战况</h4>
                   </div>
                   <p className="text-sm text-blue-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
                     __html: (() => {
@@ -6030,13 +6033,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   }} />
                 </div>
 
-                {/* ===== 📉 商业审计结论 ===== */}
+                {/* ===== 🛡️ 身心联合处方 ===== */}
                 <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border-2 border-orange-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                      <span className="text-lg">📉</span>
+                      <span className="text-lg">🛡️</span>
                     </div>
-                    <h4 className="font-black text-orange-800 text-lg">商业审计结论</h4>
+                    <h4 className="font-black text-orange-800 text-lg">身心联合处方</h4>
                   </div>
                   <p className="text-sm text-orange-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
                     __html: (() => {
@@ -6047,13 +6050,13 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   }} />
                 </div>
 
-                {/* ===== 🚀 纯逻辑建议 ===== */}
+                {/* ===== 🚀 明日战略指令 ===== */}
                 <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
                       <span className="text-lg">🚀</span>
                     </div>
-                    <h4 className="font-black text-sky-800 text-lg">纯逻辑建议</h4>
+                    <h4 className="font-black text-sky-800 text-lg">明日战略指令</h4>
                   </div>
                   <p className="text-sm text-sky-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
                     __html: (() => {
