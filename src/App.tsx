@@ -208,6 +208,35 @@ const removeEmoji = (str: string) => {
   return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu, '').trim();
 };
 
+// AI复盘文本格式化函数
+const formatAIReportText = (content: string, strongClass: string = 'text-gray-900'): string => {
+  if (!content || content === '...' || content === '…' || content.trim().length < 5) {
+    return '<p>暂无数据</p>';
+  }
+  
+  let formatted = content
+    // 处理加粗
+    .replace(/\*\*(.*?)\*\*/g, `<strong class="${strongClass}">$1</strong>`)
+    // 序号前换行：1. 2. 3. 等（但不是行首的）
+    .replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
+    // 连续"xxx："模式，第二个及之后的前面换行
+    // 匹配：冒号后面紧跟着中文/字母/数字，然后又是冒号
+    .replace(/(：|:)([^：:\n]{1,20})(：|:)/g, '$1\n$2$3');
+  
+  // 按段落分隔
+  return formatted
+    .split(/\n\n+/)
+    .map((p: string) => {
+      // 段落内按单个换行分隔成行
+      const lines = p.split(/\n/).filter(line => line.trim());
+      if (lines.length > 1) {
+        return `<p class="mb-3">${lines.map(line => line.trim()).join('<br/>')}</p>`;
+      }
+      return `<p class="mb-3">${p.trim()}</p>`;
+    })
+    .join('');
+};
+
 // 图片压缩函数 - 将图片压缩到指定大小以内
 const compressImage = (file: File, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -5847,15 +5876,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         <h4 className="font-black text-purple-800 text-lg">本我洞察</h4>
                       </div>
-                      <div className="text-sm text-purple-700 leading-loose space-y-3">
-                        {(viewingHistoryReport.truth || viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || '暂无数据')
-                          .split(/\n\n+/)
-                          .map((para: string, idx: number) => (
-                            <p key={idx} className="mb-3" dangerouslySetInnerHTML={{ 
-                              __html: para.replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>') 
-                            }} />
-                          ))}
-                      </div>
+                      <div className="text-sm text-purple-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
+                        __html: formatAIReportText(
+                          viewingHistoryReport.truth || viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || '',
+                          'text-purple-900'
+                        )
+                      }} />
                     </div>
 
                     {/* ⚖️ 商业战况 */}
@@ -5866,15 +5892,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         <h4 className="font-black text-blue-800 text-lg">商业战况</h4>
                       </div>
-                      <div className="text-sm text-blue-700 leading-loose space-y-3">
-                        {(viewingHistoryReport.rootCause || viewingHistoryReport.operationalIQ || '暂无数据')
-                          .split(/\n\n+/)
-                          .map((para: string, idx: number) => (
-                            <p key={idx} className="mb-3" dangerouslySetInnerHTML={{ 
-                              __html: para.replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>') 
-                            }} />
-                          ))}
-                      </div>
+                      <div className="text-sm text-blue-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
+                        __html: formatAIReportText(
+                          viewingHistoryReport.rootCause || viewingHistoryReport.operationalIQ || '',
+                          'text-blue-900'
+                        )
+                      }} />
                     </div>
 
                     {/* 🛡️ 身心联合处方 */}
@@ -5885,15 +5908,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         <h4 className="font-black text-orange-800 text-lg">身心联合处方</h4>
                       </div>
-                      <div className="text-sm text-orange-700 leading-loose space-y-3">
-                        {(viewingHistoryReport.audit || viewingHistoryReport.survivalRate || '暂无数据')
-                          .split(/\n\n+/)
-                          .map((para: string, idx: number) => (
-                            <p key={idx} className="mb-3" dangerouslySetInnerHTML={{ 
-                              __html: para.replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>') 
-                            }} />
-                          ))}
-                      </div>
+                      <div className="text-sm text-orange-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
+                        __html: formatAIReportText(
+                          viewingHistoryReport.audit || viewingHistoryReport.survivalRate || '',
+                          'text-orange-900'
+                        )
+                      }} />
                     </div>
 
                     {/* 🚀 明日战略指令 */}
@@ -5904,15 +5924,12 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         <h4 className="font-black text-sky-800 text-lg">明日战略指令</h4>
                       </div>
-                      <div className="text-sm text-sky-700 leading-loose space-y-3">
-                        {(viewingHistoryReport.suggestion || viewingHistoryReport.command || '暂无建议')
-                          .split(/\n\n+/)
-                          .map((para: string, idx: number) => (
-                            <p key={idx} className="mb-3" dangerouslySetInnerHTML={{ 
-                              __html: para.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>') 
-                            }} />
-                          ))}
-                      </div>
+                      <div className="text-sm text-sky-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
+                        __html: formatAIReportText(
+                          viewingHistoryReport.suggestion || viewingHistoryReport.command || '',
+                          'text-sky-900'
+                        )
+                      }} />
                     </div>
                   </div>
                 ) : (
@@ -6031,18 +6048,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-purple-800 text-lg">本我洞察</h4>
                   </div>
-                  <div className="text-sm text-purple-700 leading-loose whitespace-pre-wrap space-y-3" dangerouslySetInnerHTML={{ 
-                    __html: (() => {
-                      const content = reportData.truth || reportData.assetAudit || reportData.situationRoom || '';
-                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
-                      if (isInvalid) return '<p>暂无数据，请点击"重新生成"</p>';
-                      // 格式化：加粗、段落分隔
-                      return content
-                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-900">$1</strong>')
-                        .split(/\n\n+/)
-                        .map((p: string) => `<p class="mb-3">${p.trim()}</p>`)
-                        .join('');
-                    })()
+                  <div className="text-sm text-purple-700 leading-loose space-y-3" dangerouslySetInnerHTML={{ 
+                    __html: formatAIReportText(
+                      reportData.truth || reportData.assetAudit || reportData.situationRoom || '',
+                      'text-purple-900'
+                    ) || '<p>暂无数据，请点击"重新生成"</p>'
                   }} />
                 </div>
 
@@ -6054,17 +6064,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-blue-800 text-lg">商业战况</h4>
                   </div>
-                  <div className="text-sm text-blue-700 leading-loose whitespace-pre-wrap space-y-3" dangerouslySetInnerHTML={{ 
-                    __html: (() => {
-                      const content = reportData.rootCause || reportData.operationalIQ || '';
-                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
-                      if (isInvalid) return '<p>暂无数据</p>';
-                      return content
-                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900">$1</strong>')
-                        .split(/\n\n+/)
-                        .map((p: string) => `<p class="mb-3">${p.trim()}</p>`)
-                        .join('');
-                    })()
+                  <div className="text-sm text-blue-700 leading-loose space-y-3" dangerouslySetInnerHTML={{ 
+                    __html: formatAIReportText(
+                      reportData.rootCause || reportData.operationalIQ || '',
+                      'text-blue-900'
+                    )
                   }} />
                 </div>
 
@@ -6076,17 +6080,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-orange-800 text-lg">身心联合处方</h4>
                   </div>
-                  <div className="text-sm text-orange-700 leading-loose whitespace-pre-wrap space-y-3" dangerouslySetInnerHTML={{ 
-                    __html: (() => {
-                      const content = reportData.audit || reportData.survivalRate || '';
-                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
-                      if (isInvalid) return '<p>暂无数据</p>';
-                      return content
-                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-900">$1</strong>')
-                        .split(/\n\n+/)
-                        .map((p: string) => `<p class="mb-3">${p.trim()}</p>`)
-                        .join('');
-                    })()
+                  <div className="text-sm text-orange-700 leading-loose space-y-3" dangerouslySetInnerHTML={{ 
+                    __html: formatAIReportText(
+                      reportData.audit || reportData.survivalRate || '',
+                      'text-orange-900'
+                    )
                   }} />
                 </div>
 
@@ -6098,17 +6096,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     <h4 className="font-black text-sky-800 text-lg">明日战略指令</h4>
                   </div>
-                  <div className="text-sm text-sky-700 leading-loose whitespace-pre-wrap space-y-3" dangerouslySetInnerHTML={{ 
-                    __html: (() => {
-                      const content = reportData.suggestion || reportData.command || '';
-                      const isInvalid = !content || content === '...' || content === '…' || content.trim().length < 5;
-                      if (isInvalid) return '<p>暂无建议</p>';
-                      return content
-                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-900">$1</strong>')
-                        .split(/\n\n+/)
-                        .map((p: string) => `<p class="mb-3">${p.trim()}</p>`)
-                        .join('');
-                    })()
+                  <div className="text-sm text-sky-700 leading-loose space-y-3" dangerouslySetInnerHTML={{ 
+                    __html: formatAIReportText(
+                      reportData.suggestion || reportData.command || '',
+                      'text-sky-900'
+                    )
                   }} />
                 </div>
               </div>
