@@ -4222,8 +4222,6 @@ const ReviewView = ({
   // 当前进度时间周期
   const [progressPeriod, setProgressPeriod] = useState<'today' | 'yesterday' | 'week' | 'month'>('today');
   
-  const [viewingHistoryReport, setViewingHistoryReport] = useState<any>(null);
-  
   // 记录生成开始时间，用于检测超时
   const generatingStartTime = useRef<number | null>(null);
   
@@ -5396,7 +5394,6 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     { id: 'today' as const, label: '今日' },
     { id: 'week' as const, label: '本周' },
     { id: 'month' as const, label: '本月' },
-    { id: 'history' as const, label: '历史' },
   ];
 
   return (
@@ -5817,7 +5814,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               {aiPeriods.map(period => (
                 <button
                   key={period.id}
-                  onClick={() => { setAiPeriod(period.id); setViewingHistoryReport(null); }}
+                  onClick={() => setAiPeriod(period.id)}
                   className="flex-1 py-2 text-xs font-bold transition-all relative"
                   style={{ 
                     color: aiPeriod === period.id ? '#89CFF0' : '#BDBDBD'
@@ -5834,156 +5831,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               ))}
             </div>
 
-            {/* 复盘历史视图 */}
-            {aiPeriod === 'history' ? (
-              <div>
-                {viewingHistoryReport ? (
-                  // 查看历史报告详情
-                  <div className="space-y-4">
-                    <button
-                      onClick={() => setViewingHistoryReport(null)}
-                      className="flex items-center gap-2 text-sky-600 font-bold mb-4"
-                    >
-                      <ChevronLeft size={20} />
-                      返回历史列表
-                    </button>
-                    
-                    {/* 📊 今日评分 */}
-                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border-2 border-indigo-100">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
-                            <span className="text-lg">📊</span>
-                          </div>
-                          <h4 className="font-black text-indigo-800 text-lg">变现进度评分</h4>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-4xl font-black ${
-                            (viewingHistoryReport.score || 0) >= 80 ? 'text-green-500' :
-                            (viewingHistoryReport.score || 0) >= 60 ? 'text-yellow-500' :
-                            (viewingHistoryReport.score || 0) >= 40 ? 'text-orange-500' : 'text-red-500'
-                          }`}>{viewingHistoryReport.score || '?'}</span>
-                          <span className="text-lg text-gray-400">/100</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 🧬 本我洞察 */}
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-5 border-2 border-purple-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🧬</span>
-                        </div>
-                        <h4 className="font-black text-purple-800 text-lg">本我洞察</h4>
-                      </div>
-                      <div className="text-sm text-purple-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
-                        __html: formatAIReportText(
-                          viewingHistoryReport.truth || viewingHistoryReport.assetAudit || viewingHistoryReport.situationRoom || '',
-                          'text-purple-900'
-                        )
-                      }} />
-                    </div>
-
-                    {/* ⚖️ 商业战况 */}
-                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-5 border-2 border-blue-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">⚖️</span>
-                        </div>
-                        <h4 className="font-black text-blue-800 text-lg">商业战况</h4>
-                      </div>
-                      <div className="text-sm text-blue-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
-                        __html: formatAIReportText(
-                          viewingHistoryReport.rootCause || viewingHistoryReport.operationalIQ || '',
-                          'text-blue-900'
-                        )
-                      }} />
-                    </div>
-
-                    {/* 🛡️ 身心联合处方 */}
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-5 border-2 border-orange-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🛡️</span>
-                        </div>
-                        <h4 className="font-black text-orange-800 text-lg">身心联合处方</h4>
-                      </div>
-                      <div className="text-sm text-orange-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
-                        __html: formatAIReportText(
-                          viewingHistoryReport.audit || viewingHistoryReport.survivalRate || '',
-                          'text-orange-900'
-                        )
-                      }} />
-                    </div>
-
-                    {/* 🚀 明日战略指令 */}
-                    <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-2xl p-5 border-2 border-sky-100">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-8 h-8 bg-sky-100 rounded-xl flex items-center justify-center">
-                          <span className="text-lg">🚀</span>
-                        </div>
-                        <h4 className="font-black text-sky-800 text-lg">明日战略指令</h4>
-                      </div>
-                      <div className="text-sm text-sky-700 leading-loose space-y-3" dangerouslySetInnerHTML={{
-                        __html: formatAIReportText(
-                          viewingHistoryReport.suggestion || viewingHistoryReport.command || '',
-                          'text-sky-900'
-                        )
-                      }} />
-                    </div>
-                  </div>
-                ) : (
-                  // 历史列表
-                  <div>
-                    {reportHistory.length === 0 ? (
-                      <div className="text-center py-12">
-                        <div className="w-20 h-20 bg-gray-100 rounded-[2rem] mx-auto mb-4 flex items-center justify-center">
-                          <Clock size={40} className="text-gray-300" />
-                        </div>
-                        <p className="text-gray-400 text-sm mb-2">暂无复盘历史</p>
-                        <p className="text-gray-300 text-xs">生成AI复盘后会自动保存到这里</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {reportHistory.sort((a, b) => b.createdAt - a.createdAt).map(history => (
-                          <button
-                            key={history.id}
-                            onClick={() => setViewingHistoryReport(history.report)}
-                            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:border-sky-200 hover:shadow-md transition-all text-left"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                                  history.period === 'today' ? 'bg-green-100' :
-                                  history.period === 'yesterday' ? 'bg-blue-100' :
-                                  history.period === 'week' ? 'bg-purple-100' : 'bg-orange-100'
-                                }`}>
-                                  <span className="text-2xl">
-                                    {history.period === 'today' ? '📅' :
-                                     history.period === 'yesterday' ? '📆' :
-                                     history.period === 'week' ? '📊' : '📈'}
-                                  </span>
-                                </div>
-                                <div>
-                                  <h4 className="font-bold text-gray-700">{history.periodLabel}复盘</h4>
-                                  <p className="text-xs text-gray-400">{history.dateRange}</p>
-                                </div>
-                              </div>
-                              <ChevronRight size={16} className="text-gray-400" />
-                            </div>
-                            <div className="mt-3 pt-3 border-t border-gray-50">
-                              <p className="text-xs text-gray-500 line-clamp-2">
-                                {new Date(history.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : generatingPeriods.has(aiPeriod) ? (
+            {generatingPeriods.has(aiPeriod) ? (
               <div className="text-center py-12">
                 <h3 className="text-lg font-black text-sky-600 mb-3">{generatingProgress[aiPeriod] || '正在生成...'}</h3>
                 <div className="flex justify-center gap-1 mb-4">
@@ -6005,9 +5853,17 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     <span className="text-sm font-bold text-gray-700">
                       {reportData.period || aiPeriods.find(p => p.id === aiPeriod)?.label}复盘报告
                     </span>
-                    <span className="text-xs text-gray-400">
-                      {reportHistory.find(h => h.period === aiPeriod)?.dateRange || ''}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">
+                        {reportHistory.find(h => h.period === aiPeriod)?.dateRange || ''}
+                      </span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                        {geminiApiKey 
+                          ? (geminiModel === 'gemini-2.0-flash-thinking-exp' ? '思考' : geminiModel === 'gemini-1.5-pro' ? 'Pro' : 'Flash')
+                          : (deepseekModel === 'deepseek-reasoner' ? '大智慧' : '小简单')
+                        }
+                      </span>
+                    </div>
                   </div>
                   <button
                     onClick={generateReport}
@@ -13698,8 +13554,8 @@ export default function App() {
   };
 
   const tabs: { id: TabId; icon: typeof Timer; label: string; color: string }[] = [
-    { id: 'timer', icon: Timer, label: '专注', color: getSelectedCategoryColor() },
     { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
+    { id: 'timer', icon: Timer, label: '专注', color: getSelectedCategoryColor() },
     { id: 'journal', icon: BookHeart, label: '日记', color: MACARON_COLORS.themes.journal },
     { id: 'plan', icon: Calendar, label: '规划', color: MACARON_COLORS.themes.plan },
     { id: 'settings', icon: Settings2, label: '设置', color: MACARON_COLORS.themes.settings },
