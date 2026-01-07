@@ -59,7 +59,7 @@ const updateDocumentTitle = (
 
 // 类型定义
 type CategoryId = 'work' | 'study' | 'sleep' | 'life' | 'rest' | 'entertainment' | 'health' | 'hobby' | 'uncategorized';
-type TabId = 'timer' | 'journal' | 'review' | 'plan' | 'settings';
+type TabId = 'progress' | 'timer' | 'review' | 'plan' | 'settings';
 type TimerStatus = 'idle' | 'running' | 'paused' | 'completed';
 
 interface CategoryTheme {
@@ -3896,19 +3896,9 @@ const JournalView = ({
   }
 
   return (
-    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: '#F9F6FD' }}>
-      {/* 背景装饰 */}
-      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#E6E6FA' }}></div>
-      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#E0C3FC' }}></div>
-      
-      {/* 头部 */}
-      <div className="px-6 pt-8 pb-4 flex justify-between items-end z-10">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black mb-2" style={{ color: '#9E7CB8' }}>心情日记</h2>
-            <div className="w-2 h-2 rounded-full ring-2" style={{ backgroundColor: '#E0C3FC', borderColor: '#CFA0E9' }}></div>
-          </div>
-        </div>
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: 'transparent' }}>
+      {/* 头部 - 只保留添加按钮 */}
+      <div className="px-6 pt-4 pb-2 flex justify-end items-center z-10">
         <button 
           onClick={() => openEditor()}
           className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-xl hover:brightness-110 active:scale-90 transition-all border-b-4"
@@ -3925,7 +3915,7 @@ const JournalView = ({
       {/* 日记列表 */}
       <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
         {journals.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center h-64">
             <div className="text-center opacity-60">
               <p className="text-[#2D2D2D] font-bold text-lg">记录美好时光</p>
               <p className="text-[#8A8A8A] text-sm mt-2 px-4">点击右上角开始写下今天的心情</p>
@@ -4155,9 +4145,346 @@ const JournalView = ({
   );
 };
 
+// 感想视图 - 展示计时记录中的感想，按分类分组
+const ThoughtsView = ({
+  timeRecords,
+  setTimeRecords,
+  categories
+}: {
+  timeRecords: TimeRecord[];
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
+  categories: Category[];
+}) => {
+  // 获取所有有感想的记录
+  const recordsWithNotes = useMemo(() => {
+    return timeRecords
+      .filter(r => r.note && r.note.trim())
+      .sort((a, b) => b.createdAt - a.createdAt); // 按时间倒序
+  }, [timeRecords]);
+
+  // 获取所有有感想的分类
+  const categoriesWithNotes = useMemo(() => {
+    const catIds = new Set(recordsWithNotes.map(r => r.categoryId || 'uncategorized'));
+    return categories.filter(c => catIds.has(c.id as CategoryId));
+  }, [recordsWithNotes, categories]);
+
+  // 当前选中的分类
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // 编辑弹窗状态
+  const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null);
+  const [editingNote, setEditingNote] = useState('');
+
+  // 根据选中分类过滤记录
+  const filteredRecords = useMemo(() => {
+    if (selectedCategory === 'all') {
+      return recordsWithNotes;
+    }
+    return recordsWithNotes.filter(r => (r.categoryId || 'uncategorized') === selectedCategory);
+  }, [recordsWithNotes, selectedCategory]);
+
+  // 格式化日期显示
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 86400000);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return '今天';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return '昨天';
+    } else {
+      return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+    }
+  };
+
+  // 获取分类颜色
+  const getCategoryColor = (categoryId: string) => {
+    const cat = categories.find(c => c.id === categoryId);
+    if (cat?.color) return cat.color;
+    return MACARON_COLORS.categories[categoryId as CategoryId]?.primary || '#9E7CB8';
+  };
+
+  // 获取分类名称
+  const getCategoryLabel = (categoryId: string) => {
+    const cat = categories.find(c => c.id === categoryId);
+    return cat?.label || '待分类';
+  };
+
+  // 打开编辑弹窗
+  const openEditModal = (record: TimeRecord) => {
+    setEditingRecord(record);
+    setEditingNote(record.note || '');
+  };
+
+  // 保存编辑
+  const saveEdit = () => {
+    if (!editingRecord) return;
+    
+    setTimeRecords(prev => prev.map(r => 
+      r.id === editingRecord.id 
+        ? { ...r, note: editingNote.trim() }
+        : r
+    ));
+    setEditingRecord(null);
+    setEditingNote('');
+  };
+
+  // 关闭编辑弹窗
+  const closeEditModal = () => {
+    setEditingRecord(null);
+    setEditingNote('');
+  };
+
+  return (
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: '#F9F6FD' }}>
+      {/* 背景装饰 */}
+      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#E6E6FA' }}></div>
+      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#E0C3FC' }}></div>
+      
+      {/* 分类二级tab */}
+      <div className="px-4 pt-4 pb-2 z-10">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          <button
+            onClick={() => setSelectedCategory('all')}
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all ${
+              selectedCategory === 'all'
+                ? 'text-white shadow-md'
+                : 'bg-white/60 text-gray-500 hover:bg-white/80'
+            }`}
+            style={selectedCategory === 'all' ? { backgroundColor: '#CFA0E9' } : {}}
+          >
+            全部
+          </button>
+          {categoriesWithNotes.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id as string)}
+              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                selectedCategory === cat.id
+                  ? 'text-white shadow-md'
+                  : 'bg-white/60 text-gray-500 hover:bg-white/80'
+              }`}
+              style={selectedCategory === cat.id ? { backgroundColor: getCategoryColor(cat.id as string) } : {}}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 感想列表 */}
+      <div className="flex-1 overflow-y-auto px-4 pb-24 z-10">
+        {filteredRecords.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center h-64">
+            <div className="text-center opacity-60">
+              <p className="text-[#2D2D2D] font-bold text-lg">暂无感想</p>
+              <p className="text-[#8A8A8A] text-sm mt-2 px-4">完成计时后记录的感想会显示在这里</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRecords.map(record => {
+              const categoryColor = getCategoryColor(record.categoryId || 'uncategorized');
+              return (
+                <div
+                  key={record.id}
+                  className="relative"
+                  style={{ overflow: 'hidden', borderRadius: '2rem' }}
+                >
+                  <div
+                    onClick={() => openEditModal(record)}
+                    className="bg-white/95 backdrop-blur-sm p-5 shadow-sm hover:shadow-md transition-all cursor-pointer relative"
+                    style={{ 
+                      border: '2px solid #E6E6FA',
+                      borderRadius: '2rem'
+                    }}
+                  >
+                    {/* 左侧装饰条 */}
+                    <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: categoryColor, borderRadius: '2rem 0 0 2rem' }}></div>
+                    <div className="flex items-start gap-4">
+                      {/* 分类图标区域 */}
+                      <div 
+                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: categoryColor + '20' }}
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: categoryColor }}
+                        />
+                      </div>
+                      
+                      {/* 内容 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="font-bold text-gray-700 text-sm">{record.name}</span>
+                          <span 
+                            className="text-xs px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: categoryColor + '20', color: categoryColor }}
+                          >
+                            {getCategoryLabel(record.categoryId || 'uncategorized')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-[#2D2D2D] leading-relaxed line-clamp-3 mb-2">
+                          {record.note}
+                        </p>
+                        {/* 底部：时间信息 */}
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                          <span>{formatDate(record.date)}</span>
+                          <span>·</span>
+                          <span>{record.startTime} - {record.endTime}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 编辑感想弹窗 */}
+      {editingRecord && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={closeEditModal}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 w-full max-w-sm animate-scale-in"
+            style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 头部 */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-black text-gray-700">编辑感想</h3>
+              <button 
+                onClick={closeEditModal}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 事项信息 */}
+            <div className="mb-4 p-3 rounded-xl" style={{ backgroundColor: getCategoryColor(editingRecord.categoryId || 'uncategorized') + '10' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <div 
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getCategoryColor(editingRecord.categoryId || 'uncategorized') }}
+                />
+                <span className="font-bold text-gray-700 text-sm">{editingRecord.name}</span>
+              </div>
+              <div className="text-xs text-gray-400">
+                {formatDate(editingRecord.date)} · {editingRecord.startTime} - {editingRecord.endTime}
+              </div>
+            </div>
+
+            {/* 感想输入 */}
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-600 mb-2">感想内容</label>
+              <textarea
+                value={editingNote}
+                onChange={(e) => setEditingNote(e.target.value)}
+                placeholder="记录这段时间的收获或感想..."
+                className="w-full h-32 px-4 py-3 rounded-2xl border-2 border-gray-100 focus:border-purple-300 focus:outline-none resize-none text-sm"
+                autoFocus
+              />
+            </div>
+
+            {/* 按钮 */}
+            <div className="flex gap-3">
+              <button
+                onClick={closeEditModal}
+                className="flex-1 py-3 rounded-2xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveEdit}
+                className="flex-1 py-3 rounded-2xl font-bold text-white transition-colors"
+                style={{ backgroundColor: '#CFA0E9' }}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 日记Tab包装视图 - 包含"感想"和"心情日记"两个子tab
+const JournalTabView = ({
+  journals,
+  setJournals,
+  timeRecords,
+  setTimeRecords,
+  categories
+}: {
+  journals: Journal[];
+  setJournals: (journals: Journal[]) => void;
+  timeRecords: TimeRecord[];
+  setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
+  categories: Category[];
+}) => {
+  const [activeSubTab, setActiveSubTab] = useState<'thoughts' | 'diary'>('thoughts');
+
+  return (
+    <div className="flex flex-col h-full relative overflow-hidden" style={{ background: '#F9F6FD' }}>
+      {/* 背景装饰 */}
+      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full blur-2xl opacity-50" style={{ backgroundColor: '#E6E6FA' }}></div>
+      <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full blur-xl opacity-40" style={{ backgroundColor: '#E0C3FC' }}></div>
+      
+      {/* 头部标题和Tab切换 */}
+      <div className="px-6 pt-8 pb-2 z-10">
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-2xl font-black" style={{ color: '#9E7CB8' }}>日记</h2>
+          <div className="w-2 h-2 rounded-full ring-2" style={{ backgroundColor: '#E0C3FC', borderColor: '#CFA0E9' }}></div>
+        </div>
+        
+        {/* 一级Tab切换 */}
+        <div className="flex bg-white/60 rounded-2xl p-1">
+          <button
+            onClick={() => setActiveSubTab('thoughts')}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeSubTab === 'thoughts'
+                ? 'bg-white text-[#9E7CB8] shadow-sm'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            感想
+          </button>
+          <button
+            onClick={() => setActiveSubTab('diary')}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeSubTab === 'diary'
+                ? 'bg-white text-[#9E7CB8] shadow-sm'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            心情日记
+          </button>
+        </div>
+      </div>
+
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-hidden">
+        {activeSubTab === 'thoughts' ? (
+          <ThoughtsView timeRecords={timeRecords} setTimeRecords={setTimeRecords} categories={categories} />
+        ) : (
+          <JournalView journals={journals} setJournals={setJournals} />
+        )}
+      </div>
+    </div>
+  );
+};
+
 // 复盘视图
 const ReviewView = ({ 
   journals, 
+  setJournals,
   timeRecords,
   setTimeRecords,
   globalTimers: _globalTimers,
@@ -4173,9 +4500,12 @@ const ReviewView = ({
   setReportHistory,
   geminiApiKey,
   geminiModel,
-  deepseekModel
+  deepseekModel,
+  defaultTab = 'progress',
+  hideAiTab = false
 }: { 
   journals: Journal[]; 
+  setJournals: (journals: Journal[]) => void;
   timeRecords: TimeRecord[];
   setTimeRecords: React.Dispatch<React.SetStateAction<TimeRecord[]>>;
   globalTimers: Timer[];
@@ -4206,12 +4536,20 @@ const ReviewView = ({
   geminiApiKey?: string;
   geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
+  defaultTab?: 'progress' | 'ai' | 'habits' | 'thoughts' | 'diary';
+  hideAiTab?: boolean;
 }) => {
-  // 从 localStorage 恢复上次的复盘子页面
-  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits'>(() => {
-    const saved = localStorage.getItem('reviewActiveTab');
-    return (saved === 'progress' || saved === 'ai' || saved === 'habits') ? saved : 'progress';
-  });
+  // 使用传入的 defaultTab
+  const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits' | 'thoughts' | 'diary'>(defaultTab);
+
+  const tabs = hideAiTab ? [
+    { id: 'progress' as const, label: '当前进度' },
+    { id: 'habits' as const, label: '习惯追踪' },
+  ] : [
+    { id: 'ai' as const, label: 'AI复盘' },
+    { id: 'thoughts' as const, label: '感想' },
+    { id: 'diary' as const, label: '心情日记' },
+  ];
   const [aiPeriod, setAiPeriod] = useState<'yesterday' | 'today' | 'week' | 'month' | 'history'>('today');
   
   // 持久化复盘子页面到 localStorage
@@ -5383,12 +5721,6 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
     return slices;
   };
 
-  const tabs = [
-    { id: 'progress' as const, label: '当前进度' },
-    { id: 'habits' as const, label: '习惯追踪' },
-    { id: 'ai' as const, label: 'AI复盘' },
-  ];
-
   const aiPeriods = [
     { id: 'yesterday' as const, label: '昨日' },
     { id: 'today' as const, label: '今日' },
@@ -6332,6 +6664,20 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
             </div>
           </div>
         )}
+
+        {/* 感想 */}
+        {activeTab === 'thoughts' && (
+          <div className="pt-2">
+            <ThoughtsView timeRecords={timeRecords} setTimeRecords={setTimeRecords} categories={categories} />
+          </div>
+        )}
+
+        {/* 心情日记 */}
+        {activeTab === 'diary' && (
+          <div className="pt-2">
+            <JournalView journals={journals} setJournals={setJournals} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6500,6 +6846,9 @@ const PlanView = ({
   
   // 防止重复保存记录的标志
   const lastSavedPlanRecordKey = useRef<string | null>(null);
+  
+  // 防止计时器完成逻辑重复触发的标志
+  const isCompletingTimer = useRef(false);
 
   // 从localStorage恢复计时器状态
   useEffect(() => {
@@ -6676,7 +7025,10 @@ const PlanView = ({
             const elapsed = Math.floor((Date.now() - timerStartTimestamp) / 1000);
             const newRemaining = Math.max(0, countdownDuration * 60 - elapsed);
             
-            if (newRemaining <= 0) {
+            if (newRemaining <= 0 && !isCompletingTimer.current) {
+              // 防止重复触发
+              isCompletingTimer.current = true;
+              
               // 倒计时结束，先保存引用再停止计时器
               const startTimeRef = timerStartTime;
               const taskNameRef = currentTaskName;
@@ -6706,7 +7058,12 @@ const PlanView = ({
                 setPlanTimerNote('');
                 setShowPlanNoteModal(true);
               }
-            } else {
+              
+              // 延迟重置标志，确保状态已更新
+              setTimeout(() => {
+                isCompletingTimer.current = false;
+              }, 100);
+            } else if (newRemaining > 0) {
               setRemainingTime(newRemaining);
             }
           }
@@ -6913,6 +7270,9 @@ const PlanView = ({
       setCurrentPomodoroRound(1);
     }
     
+    // 重置防重复触发标志
+    isCompletingTimer.current = false;
+    
     setTimerStatus('running');
     setShowTimerModeModal(false);
     setPendingTimerTask(null);
@@ -6952,6 +7312,18 @@ const PlanView = ({
     if (!pendingPlanRecord) return;
     
     const { taskName, startTime, endTime, categoryId } = pendingPlanRecord;
+    
+    // 生成唯一键，防止重复保存
+    const recordKey = `${taskName}_${startTime.getTime()}`;
+    if (lastSavedPlanRecordKey.current === recordKey) {
+      console.log('PlanView confirmSavePlanRecord: 跳过重复保存', recordKey);
+      // 关闭弹窗并清理状态
+      setShowPlanNoteModal(false);
+      setPendingPlanRecord(null);
+      setPlanTimerNote('');
+      return;
+    }
+    lastSavedPlanRecordKey.current = recordKey;
     
     const formatTimeStr = (date: Date) => {
       return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -13508,8 +13880,8 @@ export default function App() {
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
-      case 'journal': return <JournalView journals={journals} setJournals={setJournals} />;
-      case 'review': return <ReviewView journals={journals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} />;
+      case 'progress': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} defaultTab="progress" hideAiTab />;
+      case 'review': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} defaultTab="ai" />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -13554,9 +13926,9 @@ export default function App() {
   };
 
   const tabs: { id: TabId; icon: typeof Timer; label: string; color: string }[] = [
-    { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
+    { id: 'progress', icon: Target, label: '进度', color: '#42D4A4' },
     { id: 'timer', icon: Timer, label: '专注', color: getSelectedCategoryColor() },
-    { id: 'journal', icon: BookHeart, label: '日记', color: MACARON_COLORS.themes.journal },
+    { id: 'review', icon: PieChart, label: '复盘', color: MACARON_COLORS.themes.review },
     { id: 'plan', icon: Calendar, label: '规划', color: MACARON_COLORS.themes.plan },
     { id: 'settings', icon: Settings2, label: '设置', color: MACARON_COLORS.themes.settings },
   ];
