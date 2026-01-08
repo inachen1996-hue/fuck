@@ -1921,7 +1921,17 @@ const TimerView = ({
     setPendingRecord(null);
     setTimerNote('');
     
-    // 计时器已经在显示弹窗前停止了，这里不需要再停止
+    // 确保计时器状态被正确重置（防止状态不同步）
+    setActiveTimer(null);
+    setTimerStartTime(null);
+    setTimerStartTimestamp(null);
+    setElapsedTime(0);
+    setPomodoroPhase('work');
+    setCurrentPomodoroRound(1);
+    // 重置计时器到初始状态
+    setTimers(prev => prev.map(t => 
+      t.id === timer.id ? { ...t, status: 'idle' as TimerStatus, remainingTime: t.duration * 60 } : t
+    ));
   };
 
   // 停止响铃（不自动进入下一阶段）
@@ -4473,8 +4483,13 @@ const ReviewView = ({
   defaultTab?: 'progress' | 'ai' | 'habits' | 'thoughts' | 'diary';
   hideAiTab?: boolean;
 }) => {
-  // 使用传入的 defaultTab
+  // 使用传入的 defaultTab，并在 defaultTab 变化时更新
   const [activeTab, setActiveTab] = useState<'progress' | 'ai' | 'habits' | 'thoughts' | 'diary'>(defaultTab);
+  
+  // 当 defaultTab 变化时同步更新 activeTab
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const tabs = hideAiTab ? [
     { id: 'progress' as const, label: '当前进度' },
