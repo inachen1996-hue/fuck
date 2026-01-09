@@ -4,7 +4,7 @@ import {
   Plus, Heart, Play, Clock, Smartphone, ChevronRight,
   ArrowRight, Sparkles, Target, Coffee, Zap,
   Edit3, X, Camera, ChevronLeft, Check,
-  RefreshCw, Brain,
+  RefreshCw, Brain, FileText, ArrowLeft,
   ListTodo, Moon, Utensils,
   Download, Upload, Trash2, Database, Search
 } from 'lucide-react';
@@ -4445,6 +4445,7 @@ const ReviewView = ({
   geminiApiKey,
   geminiModel,
   deepseekModel,
+  modelPrompts,
   defaultTab = 'progress',
   hideAiTab = false
 }: { 
@@ -4468,6 +4469,7 @@ const ReviewView = ({
     dateRange: string;
     createdAt: number;
     report: any;
+    modelUsed?: string;
   }>;
   setReportHistory: React.Dispatch<React.SetStateAction<Array<{
     id: string;
@@ -4476,10 +4478,12 @@ const ReviewView = ({
     dateRange: string;
     createdAt: number;
     report: any;
+    modelUsed?: string;
   }>>>;
   geminiApiKey?: string;
   geminiModel?: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro';
   deepseekModel?: 'deepseek-chat' | 'deepseek-reasoner';
+  modelPrompts?: Record<string, string>;
   defaultTab?: 'progress' | 'ai' | 'habits' | 'thoughts' | 'diary';
   hideAiTab?: boolean;
 }) => {
@@ -4876,7 +4880,16 @@ const ReviewView = ({
     const currentMinute = new Date().getMinutes();
     const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
     
-    const prompt = `# Role: 导师型·全栈战略合伙人 (The Strategic Mentor)
+    // 确定当前使用的模型
+    const currentModel = geminiApiKey 
+      ? (geminiModel || 'gemini-2.0-flash')
+      : (deepseekModel || 'deepseek-reasoner');
+    
+    // 检查是否有自定义提示词
+    const customPrompt = modelPrompts?.[currentModel];
+    
+    // 默认提示词
+    const defaultPromptContent = `# Role: 导师型·全栈战略合伙人 (The Strategic Mentor)
 
 # 🏁 North Star Metric (北极星指标):
 用户的唯一战略目标：**2026年4月前，通过【宠物视频/特效】赛道实现变现上岸。**
@@ -4957,11 +4970,34 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 
 只返回JSON，不要其他内容。`;
 
+    // 纯数据部分（不包含格式要求，供自定义提示词使用）
+    const pureDataSection = `
+# 用户数据
+- 当前日期时间：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })} ${currentTimeStr}
+- 分析周期：${periodLabels[currentPeriod]}（${days}天）
+- 日记数量：${periodJournals.length}篇
+
+## 具体时间记录详情（按分类，含感想）
+${eventDetailsText || '暂无具体时间记录'}
+
+## 情绪记录
+${Object.entries(moodCounts).length > 0 ? Object.entries(moodCounts).map(([mood, count]) => `- ${moodMap[mood] || mood}：${count}次`).join('\n') : '暂无情绪记录'}
+
+## 日记内容摘要
+${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.length > 100 ? '...' : ''}`).join('\n') || '暂无日记内容'}`;
+
+    // 如果有自定义提示词，只使用自定义提示词 + 纯数据；否则使用默认提示词
+    const prompt = customPrompt 
+      ? `${customPrompt}\n\n${pureDataSection}`
+      : defaultPromptContent;
+
     setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在调用AI分析...' }));
 
     try {
-      // 针对 deepseek-reasoner 模型，强调只输出 JSON
-      const systemPrompt = '你是用户的导师型战略合伙人，循循善诱，既有高度又有温度。请直接输出JSON格式的分析报告，不要输出任何推理过程、解释或其他文字。只输出一个JSON对象，以{开头，以}结尾。内容要详实丰满，不要简短敷衍。';
+      // 根据是否有自定义提示词，使用不同的系统提示
+      const systemPrompt = customPrompt
+        ? '请根据用户的提示词要求进行分析和输出。必须全部使用中文回复。'
+        : '你是用户的导师型战略合伙人，循循善诱，既有高度又有温度。请直接输出JSON格式的分析报告，不要输出任何推理过程、解释或其他文字。只输出一个JSON对象，以{开头，以}结尾。内容要详实丰满，不要简短敷衍。必须全部使用中文回复。';
       
       const aiResponse = await callAI(systemPrompt, prompt, geminiApiKey, {
         temperature: 0.7,
@@ -4972,7 +5008,69 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 
       setGeneratingProgress(prev => ({ ...prev, [currentPeriod]: '正在解析AI响应...' }));
       
-      // 解析AI返回的JSON
+      // 如果使用自定义提示词，直接保存原始输出，不解析JSON
+      if (customPrompt) {
+        const report = {
+          isCustomPrompt: true,
+          rawContent: aiResponse,
+          period: periodLabels[currentPeriod]
+        };
+        
+        // 生成日期范围描述
+        const now = new Date();
+        let dateRange = '';
+        if (currentPeriod === 'yesterday') {
+          const yesterday = new Date(now.getTime() - 86400000);
+          dateRange = `${yesterday.getMonth() + 1}月${yesterday.getDate()}日`;
+        } else if (currentPeriod === 'today') {
+          dateRange = `${now.getMonth() + 1}月${now.getDate()}日`;
+        } else if (currentPeriod === 'week') {
+          const dayOfWeek = now.getDay();
+          const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          const monday = new Date(now);
+          monday.setDate(now.getDate() + mondayOffset);
+          dateRange = `${monday.getMonth() + 1}月${monday.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
+        } else {
+          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+          dateRange = `${firstDay.getMonth() + 1}月${firstDay.getDate()}日 - ${now.getMonth() + 1}月${now.getDate()}日`;
+        }
+        
+        const historyEntry = {
+          id: `${currentPeriod}_${now.toISOString().split('T')[0]}`,
+          period: currentPeriod,
+          periodLabel: periodLabels[currentPeriod],
+          dateRange: dateRange,
+          createdAt: now.getTime(),
+          report: report,
+          modelUsed: currentModel
+        };
+        
+        setReportHistory(prev => {
+          const existingIndex = prev.findIndex(h => h.period === currentPeriod);
+          if (existingIndex >= 0) {
+            const newHistory = [...prev];
+            newHistory[existingIndex] = historyEntry;
+            return newHistory;
+          } else {
+            return [historyEntry, ...prev];
+          }
+        });
+        
+        generatingStartTime.current = null;
+        setGeneratingPeriods(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(currentPeriod);
+          return newSet;
+        });
+        setGeneratingProgress(prev => {
+          const newProgress = { ...prev };
+          delete newProgress[currentPeriod];
+          return newProgress;
+        });
+        return;
+      }
+      
+      // 默认提示词：解析AI返回的JSON
       let report;
       try {
         console.log('AI原始响应长度:', aiResponse.length);
@@ -5346,7 +5444,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
         periodLabel: periodLabels[currentPeriod],
         dateRange: dateRange,
         createdAt: now.getTime(),
-        report: report
+        report: report,
+        modelUsed: currentModel // 记录生成时使用的模型
       };
       
       setReportHistory(prev => {
@@ -6145,10 +6244,24 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         {reportHistory.find(h => h.period === aiPeriod)?.dateRange || ''}
                       </span>
                       <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
-                        {geminiApiKey 
-                          ? (geminiModel === 'gemini-2.0-flash-thinking-exp' ? '思考' : geminiModel === 'gemini-1.5-pro' ? 'Pro' : 'Flash')
-                          : (deepseekModel === 'deepseek-reasoner' ? '大智慧' : '小简单')
-                        }
+                        {(() => {
+                          const historyItem = reportHistory.find(h => h.period === aiPeriod);
+                          const modelUsed = historyItem?.modelUsed;
+                          if (modelUsed) {
+                            const modelNames: Record<string, string> = {
+                              'deepseek-reasoner': '大智慧',
+                              'deepseek-chat': '小简单',
+                              'gemini-2.0-flash': 'Flash',
+                              'gemini-2.0-flash-thinking-exp': '思考',
+                              'gemini-1.5-pro': 'Pro'
+                            };
+                            return modelNames[modelUsed] || modelUsed;
+                          }
+                          // 兼容旧数据：没有modelUsed时显示当前模型
+                          return geminiApiKey 
+                            ? (geminiModel === 'gemini-2.0-flash-thinking-exp' ? '思考' : geminiModel === 'gemini-1.5-pro' ? 'Pro' : 'Flash')
+                            : (deepseekModel === 'deepseek-reasoner' ? '大智慧' : '小简单');
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -6162,6 +6275,15 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                   </button>
                 </div>
 
+                {/* 自定义提示词：直接显示原始内容 */}
+                {reportData.isCustomPrompt ? (
+                  <div className="bg-white rounded-2xl p-5 border-2 border-gray-100">
+                    <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" dangerouslySetInnerHTML={{ 
+                      __html: formatAIReportText(reportData.rawContent || '', 'text-gray-900')
+                    }} />
+                  </div>
+                ) : (
+                  <>
                 {/* ===== 📊 今日评分 ===== */}
                 <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-5 border-2 border-indigo-100">
                   <div className="flex items-center justify-between">
@@ -6246,6 +6368,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     )
                   }} />
                 </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -11321,7 +11445,9 @@ const SettingsView = ({
   geminiModel,
   setGeminiModel,
   deepseekModel,
-  setDeepseekModel
+  setDeepseekModel,
+  modelPrompts,
+  setModelPrompts
 }: { 
   pomodoroSettings: PomodoroSettings;
   setPomodoroSettings: (settings: PomodoroSettings) => void;
@@ -11341,6 +11467,8 @@ const SettingsView = ({
   setGeminiModel: (model: 'gemini-2.0-flash' | 'gemini-2.0-flash-thinking-exp' | 'gemini-1.5-pro') => void;
   deepseekModel: 'deepseek-chat' | 'deepseek-reasoner';
   setDeepseekModel: (model: 'deepseek-chat' | 'deepseek-reasoner') => void;
+  modelPrompts: Record<string, string>;
+  setModelPrompts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showPomodoroModal, setShowPomodoroModal] = useState(false);
@@ -11360,6 +11488,7 @@ const SettingsView = ({
   const [showToast, setShowToast] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
   const [showAIModelModal, setShowAIModelModal] = useState(false);
+  const [editingPromptModel, setEditingPromptModel] = useState<string | null>(null); // 正在编辑提示词的模型
   // geminiKeyInput 持久化到 localStorage，保留用户输入的未验证 key
   const [geminiKeyInput, setGeminiKeyInput] = useState(() => {
     const savedInput = localStorage.getItem('geminiKeyInput');
@@ -13445,12 +13574,189 @@ END:VEVENT
               </div>
             </div>
             
+            {/* 自定义提示词设置区域 */}
+            <div className="mb-6 p-4 rounded-2xl border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText size={20} className="text-amber-600" />
+                <span className="font-bold text-gray-700">自定义提示词</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                为每个模型设置专属的AI复盘提示词，留空则使用默认提示词
+              </p>
+              
+              <div className="space-y-2">
+                {/* DeepSeek 大智慧 */}
+                <div 
+                  onClick={() => setEditingPromptModel('deepseek-reasoner')}
+                  className="p-3 rounded-xl bg-white border border-gray-200 hover:border-amber-300 cursor-pointer transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>🧠</span>
+                      <span className="text-sm font-bold text-gray-700">大智慧</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modelPrompts['deepseek-reasoner'] && (
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">已设置</span>
+                      )}
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* DeepSeek 小简单 */}
+                <div 
+                  onClick={() => setEditingPromptModel('deepseek-chat')}
+                  className="p-3 rounded-xl bg-white border border-gray-200 hover:border-amber-300 cursor-pointer transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>⚡</span>
+                      <span className="text-sm font-bold text-gray-700">小简单</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modelPrompts['deepseek-chat'] && (
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">已设置</span>
+                      )}
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Gemini Flash */}
+                <div 
+                  onClick={() => setEditingPromptModel('gemini-2.0-flash')}
+                  className="p-3 rounded-xl bg-white border border-gray-200 hover:border-amber-300 cursor-pointer transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>⚡</span>
+                      <span className="text-sm font-bold text-gray-700">Gemini Flash</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modelPrompts['gemini-2.0-flash'] && (
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">已设置</span>
+                      )}
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Gemini 思考 */}
+                <div 
+                  onClick={() => setEditingPromptModel('gemini-2.0-flash-thinking-exp')}
+                  className="p-3 rounded-xl bg-white border border-gray-200 hover:border-amber-300 cursor-pointer transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>🧠</span>
+                      <span className="text-sm font-bold text-gray-700">Gemini 思考</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modelPrompts['gemini-2.0-flash-thinking-exp'] && (
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">已设置</span>
+                      )}
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Gemini Pro */}
+                <div 
+                  onClick={() => setEditingPromptModel('gemini-1.5-pro')}
+                  className="p-3 rounded-xl bg-white border border-gray-200 hover:border-amber-300 cursor-pointer transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>💎</span>
+                      <span className="text-sm font-bold text-gray-700">Gemini Pro</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {modelPrompts['gemini-1.5-pro'] && (
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">已设置</span>
+                      )}
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <button
               onClick={() => setShowAIModelModal(false)}
               className="w-full py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
             >
               关闭
             </button>
+          </div>
+        </div>
+      )}
+      
+      {/* 提示词编辑弹窗 */}
+      {editingPromptModel && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[110] flex items-center justify-center animate-fade-in"
+          onClick={() => setEditingPromptModel(null)}
+        >
+          <div 
+            className="bg-white w-[95%] max-h-[85vh] overflow-y-auto rounded-3xl p-5 shadow-2xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingPromptModel(null)}
+                  className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                >
+                  <ArrowLeft size={20} className="text-gray-600" />
+                </button>
+                <h3 className="text-lg font-black text-gray-800">
+                  {editingPromptModel === 'deepseek-reasoner' && '🧠 大智慧'}
+                  {editingPromptModel === 'deepseek-chat' && '⚡ 小简单'}
+                  {editingPromptModel === 'gemini-2.0-flash' && '⚡ Gemini Flash'}
+                  {editingPromptModel === 'gemini-2.0-flash-thinking-exp' && '🧠 Gemini 思考'}
+                  {editingPromptModel === 'gemini-1.5-pro' && '💎 Gemini Pro'}
+                  {' '}提示词
+                </h3>
+              </div>
+              {modelPrompts[editingPromptModel] && (
+                <button
+                  onClick={() => {
+                    setModelPrompts(prev => {
+                      const newPrompts = { ...prev };
+                      delete newPrompts[editingPromptModel!];
+                      return newPrompts;
+                    });
+                    showToastMessage('已清空提示词');
+                  }}
+                  className="text-xs px-3 py-1.5 text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  清空
+                </button>
+              )}
+            </div>
+            
+            <textarea
+              value={modelPrompts[editingPromptModel] || ''}
+              onChange={(e) => {
+                setModelPrompts(prev => ({
+                  ...prev,
+                  [editingPromptModel!]: e.target.value
+                }));
+              }}
+              placeholder="输入自定义提示词...&#10;&#10;留空则使用默认的「导师型·全栈战略合伙人」提示词"
+              className="w-full h-64 p-4 rounded-2xl border-2 border-gray-100 focus:border-amber-300 focus:outline-none text-sm resize-none"
+              style={{ lineHeight: '1.6' }}
+            />
+            
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => setEditingPromptModel(null)}
+                className="flex-1 py-3 rounded-2xl text-gray-500 font-bold bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                完成
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -13547,6 +13853,12 @@ export default function App() {
     return (saved === 'deepseek-chat' || saved === 'deepseek-reasoner') ? saved : 'deepseek-reasoner';
   });
 
+  // 各模型自定义提示词 - 持久化到localStorage
+  const [modelPrompts, setModelPrompts] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('modelPrompts');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   // 持久化 Gemini API Key 到 localStorage
   useEffect(() => {
     if (geminiApiKey) {
@@ -13565,6 +13877,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('deepseekModel', deepseekModel);
   }, [deepseekModel]);
+
+  // 持久化自定义提示词到 localStorage
+  useEffect(() => {
+    localStorage.setItem('modelPrompts', JSON.stringify(modelPrompts));
+  }, [modelPrompts]);
 
   // 持久化pomodoroSettings到localStorage
   useEffect(() => {
@@ -13736,6 +14053,7 @@ export default function App() {
     dateRange: string;
     createdAt: number;
     report: any;
+    modelUsed?: string; // 生成报告时使用的模型
   }>>(() => {
     const saved = localStorage.getItem('aiReportHistory');
     if (saved) {
@@ -13835,8 +14153,8 @@ export default function App() {
   const renderView = () => {
     switch (activeTab) {
       case 'timer': return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
-      case 'progress': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} defaultTab="progress" hideAiTab />;
-      case 'review': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} defaultTab="ai" />;
+      case 'progress': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} modelPrompts={modelPrompts} defaultTab="progress" hideAiTab />;
+      case 'review': return <ReviewView journals={journals} setJournals={setJournals} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} idealTimeAllocation={idealTimeAllocation} categories={categories} generatingPeriods={reviewGeneratingPeriods} setGeneratingPeriods={setReviewGeneratingPeriods} generatingProgress={reviewGeneratingProgress} setGeneratingProgress={setReviewGeneratingProgress} reportHistory={reviewReportHistory} setReportHistory={setReviewReportHistory} geminiApiKey={geminiApiKey} geminiModel={geminiModel} deepseekModel={deepseekModel} modelPrompts={modelPrompts} defaultTab="ai" />;
       case 'plan': return <PlanView 
         pomodoroSettings={pomodoroSettings} 
         step={planStep} 
@@ -13866,7 +14184,7 @@ export default function App() {
         geminiModel={geminiModel}
         deepseekModel={deepseekModel}
       />;
-      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} geminiModel={geminiModel} setGeminiModel={setGeminiModel} deepseekModel={deepseekModel} setDeepseekModel={setDeepseekModel} />;
+      case 'settings': return <SettingsView pomodoroSettings={pomodoroSettings} setPomodoroSettings={setPomodoroSettings} timeRecords={timeRecords} setTimeRecords={setTimeRecords} journals={journals} setJournals={setJournals} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} onOpenAIChat={() => setShowAIChatPage(true)} geminiApiKey={geminiApiKey} setGeminiApiKey={setGeminiApiKey} geminiModel={geminiModel} setGeminiModel={setGeminiModel} deepseekModel={deepseekModel} setDeepseekModel={setDeepseekModel} modelPrompts={modelPrompts} setModelPrompts={setModelPrompts} />;
       default: return <TimerView selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} timeRecords={timeRecords} setTimeRecords={setTimeRecords} globalTimers={globalTimers} setGlobalTimers={setGlobalTimers} categories={categories} setCategories={setCategories} idealTimeAllocation={idealTimeAllocation} setIdealTimeAllocation={setIdealTimeAllocation} />;
     }
   };
