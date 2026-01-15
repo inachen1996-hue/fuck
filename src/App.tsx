@@ -4546,6 +4546,8 @@ const ReviewView = ({
     name: string;
     icon: string;
     linkedEventNames: string[]; // 关联的事件名称（支持多个）
+    minDuration?: number; // 最小时长阈值（分钟），达到此时长才算完成
+    manualChecks?: Record<string, number>; // 手动打卡记录 { 'YYYY-MM-DD': 时长(分钟) }
   }>>(() => {
     const saved = localStorage.getItem('trackedHabits');
     if (saved) {
@@ -4553,20 +4555,25 @@ const ReviewView = ({
       // 兼容旧数据格式
       return parsed.map((h: any) => ({
         ...h,
-        linkedEventNames: h.linkedEventNames || (h.linkedEventName ? [h.linkedEventName] : [])
+        linkedEventNames: h.linkedEventNames || (h.linkedEventName ? [h.linkedEventName] : []),
+        minDuration: h.minDuration || 0,
+        manualChecks: h.manualChecks || {}
       }));
     }
     return [
-      { id: '1', name: '运动', icon: '🏃', linkedEventNames: ['运动'] },
-      { id: '2', name: '阅读', icon: '📚', linkedEventNames: ['阅读'] },
+      { id: '1', name: '运动', icon: '🏃', linkedEventNames: ['运动'], minDuration: 0, manualChecks: {} },
+      { id: '2', name: '阅读', icon: '📚', linkedEventNames: ['阅读'], minDuration: 0, manualChecks: {} },
     ];
   });
   const [showAddHabitModal, setShowAddHabitModal] = useState(false);
-  const [editingHabit, setEditingHabit] = useState<{id: string; name: string; icon: string; linkedEventNames: string[]} | null>(null);
+  const [editingHabit, setEditingHabit] = useState<{id: string; name: string; icon: string; linkedEventNames: string[]; minDuration?: number} | null>(null);
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitIcon, setNewHabitIcon] = useState('✨');
   const [newHabitLinkedEvents, setNewHabitLinkedEvents] = useState<string[]>([]);
+  const [newHabitMinDuration, setNewHabitMinDuration] = useState(0); // 新增：最小时长阈值
   const [eventSearchQuery, setEventSearchQuery] = useState(''); // 事件搜索关键词
+  const [showManualCheckModal, setShowManualCheckModal] = useState<{habitId: string; dateStr: string; currentDuration: number} | null>(null);
+  const [manualCheckDuration, setManualCheckDuration] = useState(0); // 手动打卡时长（分钟）
   
   // 习惯日历当前查看的月份 (每个习惯独立)
   const [habitCalendarMonth, setHabitCalendarMonth] = useState<Record<string, { year: number; month: number }>>({});
@@ -4583,11 +4590,51 @@ const ReviewView = ({
     return Array.from(names).sort();
   }, [timeRecords]);
 
-  // 检查某天是否完成了某个习惯（任一关联事件有记录即算完成）
-  const isHabitCompletedOnDate = (linkedEventNames: string[], dateStr: string) => {
-    return linkedEventNames.some(eventName => 
-      timeRecords.some(r => r.date === dateStr && r.name === eventName)
-    );
+  // 获取某天某习惯的总时长（分钟）- 包括关联事件时长和手动打卡时长
+  const getHabitDurationOnDate = (habit: typeof trackedHabits[0], dateStr: string): number => {
+    // 计算关联事件的时长
+    let totalMinutes = 0;
+    habit.linkedEventNames.forEach(eventName => {
+      timeRecords.filter(r => r.date === dateStr && r.name === eventName).forEach(record => {
+        const start = record.startTime.split(':').map(Number);
+        const end = record.endTime.split(':').map(Number);
+        let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+        // 处理跨天情况
+        if (minutes < 0) minutes += 24 * 60;
+        totalMinutes += minutes;
+      });
+    });
+    
+    // 加上手动打卡的时长
+    if (habit.manualChecks && habit.manualChecks[dateStr]) {
+      totalMinutes += habit.manualChecks[dateStr];
+    }
+    
+    return totalMinutes;
+  };
+
+  // 检查某天是否完成了某个习惯（考虑时长阈值和手动打卡）
+  const isHabitCompletedOnDate = (habit: typeof trackedHabits[0], dateStr: string) => {
+    const duration = getHabitDurationOnDate(habit, dateStr);
+    const minDuration = habit.minDuration || 0;
+    
+    // 如果设置了最小时长阈值，需要达到阈值才算完成
+    if (minDuration > 0) {
+      return duration >= minDuration;
+    }
+    
+    // 没有设置阈值，只要有记录就算完成
+    return duration > 0;
+  };
+
+  // 格式化时长显示
+  const formatDuration = (minutes: number): string => {
+    if (minutes < 60) {
+      return `${minutes}分`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
   };
 
   // 获取指定月份的所有日期
@@ -6407,7 +6454,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               trackedHabits.map(habit => {
                 const currentMonth = getHabitMonth(habit.id);
                 const monthDays = getMonthDays(currentMonth.year, currentMonth.month);
-                const completedDays = monthDays.filter(d => isHabitCompletedOnDate(habit.linkedEventNames, d)).length;
+                const completedDays = monthDays.filter(d => isHabitCompletedOnDate(habit, d)).length;
                 const totalDays = monthDays.length;
                 const now = new Date();
                 const isCurrentMonth = currentMonth.year === now.getFullYear() && currentMonth.month === now.getMonth() + 1;
@@ -6428,8 +6475,11 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-700">{habit.name}</h4>
-                          <p className="text-xs text-gray-400 truncate max-w-[150px]">
-                            关联: {habit.linkedEventNames.length > 0 ? habit.linkedEventNames.join('、') : '未关联'}
+                          <p className="text-xs text-gray-400 truncate max-w-[180px]">
+                            {habit.minDuration && habit.minDuration > 0 
+                              ? `≥${formatDuration(habit.minDuration)} · ` 
+                              : ''}
+                            {habit.linkedEventNames.length > 0 ? habit.linkedEventNames.join('、') : '未关联'}
                           </p>
                         </div>
                       </div>
@@ -6440,6 +6490,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                             setNewHabitName(habit.name);
                             setNewHabitIcon(habit.icon);
                             setNewHabitLinkedEvents(habit.linkedEventNames);
+                            setNewHabitMinDuration(habit.minDuration || 0);
                             setEventSearchQuery('');
                             setShowAddHabitModal(true);
                           }}
@@ -6503,7 +6554,8 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       
                       {/* 日期格子 */}
                       {monthDays.map((dateStr, idx) => {
-                        const completed = isHabitCompletedOnDate(habit.linkedEventNames, dateStr);
+                        const completed = isHabitCompletedOnDate(habit, dateStr);
+                        const duration = getHabitDurationOnDate(habit, dateStr);
                         const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
                         const isToday = dateStr === todayStr;
                         const isFuture = new Date(dateStr) > now;
@@ -6512,19 +6564,43 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         return (
                           <div
                             key={idx}
-                            className={`aspect-square rounded-lg flex items-center justify-center text-[10px] relative ${
+                            onClick={() => {
+                              if (!isFuture) {
+                                setShowManualCheckModal({
+                                  habitId: habit.id,
+                                  dateStr,
+                                  currentDuration: duration
+                                });
+                                setManualCheckDuration(habit.manualChecks?.[dateStr] || 0);
+                              }
+                            }}
+                            className={`aspect-square rounded-lg flex flex-col items-center justify-center text-[10px] relative cursor-pointer transition-all hover:scale-105 ${
                               isFuture 
-                                ? 'bg-gray-50/50 text-gray-200'
+                                ? 'bg-gray-50/50 text-gray-200 cursor-not-allowed'
                                 : completed 
                                   ? 'bg-green-100 text-green-600' 
-                                  : 'bg-gray-50 text-gray-400'
+                                  : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
                             } ${isToday ? 'ring-2 ring-sky-300' : ''}`}
-                            title={dateStr}
+                            title={`${dateStr}${duration > 0 ? ` - ${formatDuration(duration)}` : ''}`}
                           >
                             {completed && !isFuture ? (
-                              <Check size={12} className="text-green-500" />
+                              <>
+                                <Check size={10} className="text-green-500" />
+                                {duration > 0 && (
+                                  <span className="text-[8px] text-green-600 font-medium leading-none mt-0.5">
+                                    {duration >= 60 ? `${Math.floor(duration/60)}h` : `${duration}m`}
+                                  </span>
+                                )}
+                              </>
                             ) : (
-                              <span>{day}</span>
+                              <>
+                                <span className="leading-none">{day}</span>
+                                {duration > 0 && !isFuture && (
+                                  <span className="text-[8px] text-gray-400 font-medium leading-none mt-0.5">
+                                    {duration >= 60 ? `${Math.floor(duration/60)}h` : `${duration}m`}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         );
@@ -6532,16 +6608,19 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     </div>
                     
                     {/* 日历图例 */}
-                    <div className="flex items-center justify-end gap-3 mt-2 text-[10px] text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 rounded bg-green-100 flex items-center justify-center">
-                          <Check size={8} className="text-green-500" />
+                    <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
+                      <span className="text-gray-300">点击日期可手动打卡</span>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded bg-green-100 flex items-center justify-center">
+                            <Check size={8} className="text-green-500" />
+                          </div>
+                          <span>已完成</span>
                         </div>
-                        <span>已完成</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 rounded bg-gray-50"></div>
-                        <span>未完成</span>
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded bg-gray-50"></div>
+                          <span>未完成</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -6556,6 +6635,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 setNewHabitName('');
                 setNewHabitIcon('✨');
                 setNewHabitLinkedEvents([]);
+                setNewHabitMinDuration(0);
                 setEventSearchQuery('');
                 setShowAddHabitModal(true);
               }}
@@ -6564,6 +6644,90 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               <Plus size={20} />
               添加新习惯
             </button>
+          </div>
+        )}
+
+        {/* 手动打卡弹窗 */}
+        {showManualCheckModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-5 w-full max-w-xs shadow-xl">
+              <h3 className="text-lg font-black text-gray-800 mb-2">手动打卡</h3>
+              <p className="text-sm text-gray-500 mb-4">{showManualCheckModal.dateStr}</p>
+              
+              {/* 当前时长信息 */}
+              {showManualCheckModal.currentDuration > 0 && (
+                <div className="bg-sky-50 rounded-xl p-3 mb-4">
+                  <p className="text-xs text-sky-600">
+                    当天已有记录时长: <span className="font-bold">{formatDuration(showManualCheckModal.currentDuration)}</span>
+                  </p>
+                </div>
+              )}
+              
+              {/* 手动打卡时长输入 */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">手动补充时长（分钟）</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={manualCheckDuration}
+                    onChange={(e) => setManualCheckDuration(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:border-sky-400 focus:outline-none text-center text-lg font-bold"
+                  />
+                  <span className="text-gray-500">分钟</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">设为0可清除手动打卡记录</p>
+              </div>
+              
+              {/* 快捷时长按钮 */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[15, 30, 45, 60, 90, 120].map(mins => (
+                  <button
+                    key={mins}
+                    onClick={() => setManualCheckDuration(mins)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      manualCheckDuration === mins 
+                        ? 'bg-sky-100 text-sky-700' 
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {mins >= 60 ? `${mins/60}h` : `${mins}m`}
+                  </button>
+                ))}
+              </div>
+              
+              {/* 按钮 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowManualCheckModal(null)}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-bold"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    const { habitId, dateStr } = showManualCheckModal;
+                    setTrackedHabits(prev => prev.map(h => {
+                      if (h.id === habitId) {
+                        const newManualChecks = { ...(h.manualChecks || {}) };
+                        if (manualCheckDuration > 0) {
+                          newManualChecks[dateStr] = manualCheckDuration;
+                        } else {
+                          delete newManualChecks[dateStr];
+                        }
+                        return { ...h, manualChecks: newManualChecks };
+                      }
+                      return h;
+                    }));
+                    setShowManualCheckModal(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl text-white font-bold"
+                  style={{ backgroundColor: '#89CFF0' }}
+                >
+                  确认
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -6694,6 +6858,43 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 <p className="text-xs text-gray-400 mt-1">任一关联事件有记录时，习惯自动标记为完成</p>
               </div>
               
+              {/* 最小时长阈值 */}
+              <div className="mb-6">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">
+                  最小时长阈值
+                  <span className="text-xs text-gray-400 font-normal ml-1">（可选）</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={newHabitMinDuration}
+                    onChange={(e) => setNewHabitMinDuration(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:border-sky-400 focus:outline-none text-center"
+                  />
+                  <span className="text-gray-500 text-sm">分钟</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">设为0表示只要有记录就算完成，设置后需达到该时长才打勾</p>
+                
+                {/* 快捷时长按钮 */}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[0, 15, 30, 60, 90, 120].map(mins => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setNewHabitMinDuration(mins)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        newHabitMinDuration === mins 
+                          ? 'bg-sky-100 text-sky-700' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {mins === 0 ? '不限' : mins >= 60 ? `${mins/60}小时` : `${mins}分钟`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
               {/* 按钮 */}
               <div className="flex gap-3">
                 <button
@@ -6719,7 +6920,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     if (editingHabit) {
                       setTrackedHabits(prev => prev.map(h => 
                         h.id === editingHabit.id 
-                          ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents }
+                          ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents, minDuration: newHabitMinDuration }
                           : h
                       ));
                     } else {
@@ -6727,7 +6928,9 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                         id: Date.now().toString(),
                         name: newHabitName,
                         icon: newHabitIcon,
-                        linkedEventNames: newHabitLinkedEvents
+                        linkedEventNames: newHabitLinkedEvents,
+                        minDuration: newHabitMinDuration,
+                        manualChecks: {}
                       }]);
                     }
                     
