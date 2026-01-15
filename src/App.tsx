@@ -6,7 +6,7 @@ import {
   Edit3, X, Camera, ChevronLeft, Check,
   RefreshCw, Brain, FileText, ArrowLeft,
   ListTodo, Moon, Utensils,
-  Download, Upload, Trash2, Database, Search
+  Download, Upload, Trash2, Database, Search, GripVertical
 } from 'lucide-react';
 
 // 原始标签页标题
@@ -4578,6 +4578,58 @@ const ReviewView = ({
   // 习惯日历当前查看的月份 (每个习惯独立)
   const [habitCalendarMonth, setHabitCalendarMonth] = useState<Record<string, { year: number; month: number }>>({});
 
+  // 习惯拖拽排序状态
+  const [draggingHabitId, setDraggingHabitId] = useState<string | null>(null);
+  const [dragOverHabitId, setDragOverHabitId] = useState<string | null>(null);
+
+  // 处理习惯拖拽排序
+  const handleHabitDragStart = (e: React.DragEvent, habitId: string) => {
+    setDraggingHabitId(habitId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', habitId);
+  };
+
+  const handleHabitDragOver = (e: React.DragEvent, habitId: string) => {
+    e.preventDefault();
+    if (draggingHabitId && draggingHabitId !== habitId) {
+      setDragOverHabitId(habitId);
+    }
+  };
+
+  const handleHabitDragLeave = () => {
+    setDragOverHabitId(null);
+  };
+
+  const handleHabitDrop = (e: React.DragEvent, targetHabitId: string) => {
+    e.preventDefault();
+    if (!draggingHabitId || draggingHabitId === targetHabitId) {
+      setDraggingHabitId(null);
+      setDragOverHabitId(null);
+      return;
+    }
+
+    setTrackedHabits(prev => {
+      const newHabits = [...prev];
+      const dragIndex = newHabits.findIndex(h => h.id === draggingHabitId);
+      const dropIndex = newHabits.findIndex(h => h.id === targetHabitId);
+      
+      if (dragIndex !== -1 && dropIndex !== -1) {
+        const [draggedItem] = newHabits.splice(dragIndex, 1);
+        newHabits.splice(dropIndex, 0, draggedItem);
+      }
+      
+      return newHabits;
+    });
+
+    setDraggingHabitId(null);
+    setDragOverHabitId(null);
+  };
+
+  const handleHabitDragEnd = () => {
+    setDraggingHabitId(null);
+    setDragOverHabitId(null);
+  };
+
   // 保存习惯到localStorage
   useEffect(() => {
     localStorage.setItem('trackedHabits', JSON.stringify(trackedHabits));
@@ -6464,18 +6516,41 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 const firstDayOfWeek = new Date(currentMonth.year, currentMonth.month - 1, 1).getDay();
                 // 转换为周一开始 (0=周一, 6=周日)
                 const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+
+                const isDragging = draggingHabitId === habit.id;
+                const isDragOver = dragOverHabitId === habit.id;
                 
                 return (
-                  <div key={habit.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                  <div 
+                    key={habit.id} 
+                    className={`bg-white rounded-2xl p-4 shadow-sm border transition-all duration-200 ${
+                      isDragging ? 'opacity-50 scale-[0.98] border-sky-300' : 
+                      isDragOver ? 'border-sky-400 shadow-md ring-2 ring-sky-200' : 
+                      'border-gray-100'
+                    }`}
+                    draggable
+                    onDragStart={(e) => handleHabitDragStart(e, habit.id)}
+                    onDragOver={(e) => handleHabitDragOver(e, habit.id)}
+                    onDragLeave={handleHabitDragLeave}
+                    onDrop={(e) => handleHabitDrop(e, habit.id)}
+                    onDragEnd={handleHabitDragEnd}
+                  >
                     {/* 习惯头部 */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {/* 拖拽手柄 */}
+                        <div 
+                          className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-300 hover:text-gray-400 touch-none"
+                          title="拖拽排序"
+                        >
+                          <GripVertical size={16} />
+                        </div>
                         <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center text-xl">
                           {habit.icon}
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-700">{habit.name}</h4>
-                          <p className="text-xs text-gray-400 truncate max-w-[180px]">
+                          <p className="text-xs text-gray-400 truncate max-w-[160px]">
                             {habit.minDuration && habit.minDuration > 0 
                               ? `≥${formatDuration(habit.minDuration)} · ` 
                               : ''}
@@ -6733,31 +6808,36 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
 
         {/* 添加/编辑习惯弹窗 */}
         {showAddHabitModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-            <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-black text-gray-800 mb-4">
-                {editingHabit ? '编辑习惯' : '添加新习惯'}
-              </h3>
-              
-              {/* 图标选择 */}
-              <div className="mb-4">
-                <label className="text-sm font-bold text-gray-600 mb-2 block">选择图标</label>
-                <div className="flex flex-wrap gap-2">
-                  {['✨', '🏃', '📚', '🧘', '💪', '🎯', '🌅', '💤', '🥗', '💧', '🎨', '🎵', '✍️', '🧠', '❤️', '🌟'].map(icon => (
-                    <button
-                      key={icon}
-                      onClick={() => setNewHabitIcon(icon)}
-                      className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
-                        newHabitIcon === icon 
-                          ? 'bg-sky-100 ring-2 ring-sky-400' 
-                          : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      {icon}
-                    </button>
-                  ))}
-                </div>
+          <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[60] pt-16 pb-28 px-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl flex flex-col my-auto">
+              {/* 标题 */}
+              <div className="p-5 pb-0 flex-shrink-0">
+                <h3 className="text-lg font-black text-gray-800">
+                  {editingHabit ? '编辑习惯' : '添加新习惯'}
+                </h3>
               </div>
+              
+              {/* 内容区 */}
+              <div className="px-5 py-4">
+                {/* 图标选择 */}
+                <div className="mb-4">
+                  <label className="text-sm font-bold text-gray-600 mb-2 block">选择图标</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['✨', '🏃', '📚', '🧘', '💪', '🎯', '🌅', '💤', '🥗', '💧', '🎨', '🎵', '✍️', '🧠', '❤️', '🌟'].map(icon => (
+                      <button
+                        key={icon}
+                        onClick={() => setNewHabitIcon(icon)}
+                        className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
+                          newHabitIcon === icon 
+                            ? 'bg-sky-100 ring-2 ring-sky-400' 
+                            : 'bg-gray-100 hover:bg-gray-200'
+                        }`}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               
               {/* 习惯名称 */}
               <div className="mb-4">
@@ -6859,7 +6939,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
               </div>
               
               {/* 最小时长阈值 */}
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="text-sm font-bold text-gray-600 mb-2 block">
                   最小时长阈值
                   <span className="text-xs text-gray-400 font-normal ml-1">（可选）</span>
@@ -6913,35 +6993,36 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       return;
                     }
                     if (newHabitLinkedEvents.length === 0) {
-                      alert('请至少选择一个关联事件');
-                      return;
-                    }
-                    
-                    if (editingHabit) {
-                      setTrackedHabits(prev => prev.map(h => 
-                        h.id === editingHabit.id 
-                          ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents, minDuration: newHabitMinDuration }
-                          : h
-                      ));
-                    } else {
-                      setTrackedHabits(prev => [...prev, {
-                        id: Date.now().toString(),
-                        name: newHabitName,
-                        icon: newHabitIcon,
-                        linkedEventNames: newHabitLinkedEvents,
-                        minDuration: newHabitMinDuration,
-                        manualChecks: {}
-                      }]);
-                    }
-                    
-                    setShowAddHabitModal(false);
-                    setEditingHabit(null);
-                  }}
-                  className="flex-1 py-3 rounded-xl text-white font-bold"
-                  style={{ backgroundColor: '#89CFF0' }}
-                >
-                  {editingHabit ? '保存' : '添加'}
-                </button>
+                        alert('请至少选择一个关联事件');
+                        return;
+                      }
+                      
+                      if (editingHabit) {
+                        setTrackedHabits(prev => prev.map(h => 
+                          h.id === editingHabit.id 
+                            ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents, minDuration: newHabitMinDuration }
+                            : h
+                        ));
+                      } else {
+                        setTrackedHabits(prev => [...prev, {
+                          id: Date.now().toString(),
+                          name: newHabitName,
+                          icon: newHabitIcon,
+                          linkedEventNames: newHabitLinkedEvents,
+                          minDuration: newHabitMinDuration,
+                          manualChecks: {}
+                        }]);
+                      }
+                      
+                      setShowAddHabitModal(false);
+                      setEditingHabit(null);
+                    }}
+                    className="flex-1 py-3 rounded-xl text-white font-bold"
+                    style={{ backgroundColor: '#89CFF0' }}
+                  >
+                    {editingHabit ? '保存' : '添加'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
