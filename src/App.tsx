@@ -4546,6 +4546,7 @@ const ReviewView = ({
     name: string;
     icon: string;
     linkedEventNames: string[]; // 关联的事件名称（支持多个）
+    linkedCategoryIds: string[]; // 关联的分类ID（支持多个）
     minDuration?: number; // 最小时长阈值（分钟），达到此时长才算完成
     manualChecks?: Record<string, number>; // 手动打卡记录 { 'YYYY-MM-DD': 时长(分钟) }
   }>>(() => {
@@ -4556,20 +4557,22 @@ const ReviewView = ({
       return parsed.map((h: any) => ({
         ...h,
         linkedEventNames: h.linkedEventNames || (h.linkedEventName ? [h.linkedEventName] : []),
+        linkedCategoryIds: h.linkedCategoryIds || [],
         minDuration: h.minDuration || 0,
         manualChecks: h.manualChecks || {}
       }));
     }
     return [
-      { id: '1', name: '运动', icon: '🏃', linkedEventNames: ['运动'], minDuration: 0, manualChecks: {} },
-      { id: '2', name: '阅读', icon: '📚', linkedEventNames: ['阅读'], minDuration: 0, manualChecks: {} },
+      { id: '1', name: '运动', icon: '🏃', linkedEventNames: ['运动'], linkedCategoryIds: [], minDuration: 0, manualChecks: {} },
+      { id: '2', name: '阅读', icon: '📚', linkedEventNames: ['阅读'], linkedCategoryIds: [], minDuration: 0, manualChecks: {} },
     ];
   });
   const [showAddHabitModal, setShowAddHabitModal] = useState(false);
-  const [editingHabit, setEditingHabit] = useState<{id: string; name: string; icon: string; linkedEventNames: string[]; minDuration?: number} | null>(null);
+  const [editingHabit, setEditingHabit] = useState<{id: string; name: string; icon: string; linkedEventNames: string[]; linkedCategoryIds: string[]; minDuration?: number} | null>(null);
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitIcon, setNewHabitIcon] = useState('✨');
   const [newHabitLinkedEvents, setNewHabitLinkedEvents] = useState<string[]>([]);
+  const [newHabitLinkedCategories, setNewHabitLinkedCategories] = useState<string[]>([]); // 关联的分类
   const [newHabitMinDuration, setNewHabitMinDuration] = useState(0); // 新增：最小时长阈值
   const [eventSearchQuery, setEventSearchQuery] = useState(''); // 事件搜索关键词
   const [showManualCheckModal, setShowManualCheckModal] = useState<{habitId: string; dateStr: string; currentDuration: number} | null>(null);
@@ -4642,12 +4645,17 @@ const ReviewView = ({
     return Array.from(names).sort();
   }, [timeRecords]);
 
-  // 获取某天某习惯的总时长（分钟）- 包括关联事件时长和手动打卡时长
+  // 获取某天某习惯的总时长（分钟）- 包括关联事件时长、关联分类时长和手动打卡时长
   const getHabitDurationOnDate = (habit: typeof trackedHabits[0], dateStr: string): number => {
-    // 计算关联事件的时长
     let totalMinutes = 0;
+    const countedRecordIds = new Set<string>(); // 避免重复计算
+    
+    // 计算关联事件的时长
     habit.linkedEventNames.forEach(eventName => {
       timeRecords.filter(r => r.date === dateStr && r.name === eventName).forEach(record => {
+        if (countedRecordIds.has(record.id)) return;
+        countedRecordIds.add(record.id);
+        
         const start = record.startTime.split(':').map(Number);
         const end = record.endTime.split(':').map(Number);
         let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
@@ -4656,6 +4664,22 @@ const ReviewView = ({
         totalMinutes += minutes;
       });
     });
+    
+    // 计算关联分类的时长
+    if (habit.linkedCategoryIds && habit.linkedCategoryIds.length > 0) {
+      habit.linkedCategoryIds.forEach(categoryId => {
+        timeRecords.filter(r => r.date === dateStr && r.categoryId === categoryId).forEach(record => {
+          if (countedRecordIds.has(record.id)) return;
+          countedRecordIds.add(record.id);
+          
+          const start = record.startTime.split(':').map(Number);
+          const end = record.endTime.split(':').map(Number);
+          let minutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+          if (minutes < 0) minutes += 24 * 60;
+          totalMinutes += minutes;
+        });
+      });
+    }
     
     // 加上手动打卡的时长
     if (habit.manualChecks && habit.manualChecks[dateStr]) {
@@ -6554,7 +6578,20 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                             {habit.minDuration && habit.minDuration > 0 
                               ? `≥${formatDuration(habit.minDuration)} · ` 
                               : ''}
-                            {habit.linkedEventNames.length > 0 ? habit.linkedEventNames.join('、') : '未关联'}
+                            {(() => {
+                              const parts: string[] = [];
+                              if (habit.linkedCategoryIds && habit.linkedCategoryIds.length > 0) {
+                                const catNames = habit.linkedCategoryIds.map(id => {
+                                  const cat = categories.find(c => c.id === id);
+                                  return cat ? `[${cat.label}]` : '';
+                                }).filter(Boolean);
+                                parts.push(...catNames);
+                              }
+                              if (habit.linkedEventNames.length > 0) {
+                                parts.push(...habit.linkedEventNames);
+                              }
+                              return parts.length > 0 ? parts.join('、') : '未关联';
+                            })()}
                           </p>
                         </div>
                       </div>
@@ -6565,6 +6602,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                             setNewHabitName(habit.name);
                             setNewHabitIcon(habit.icon);
                             setNewHabitLinkedEvents(habit.linkedEventNames);
+                            setNewHabitLinkedCategories(habit.linkedCategoryIds || []);
                             setNewHabitMinDuration(habit.minDuration || 0);
                             setEventSearchQuery('');
                             setShowAddHabitModal(true);
@@ -6710,6 +6748,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 setNewHabitName('');
                 setNewHabitIcon('✨');
                 setNewHabitLinkedEvents([]);
+                setNewHabitLinkedCategories([]);
                 setNewHabitMinDuration(0);
                 setEventSearchQuery('');
                 setShowAddHabitModal(true);
@@ -6851,10 +6890,65 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                 />
               </div>
               
+              {/* 关联分类（多选） */}
+              <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 mb-2 block">
+                  关联分类 
+                  <span className="text-xs text-gray-400 font-normal ml-1">（该分类下所有事件）</span>
+                </label>
+                
+                {/* 已选择的分类 */}
+                {newHabitLinkedCategories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {newHabitLinkedCategories.map(catId => {
+                      const cat = categories.find(c => c.id === catId);
+                      return cat ? (
+                        <span 
+                          key={catId}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs"
+                        >
+                          [{cat.label}]
+                          <button
+                            onClick={() => setNewHabitLinkedCategories(prev => prev.filter(id => id !== catId))}
+                            className="hover:text-purple-900"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                
+                {/* 分类选择列表 */}
+                <div className="flex flex-wrap gap-2">
+                  {categories.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => {
+                        if (newHabitLinkedCategories.includes(cat.id)) {
+                          setNewHabitLinkedCategories(prev => prev.filter(id => id !== cat.id));
+                        } else {
+                          setNewHabitLinkedCategories(prev => [...prev, cat.id]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                        newHabitLinkedCategories.includes(cat.id)
+                          ? 'bg-purple-100 text-purple-700 ring-2 ring-purple-300'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {cat.label}
+                      {newHabitLinkedCategories.includes(cat.id) && <Check size={12} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 关联事件（多选） */}
               <div className="mb-6">
                 <label className="text-sm font-bold text-gray-600 mb-2 block">
-                  关联数据源事件 
+                  关联单独事件 
                   <span className="text-xs text-gray-400 font-normal ml-1">（可多选）</span>
                 </label>
                 
@@ -6935,7 +7029,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                     ));
                   })()}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">任一关联事件有记录时，习惯自动标记为完成</p>
+                <p className="text-xs text-gray-400 mt-1">关联分类或事件有记录时，习惯自动标记为完成</p>
               </div>
               
               {/* 最小时长阈值 */}
@@ -6992,15 +7086,15 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                       alert('请输入习惯名称');
                       return;
                     }
-                    if (newHabitLinkedEvents.length === 0) {
-                        alert('请至少选择一个关联事件');
+                    if (newHabitLinkedEvents.length === 0 && newHabitLinkedCategories.length === 0) {
+                        alert('请至少选择一个关联分类或事件');
                         return;
                       }
                       
                       if (editingHabit) {
                         setTrackedHabits(prev => prev.map(h => 
                           h.id === editingHabit.id 
-                            ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents, minDuration: newHabitMinDuration }
+                            ? { ...h, name: newHabitName, icon: newHabitIcon, linkedEventNames: newHabitLinkedEvents, linkedCategoryIds: newHabitLinkedCategories, minDuration: newHabitMinDuration }
                             : h
                         ));
                       } else {
@@ -7009,6 +7103,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
                           name: newHabitName,
                           icon: newHabitIcon,
                           linkedEventNames: newHabitLinkedEvents,
+                          linkedCategoryIds: newHabitLinkedCategories,
                           minDuration: newHabitMinDuration,
                           manualChecks: {}
                         }]);
