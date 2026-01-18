@@ -14671,7 +14671,7 @@ export default function App() {
           />
           
           {/* 内容层 - 背景透明 */}
-          <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="iphone-container relative bg-transparent mx-auto flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', height: '100vh', minHeight: '-webkit-fill-available' }}>
           {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
           <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
             {renderView()}
