@@ -1,0 +1,17 @@
+{
+  "name": "治愈时光",
+  "short_name": "治愈时光",
+  "description": "温柔的时间管理伙伴",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFDF7",
+  "theme_color": "#FFFDF7",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
