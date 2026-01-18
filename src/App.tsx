@@ -14673,16 +14673,22 @@ export default function App() {
           {/* 内容层 - 背景透明 */}
           <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
-          <div className="flex-1 overflow-y-auto pb-20">
+          <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
             {renderView()}
           </div>
           
           {/* 底部导航栏 - 直接矩形，无圆角 */}
           <div 
-            className="fixed bottom-0 left-0 right-0 h-20 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
+            className="fixed bottom-0 left-0 right-0 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
+            style={{ 
+              height: 'calc(5rem + env(safe-area-inset-bottom))',
+              paddingBottom: 'env(safe-area-inset-bottom)', 
+              border: 'none', 
+              boxShadow: 'none', 
+              outline: 'none' 
+            }}
           >
-            <div className="flex h-full items-center justify-around px-4">
+            <div className="flex items-center justify-around px-4" style={{ height: '5rem' }}>
                 {tabs.map(tab => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
