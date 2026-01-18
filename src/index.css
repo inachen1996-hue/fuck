@@ -4,7 +4,7 @@
 
 /* 超大背景 + 锁死回弹方案 */
 html {
-  background-color: #ffffff; /* 白色兜底 */
+  background-color: #FFFDF7; /* 马卡龙米白色兜底，与应用主题一致 */
   overscroll-behavior-y: none; /* 核心：禁止下拉露出白边 */
   height: 100%;
   width: 100%;
@@ -18,7 +18,7 @@ html {
 }
 
 body {
-  background-color: transparent;
+  background-color: #FFFDF7; /* 与 html 保持一致 */
   overscroll-behavior-y: none; /* 双重保险 */
   height: 100%;
   width: 100%;
@@ -33,7 +33,7 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: transparent;
+  background-color: #FFFDF7; /* 与主题一致的背景色 */
   position: relative;
 }
 
