@@ -2462,7 +2462,7 @@ const TimerView = ({
         <div className="px-6 pt-8 pb-3">
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
+        <div className="flex-1 overflow-y-auto px-6">
           {categoryTimers.length === 0 ? (
             // 空状态
             <div className="flex-1 flex flex-col items-center justify-center">
@@ -3753,7 +3753,7 @@ const JournalView = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-6 z-10">
+        <div className="flex-1 overflow-y-auto px-6 z-10">
           {/* 日期选择 */}
           <div className="mb-6">
             <span className="text-xs font-bold uppercase tracking-wider block mb-3" style={{ color: '#BA68C8' }}>
@@ -3923,7 +3923,7 @@ const JournalView = ({
       </div>
 
       {/* 日记列表 */}
-      <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
+      <div className="flex-1 overflow-y-auto px-6 z-10">
         {journals.length === 0 ? (
           <div className="flex-1 flex items-center justify-center h-64">
             <div className="text-center opacity-60">
@@ -4284,7 +4284,7 @@ const ThoughtsView = ({
       </div>
 
       {/* 感想列表 */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 z-10">
+      <div className="flex-1 overflow-y-auto px-4 z-10">
         {filteredRecords.length === 0 ? (
           <div className="flex-1 flex items-center justify-center h-64">
             <div className="text-center opacity-60">
@@ -5936,7 +5936,7 @@ ${periodJournals.slice(0, 5).map(j => `- ${j.content.slice(0, 100)}${j.content.l
       </div>
 
       {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
+      <div className="flex-1 overflow-y-auto px-6 z-10">
         {/* 当前进度 */}
         {activeTab === 'progress' && (
           <div className="pt-4">
@@ -8656,7 +8656,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
+        <div className="flex-1 overflow-y-auto px-6">
           {/* 神经效能干预卡片 */}
           {scheduleData.comfortSection && (
             <div className="rounded-3xl p-5 mb-6 relative overflow-hidden border border-white/50 shadow-sm" style={{ backgroundColor: '#FFF3E0' }}>
@@ -9466,7 +9466,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
       <div className="absolute -right-10 top-10 w-40 h-40 rounded-full bg-orange-50 blur-2xl opacity-50"></div>
       <div className="absolute -left-10 bottom-40 w-32 h-32 rounded-full bg-amber-50 blur-xl opacity-40"></div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
+      <div className="flex-1 overflow-y-auto px-6 z-10">
         {/* 头部 - 随页面滚动 */}
         <div className="pt-8 pb-4 flex justify-between items-end">
           <div>
@@ -12337,7 +12337,7 @@ END:VEVENT
       <div className="px-6 pt-8 pb-4 z-10">
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-24 z-10">
+      <div className="flex-1 overflow-y-auto px-6 z-10">
         {/* 功能入口统一容器 */}
         <div className="bg-white rounded-[20px] overflow-hidden" style={{ boxShadow: '0 8px 24px rgba(255, 193, 7, 0.15)' }}>
           {/* 数据管理 */}
