@@ -3576,7 +3576,7 @@ const TimerView = ({
 
       {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
       {isAlarmPlaying && (
-        <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
+        <div className="fixed bottom-[100px] left-1/2 transform -translate-x-1/2 z-50">
           <button
             onClick={() => stopAlarmAndProceed()}
             className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
@@ -3590,7 +3590,7 @@ const TimerView = ({
 
       {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
       {!isAlarmPlaying && pomodoroWaitingNextPhase && (
-        <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
+        <div className="fixed bottom-[100px] left-1/2 transform -translate-x-1/2 z-50">
           <button
             onClick={() => proceedToNextPhase()}
             className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
@@ -9423,7 +9423,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
         {/* 浮动停止响铃按钮 - 铃声响起时显示 */}
         {isAlarmPlaying && (
-          <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
+          <div className="fixed bottom-[100px] left-1/2 transform -translate-x-1/2 z-50">
             <button
               onClick={() => stopAlarmAndProceed()}
               className="px-6 py-3 rounded-full bg-pink-500 text-white font-bold shadow-lg hover:bg-pink-600 transition-all animate-pulse flex items-center gap-2"
@@ -9437,7 +9437,7 @@ ${needsComfort ? '- comfortSection字段必须提供，包含words（默读话�
 
         {/* 浮动进入下一阶段按钮 - 停止响铃后、等待下一阶段时显示 */}
         {!isAlarmPlaying && pomodoroWaitingNextPhase && (
-          <div className="fixed bottom-[116px] left-1/2 transform -translate-x-1/2 z-50">
+          <div className="fixed bottom-[100px] left-1/2 transform -translate-x-1/2 z-50">
             <button
               onClick={() => proceedToNextPhase()}
               className="px-6 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg hover:bg-green-600 transition-all flex items-center gap-2"
@@ -14673,13 +14673,13 @@ export default function App() {
           {/* 内容层 - 背景透明 */}
           <div className="iphone-container relative bg-transparent mx-auto h-full flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           {/* 主内容区域 - flex-1 占满剩余空间，overflow-y-auto 允许滚动 */}
-          <div className="flex-1 overflow-y-auto pb-24">
+          <div className="flex-1 overflow-y-auto pb-20">
             {renderView()}
           </div>
           
           {/* 底部导航栏 - 直接矩形，无圆角 */}
           <div 
-            className="fixed bottom-0 left-0 right-0 h-24 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
+            className="fixed bottom-0 left-0 right-0 h-20 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
           >
             <div className="flex h-full items-center justify-around px-4">
