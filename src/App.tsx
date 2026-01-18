@@ -14680,9 +14680,9 @@ export default function App() {
           {/* 底部导航栏 - 直接矩形，无圆角 */}
           <div 
             className="fixed bottom-0 left-0 right-0 bg-white !border-0 !ring-0 !shadow-none !outline-none z-50"
-            style={{ height: 'calc(5rem + env(safe-area-inset-bottom))', paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)', border: 'none', boxShadow: 'none', outline: 'none' }}
           >
-            <div className="flex h-full items-center justify-around px-4">
+            <div className="flex items-center justify-around px-4" style={{ height: '5rem' }}>
                 {tabs.map(tab => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
